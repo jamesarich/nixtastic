@@ -76,11 +76,35 @@
           # Auto-provisioning is disabled: Gradle must never download a
           # JDK behind Nix's back, or builds stop being reproducible.
           #########################################################
-          jdks = [ pkgs.jdk21 pkgs.jdk17 pkgs.temurin-bin-11 ];
+          # Two DIFFERENT Gradle mechanisms both read this list:
+          #
+          #  1. Toolchains — which JDK compiles the code. Driven by
+          #     jvmToolchain(...) in the build scripts.
+          #  2. Daemon JVM criteria — which JDK the daemon itself runs
+          #     on. Declared per-repo in gradle/gradle-daemon-jvm.properties
+          #     and NOT satisfiable by just any JDK:
+          #
+          #       meshtastic-sdk        vendor=JETBRAINS, version=21
+          #       Meshtastic-Android    version=25
+          #       MQTTastic-Client-KMP  version=21 (any vendor)
+          #       kzstd, gradle-flatpak-sources — no criteria
+          #
+          # So the JetBrains Runtime and JDK 25 are not optional extras;
+          # without them those two repos cannot start a daemon at all
+          # once auto-provisioning is off.
+          jdks = [
+            pkgs.jdk21
+            pkgs.jdk17
+            pkgs.temurin-bin-11
+            pkgs.jetbrains.jdk-21 # meshtastic-sdk daemon (vendor=JETBRAINS)
+            pkgs.jdk25 # Meshtastic-Android daemon
+          ];
           primaryJdk = pkgs.jdk21;
-          # .home, not the derivation root — on Darwin they differ, and
-          # Gradle's toolchain resolver wants a real JAVA_HOME layout.
-          toolchainPaths = lib.concatStringsSep "," (map (j: j.home) jdks);
+          # .home where it exists — on Darwin it differs from the
+          # derivation root, and Gradle wants a real JAVA_HOME layout.
+          # The JetBrains build has no .home, hence the fallback.
+          toolchainPaths = lib.concatStringsSep ","
+            (map (j: j.home or "${j}") jdks);
 
           jvmTools = with pkgs; [
             primaryJdk
@@ -231,7 +255,7 @@
           #########################################################
           # kotlin — the KMP library repos
           #########################################################
-          kotlin = pkgs.mkShell {
+          kotlin = pkgs.mkShellNoCC {
             name = "meshtastic-kotlin";
             packages = common ++ jvmTools
               # gradle-flatpak-sources emits Flathub offline manifests;
@@ -295,7 +319,7 @@
           #########################################################
           # mcp — Python server + Node web-ui
           #########################################################
-          mcp = pkgs.mkShell {
+          mcp = pkgs.mkShellNoCC {
             name = "meshtastic-mcp";
             # android-cli here too: this repo's hardware-free e2e drives
             # an emulator, and `android emulator` + `android layout`
@@ -324,7 +348,7 @@
           # this shell only supplies the linting/formatting layer and
           # defers the actual build to the host toolchain.
           #########################################################
-          apple = pkgs.mkShell {
+          apple = pkgs.mkShellNoCC {
             name = "meshtastic-apple";
             packages = common ++ lib.optionals pkgs.stdenv.isDarwin (with pkgs; [
               swiftlint
@@ -345,7 +369,7 @@
           #########################################################
           # nodes — no build toolchain, just talk to hardware
           #########################################################
-          nodes = pkgs.mkShell {
+          nodes = pkgs.mkShellNoCC {
             name = "meshtastic-nodes";
             packages = common ++ nodeTools ++ [ python pkgs.uv ];
             shellHook = serialHook + pythonHook + (banner "nodes" "serial · BLE · flashing") + ''
