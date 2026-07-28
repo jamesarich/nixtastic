@@ -90,6 +90,28 @@ exists on origin. `nix run .#sync` detects this; `--pull` widens the refspec.
 `protobufs` uses a remote plugin (`buf.build/bufbuild/es:v2.1.0`).
 `protoc-gen-es` is deliberately not pinned locally. `buf lint` works offline.
 
+## Third-party firmware artifacts
+
+Not vendored here — fetch on demand rather than committing binaries.
+
+**RAK4631 OTAFIX bootloader.** The nRF52840 SoftDevice+bootloader DFU bundle
+comes from [`oltaco/Adafruit_nRF52_Bootloader_OTAFIX`](https://github.com/oltaco/Adafruit_nRF52_Bootloader_OTAFIX)
+(Huw Duddy's fork of `adafruit/Adafruit_nRF52_Bootloader`, carrying the OTAFIX
+patches). Meshtastic's own `Adafruit_nRF52_Bootloader` fork is a different
+lineage and does **not** include them.
+
+```bash
+gh release download 0.9.2-OTAFIX2.2-BP1.3 \
+  -R oltaco/Adafruit_nRF52_Bootloader_OTAFIX \
+  -p 'wiscore_rak4631_board_bootloader-*_s140_6.1.1.zip'
+# sha256 c002d103370651cf955333409e6e713c069df2540f5786c70fdfe4901ca3c7dc
+```
+
+The repo is deliberately not a workspace entry: it is third-party rather than
+Meshtastic org, and *building* it needs the ARM GCC toolchain plus the nRF SDK
+— a toolchain no shell here provides. Add one only if you start patching
+bootloaders rather than flashing published ones.
+
 ## Verification status
 
 Confirmed working on x86_64-linux:

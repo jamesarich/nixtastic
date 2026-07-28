@@ -36,4 +36,3 @@
 #   logs/         adb, build and replay logs
 #   fw-bisect/    firmware bisect working copy
 #   meshcon/      conference capture db + screenshots
-#   otafix/       one-off firmware zips
