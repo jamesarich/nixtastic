@@ -454,7 +454,13 @@
                 $g fetch --quiet --prune --tags origin 2>/dev/null || true
 
                 branch=$($g rev-parse --abbrev-ref HEAD)
-                dirty=$($g status --porcelain | wc -l)
+                # Only TRACKED modifications can block a fast-forward.
+                # Untracked files cannot (git merge --ff-only happily
+                # ignores them), so counting them as "dirty" would
+                # needlessly skip repos — e.g. meshtastic-mcp, held back
+                # by nothing but an untracked .remember/ directory.
+                dirty=$($g status --porcelain --untracked-files=no | wc -l)
+                untracked=$($g ls-files --others --exclude-standard | wc -l)
 
                 # No upstream (detached HEAD, or a purely local branch)?
                 # Nothing to compare against, so nothing to do.
@@ -469,29 +475,34 @@
                 behind=$(echo "$counts" | cut -f1)
                 ahead=$(echo "$counts" | cut -f2)
 
-                note=""
-                [ "$dirty" -gt 0 ] && note="$dirty dirty"
+                # flags describe the working tree; drift describes the
+                # branch. Keep them separate so a drift message can never
+                # swallow the fact that the tree is dirty.
+                flags=""
+                [ "$dirty" -gt 0 ] && flags="$dirty dirty"
+                [ "$untracked" -gt 0 ] && flags="''${flags}''${flags:+, }$untracked untracked"
 
                 if [ "$behind" -eq 0 ] && [ "$ahead" -eq 0 ]; then
-                  status="current"
+                  status="current"; drift=""
                 elif [ "$ahead" -gt 0 ] && [ "$behind" -gt 0 ]; then
-                  status="DIVERGED"; note="+$ahead/-$behind ''${note}"
+                  status="DIVERGED"; drift="+$ahead/-$behind"
                 elif [ "$ahead" -gt 0 ]; then
-                  status="ahead"; note="+$ahead ''${note}"
+                  status="ahead"; drift="+$ahead"
                 elif [ "$dirty" -gt 0 ]; then
-                  status="BEHIND"; note="-$behind dirty, skipped"
+                  status="BEHIND"; drift="-$behind skipped, tree dirty"
                 elif [ "$pull" = true ]; then
                   if $g merge --ff-only --quiet "$upstream" 2>/dev/null; then
-                    status="PULLED"; note="-$behind fast-forwarded"
+                    status="PULLED"; drift="-$behind fast-forwarded"
                   else
-                    status="FAILED"; note="-$behind ff refused"
+                    status="FAILED"; drift="-$behind ff refused"
                   fi
                 else
-                  status="behind"; note="-$behind (run with --pull)"
+                  status="behind"; drift="-$behind (run with --pull)"
                 fi
 
                 printf '  %-9s %-24s %-30s %-10s %s\n' \
-                  "$status" "$dir" "$branch" ".#$shell" "$note"
+                  "$status" "$dir" "$branch" ".#$shell" \
+                  "$drift''${drift:+''${flags:+  }}$flags"
               done
 
               echo ""
