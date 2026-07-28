@@ -428,16 +428,23 @@
               # The conservatism is deliberate: these repos routinely sit on
               # feature branches with work in progress, and a blanket
               # `git pull` would either create merge commits or fail dirty.
+              #   --main     switch each repo to its DEFAULT branch first,
+              #              then pull. Implies --pull. Refuses to switch a
+              #              repo whose tracked files are modified.
               pull=false
+              main=false
               for arg in "$@"; do
                 case "$arg" in
                   --pull) pull=true ;;
+                  --main) main=true; pull=true ;;
                   *) echo "unknown option: $arg" ; exit 1 ;;
                 esac
               done
 
               root="''${MESHTASTIC_WORKSPACE:-$PWD}"
-              if [ "$pull" = true ]; then mode="  (--pull)"; else mode=""; fi
+              if [ "$main" = true ]; then mode="  (--main)"
+              elif [ "$pull" = true ]; then mode="  (--pull)"
+              else mode=""; fi
               echo "workspace: $root$mode"
               echo ""
 
@@ -469,6 +476,32 @@
 
                 # Fetch is always safe — it only writes remote-tracking refs.
                 $g fetch --quiet --prune --tags origin 2>/dev/null || true
+
+                # --main moves to the repo's DEFAULT branch. NOT hardcoded
+                # to "main": meshtastic-mcp's default is master. Resolved
+                # from origin/HEAD, repairing it via `remote set-head` if
+                # the clone never recorded one.
+                switched=""
+                if [ "$main" = true ]; then
+                  if ! ref=$($g symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null); then
+                    $g remote set-head origin --auto >/dev/null 2>&1 || true
+                    ref=$($g symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)
+                  fi
+                  def="''${ref#refs/remotes/origin/}"
+                  cur=$($g rev-parse --abbrev-ref HEAD)
+                  if [ -n "$def" ] && [ "$def" != "$cur" ]; then
+                    # Switching a dirty tree would drag the modifications
+                    # onto the default branch. Leave it exactly where it is.
+                    if [ "$($g status --porcelain --untracked-files=no | wc -l)" -gt 0 ]; then
+                      switched="STAYED on $cur (tree dirty)"
+                    elif $g rev-parse --verify --quiet "refs/heads/$def" >/dev/null 2>&1; then
+                      $g checkout --quiet "$def" && switched="$cur -> $def"
+                    else
+                      $g checkout --quiet -b "$def" --track "origin/$def" \
+                        && switched="$cur -> $def (new local branch)"
+                    fi
+                  fi
+                fi
 
                 branch=$($g rev-parse --abbrev-ref HEAD)
                 # Only TRACKED modifications can block a fast-forward.
@@ -512,7 +545,8 @@
                 # branch. Keep them separate so a drift message can never
                 # swallow the fact that the tree is dirty.
                 flags=""
-                [ "$narrow" = true ] && flags="single-branch clone"
+                [ -n "$switched" ] && flags="$switched"
+                [ "$narrow" = true ] && flags="''${flags}''${flags:+, }single-branch clone"
                 [ "$tracked" = false ] && flags="''${flags}''${flags:+, }no tracking"
                 [ "$dirty" -gt 0 ] && flags="''${flags}''${flags:+, }$dirty dirty"
                 [ "$untracked" -gt 0 ] && flags="''${flags}''${flags:+, }$untracked untracked"
@@ -548,8 +582,9 @@
               if [ "$pull" = true ]; then
                 echo "  fast-forwarded where safe; dirty/diverged repos untouched"
               else
-                echo "  read-only. re-run with --pull to fast-forward what is safe:"
-                echo "      nix run .#sync -- --pull"
+                echo "  read-only. re-run to act:"
+                echo "      nix run .#sync -- --pull    fast-forward current branches"
+                echo "      nix run .#sync -- --main    switch to default branch, then pull"
               fi
               echo "  enter a shell with:  nix develop .#<shell>"
             '';
