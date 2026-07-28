@@ -1,0 +1,14 @@
+# Ignore everything by default. This repo tracks ONLY the workspace
+# definition — the Meshtastic repos inside are independent git repos and
+# must never be added here.
+#
+# This also keeps `nix` fast: for a flake in a git repo, Nix copies only
+# tracked files into the store. Without this, evaluating the flake would
+# copy the whole 15G tree.
+/*
+
+!/.gitignore
+!/.envrc
+!/flake.nix
+!/flake.lock
+!/android-sdk-packages.txt
