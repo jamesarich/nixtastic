@@ -450,6 +450,23 @@
                 fi
 
                 g="git -C $root/$dir"
+
+                # A --single-branch clone narrows remote.origin.fetch to a
+                # single ref, so `git fetch` can NEVER see any other
+                # branch and drift on them is invisible. Detect it, and
+                # widen under --pull (this is just the normal clone
+                # default; nothing is discarded).
+                narrow=false
+                case "$($g config --get-all remote.origin.fetch | tr '\n' ' ')" in
+                  *"refs/heads/*"*) ;;
+                  *) narrow=true ;;
+                esac
+                if [ "$narrow" = true ] && [ "$pull" = true ]; then
+                  $g config --replace-all remote.origin.fetch \
+                    '+refs/heads/*:refs/remotes/origin/*'
+                  narrow=false
+                fi
+
                 # Fetch is always safe — it only writes remote-tracking refs.
                 $g fetch --quiet --prune --tags origin 2>/dev/null || true
 
@@ -462,11 +479,27 @@
                 dirty=$($g status --porcelain --untracked-files=no | wc -l)
                 untracked=$($g ls-files --others --exclude-standard | wc -l)
 
-                # No upstream (detached HEAD, or a purely local branch)?
-                # Nothing to compare against, so nothing to do.
+                # Missing tracking config does NOT mean missing remote
+                # branch. Checking out a fetched ref, or pushing without
+                # -u, leaves a branch with no upstream that nonetheless
+                # exists on origin. Treating that as "nothing to compare"
+                # silently hides real drift, so fall back to
+                # origin/<branch> before giving up.
+                tracked=true
                 if ! upstream=$($g rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null); then
-                  printf '  local     %-24s %-32s no upstream\n' "$dir" "$branch"
-                  continue
+                  if $g rev-parse --verify --quiet "refs/remotes/origin/$branch" >/dev/null 2>&1; then
+                    upstream="origin/$branch"
+                    tracked=false
+                  else
+                    if [ "$narrow" = true ]; then
+                      why="not fetched (single-branch clone; --pull widens it)"
+                    else
+                      why="not on origin"
+                    fi
+                    printf '  local     %-24s %-30s %-10s %s\n' \
+                      "$dir" "$branch" ".#$shell" "$why"
+                    continue
+                  fi
                 fi
 
                 # left = commits upstream has that we lack (behind)
@@ -479,7 +512,9 @@
                 # branch. Keep them separate so a drift message can never
                 # swallow the fact that the tree is dirty.
                 flags=""
-                [ "$dirty" -gt 0 ] && flags="$dirty dirty"
+                [ "$narrow" = true ] && flags="single-branch clone"
+                [ "$tracked" = false ] && flags="''${flags}''${flags:+, }no tracking"
+                [ "$dirty" -gt 0 ] && flags="''${flags}''${flags:+, }$dirty dirty"
                 [ "$untracked" -gt 0 ] && flags="''${flags}''${flags:+, }$untracked untracked"
 
                 if [ "$behind" -eq 0 ] && [ "$ahead" -eq 0 ]; then
@@ -491,6 +526,10 @@
                 elif [ "$dirty" -gt 0 ]; then
                   status="BEHIND"; drift="-$behind skipped, tree dirty"
                 elif [ "$pull" = true ]; then
+                  # Repair tracking config while we are here; harmless and
+                  # reversible with `git branch --unset-upstream`.
+                  [ "$tracked" = false ] && \
+                    $g branch --quiet --set-upstream-to="$upstream" "$branch" >/dev/null 2>&1
                   if $g merge --ff-only --quiet "$upstream" 2>/dev/null; then
                     status="PULLED"; drift="-$behind fast-forwarded"
                   else
