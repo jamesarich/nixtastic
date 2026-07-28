@@ -12,3 +12,6 @@
 !/flake.nix
 !/flake.lock
 !/android-sdk-packages.txt
+!/README.md
+!/AGENTS.md
+!/CLAUDE.md
