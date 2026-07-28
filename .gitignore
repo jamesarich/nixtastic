@@ -34,5 +34,4 @@
 #   .remember/    agent scratch state
 #   datasets/     packet captures
 #   logs/         adb, build and replay logs
-#   fw-bisect/    firmware bisect working copy
 #   meshcon/      conference capture db + screenshots
