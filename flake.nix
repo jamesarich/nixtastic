@@ -92,12 +92,18 @@
           # So the JetBrains Runtime and JDK 25 are not optional extras;
           # without them those two repos cannot start a daemon at all
           # once auto-provisioning is off.
+          # A third mechanism on top of the two above: individual modules
+          # can demand their own toolchain vendor. Meshtastic-Android's
+          # :desktopApp (Compose Desktop) asks for JetBrains 25 at
+          # desktopApp/build.gradle.kts:129 — its daemon runs happily on
+          # plain JDK 25, but that module will not compile without JBR.
           jdks = [
             pkgs.jdk21
             pkgs.jdk17
             pkgs.temurin-bin-11
             pkgs.jetbrains.jdk-21 # meshtastic-sdk daemon (vendor=JETBRAINS)
             pkgs.jdk25 # Meshtastic-Android daemon
+            pkgs.jetbrains.jdk # JBR 25 — :desktopApp toolchain
           ];
           primaryJdk = pkgs.jdk21;
           # .home where it exists — on Darwin it differs from the
@@ -412,23 +418,89 @@
             name = "meshtastic-sync";
             runtimeInputs = [ pkgs.git ];
             text = ''
+              # Modes:
+              #   (default)  clone anything missing, fetch, report status.
+              #              Never modifies a working tree.
+              #   --pull     additionally FAST-FORWARD branches that can be
+              #              fast-forwarded. Never merges, never rebases,
+              #              never touches a dirty or diverged repo.
+              #
+              # The conservatism is deliberate: these repos routinely sit on
+              # feature branches with work in progress, and a blanket
+              # `git pull` would either create merge commits or fail dirty.
+              pull=false
+              for arg in "$@"; do
+                case "$arg" in
+                  --pull) pull=true ;;
+                  *) echo "unknown option: $arg" ; exit 1 ;;
+                esac
+              done
+
               root="''${MESHTASTIC_WORKSPACE:-$PWD}"
-              echo "workspace: $root"
+              if [ "$pull" = true ]; then mode="  (--pull)"; else mode=""; fi
+              echo "workspace: $root$mode"
               echo ""
+
               printf '%s\n' ${nixpkgs.lib.escapeShellArgs entries} |
               while IFS=$'\t' read -r dir repo shell; do
                 if [ ! -d "$root/$dir/.git" ]; then
-                  echo "  clone   $dir  <- $repo"
+                  echo "  clone     $dir  <- $repo"
                   git clone --quiet "https://github.com/$repo.git" "$root/$dir"
-                else
-                  branch=$(git -C "$root/$dir" rev-parse --abbrev-ref HEAD)
-                  dirty=$(git -C "$root/$dir" status --porcelain | wc -l)
-                  if [ "$dirty" -gt 0 ]; then state="($dirty dirty)"; else state=""; fi
-                  printf '  ok      %-24s %-18s %-10s %s\n' \
-                    "$dir" "$branch" ".#$shell" "$state"
+                  continue
                 fi
+
+                g="git -C $root/$dir"
+                # Fetch is always safe — it only writes remote-tracking refs.
+                $g fetch --quiet --prune --tags origin 2>/dev/null || true
+
+                branch=$($g rev-parse --abbrev-ref HEAD)
+                dirty=$($g status --porcelain | wc -l)
+
+                # No upstream (detached HEAD, or a purely local branch)?
+                # Nothing to compare against, so nothing to do.
+                if ! upstream=$($g rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null); then
+                  printf '  local     %-24s %-32s no upstream\n' "$dir" "$branch"
+                  continue
+                fi
+
+                # left = commits upstream has that we lack (behind)
+                # right = commits we have that upstream lacks (ahead)
+                counts=$($g rev-list --left-right --count "$upstream...HEAD")
+                behind=$(echo "$counts" | cut -f1)
+                ahead=$(echo "$counts" | cut -f2)
+
+                note=""
+                [ "$dirty" -gt 0 ] && note="$dirty dirty"
+
+                if [ "$behind" -eq 0 ] && [ "$ahead" -eq 0 ]; then
+                  status="current"
+                elif [ "$ahead" -gt 0 ] && [ "$behind" -gt 0 ]; then
+                  status="DIVERGED"; note="+$ahead/-$behind ''${note}"
+                elif [ "$ahead" -gt 0 ]; then
+                  status="ahead"; note="+$ahead ''${note}"
+                elif [ "$dirty" -gt 0 ]; then
+                  status="BEHIND"; note="-$behind dirty, skipped"
+                elif [ "$pull" = true ]; then
+                  if $g merge --ff-only --quiet "$upstream" 2>/dev/null; then
+                    status="PULLED"; note="-$behind fast-forwarded"
+                  else
+                    status="FAILED"; note="-$behind ff refused"
+                  fi
+                else
+                  status="behind"; note="-$behind (run with --pull)"
+                fi
+
+                printf '  %-9s %-24s %-30s %-10s %s\n' \
+                  "$status" "$dir" "$branch" ".#$shell" "$note"
               done
+
               echo ""
+              if [ "$pull" = true ]; then
+                echo "  fast-forwarded where safe; dirty/diverged repos untouched"
+              else
+                echo "  read-only. re-run with --pull to fast-forward what is safe:"
+                echo "      nix run .#sync -- --pull"
+              fi
               echo "  enter a shell with:  nix develop .#<shell>"
             '';
           };
