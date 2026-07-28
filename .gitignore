@@ -1,17 +1,39 @@
-# Ignore everything by default. This repo tracks ONLY the workspace
-# definition — the Meshtastic repos inside are independent git repos and
-# must never be added here.
+# Deny-by-default. This repo tracks ONLY the workspace definition and its
+# own documentation. Everything else here — ten independent Meshtastic
+# git repos, build caches, capture data — must never be committed.
 #
-# This also keeps `nix` fast: for a flake in a git repo, Nix copies only
-# tracked files into the store. Without this, evaluating the flake would
-# copy the whole 15G tree.
+# This is also what keeps Nix fast: for a flake in a git repo, Nix copies
+# only TRACKED files into the store. Without the deny-all, evaluating the
+# flake would copy the whole ~15 GB tree.
+#
+# NOTE: a new file is invisible to git until whitelisted below.
 /*
 
+# --- workspace definition -------------------------------------------------
 !/.gitignore
 !/.envrc
 !/flake.nix
 !/flake.lock
 !/android-sdk-packages.txt
-!/README.md
-!/AGENTS.md
-!/CLAUDE.md
+
+# --- documentation --------------------------------------------------------
+# Policy, not a list: any markdown at the workspace root is workspace
+# documentation and gets tracked. Covers README/AGENTS/CLAUDE plus the
+# engineering notes (RCAs, bug handoffs) that would otherwise be lost.
+# Notes belonging to a specific repo go in that repo instead.
+!/*.md
+
+# --- explicitly excluded --------------------------------------------------
+# Listed for the reader's benefit; /* already covers them.
+#
+#   .env          machine-local path exports, superseded by
+#                 MESHTASTIC_WORKSPACE. No secrets, but not portable.
+#   .cache/       workspace-local GRADLE_USER_HOME (multi-GB)
+#   .direnv/      nix-direnv shell cache + GC roots
+#   .ble-venv/    ad-hoc python venv
+#   .remember/    agent scratch state
+#   datasets/     packet captures
+#   logs/         adb, build and replay logs
+#   fw-bisect/    firmware bisect working copy
+#   meshcon/      conference capture db + screenshots
+#   otafix/       one-off firmware zips
