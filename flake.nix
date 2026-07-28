@@ -178,10 +178,20 @@
           # Google's android CLI — the agent-oriented front end over
           # adb / sdkmanager / avdmanager / AGP.
           #
-          # Pinning it through Nix is the whole point: the standalone
-          # install self-updates via `android update`, which quietly
-          # drifts the toolchain. From /nix/store it can't, so the
-          # version moves only when you bump the flake lock.
+          # IMPORTANT: Nix pins the LAUNCHER ONLY, not the CLI.
+          #
+          # The store binary (1.0.15498356) is a small launcher. On first
+          # run it unpacks/downloads the real ~84M CLI into
+          # ~/.android/bin/android-cli and self-updates it, tracked by
+          # ~/.android/cli/last_update_check. Observed drifting to
+          # 1.0.15857036 while the store path stayed put.
+          #
+          # There is no documented flag to disable that. So treat this as
+          # a convenience tool, NOT part of the reproducible toolchain —
+          # unlike the JDKs, its effective version is not locked by
+          # flake.lock. What Nix does buy: a consistent entry point, no
+          # manual install step, and autoPatchelfHook so it also runs on
+          # non-FHS systems.
           #
           # Upstream ships x86_64-linux and aarch64-darwin only.
           #########################################################
