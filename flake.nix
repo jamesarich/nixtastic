@@ -43,6 +43,9 @@
         kzstd = { shell = "kotlin"; repo = "meshtastic/kzstd"; };
         gradle-flatpak-sources = { shell = "kotlin"; repo = "meshtastic/gradle-flatpak-sources"; };
         meshtastic-mcp = { shell = "mcp"; repo = "meshtastic/meshtastic-mcp"; };
+        # Shared .proto definitions. Also vendored as a submodule inside
+        # firmware/protobufs — edit here, bump the pointer there.
+        protobufs = { shell = "protobufs"; repo = "meshtastic/protobufs"; };
       };
 
       devShells = forAllSystems ({ pkgs, system }:
@@ -380,6 +383,41 @@
               fi
               echo ""
             '';
+          };
+
+          #########################################################
+          # protobufs — the shared .proto definitions
+          #
+          # Deceptively multi-toolchain for a "just protos" repo:
+          #   /              buf v2 (buf.yaml, buf.gen.yaml)
+          #   packages/ts    Deno (deno.json + deno.lock), not npm
+          #   packages/kmp   Gradle 9.6.1 wrapper, no daemon criteria
+          #   packages/rust  Cargo
+          #   nanopb.proto   consumed by firmware's vendored copy
+          #
+          # Codegen uses a REMOTE buf plugin (buf.build/bufbuild/es:v2.1.0),
+          # so `buf generate` needs network — protoc-gen-es is not resolved
+          # locally and deliberately isn't pinned here.
+          #########################################################
+          protobufs = pkgs.mkShellNoCC {
+            name = "meshtastic-protobufs";
+            packages = common ++ jvmTools ++ (with pkgs; [
+              buf
+              nanopb
+              deno
+              nodejs_22
+              cargo
+              rustc
+            ]);
+            shellHook = jvmHook
+              + (banner "protobufs" "shared .proto definitions — buf · deno · gradle · cargo")
+              + ''
+                echo "  buf lint && buf generate     (generate needs network: remote plugin)"
+                echo "  cd packages/ts   && deno task …"
+                echo "  cd packages/kmp  && ./gradlew build"
+                echo "  cd packages/rust && cargo build"
+                echo ""
+              '';
           };
 
           #########################################################
