@@ -153,8 +153,25 @@ Confirmed working on x86_64-linux:
 - `android` — `./gradlew :androidApp:assembleFdroidDebug` (3 APKs)
 - `protobufs` — `buf lint`
 - `meshtastic-mcp` — `uv sync --frozen`
+- `firmware` — `pio run -e heltec-v3` (7m40s, flashable factory image)
 
-Not verified: `.#apple` (no macOS), `pio run` for firmware.
+Not verified: `.#apple` (needs macOS + Xcode).
+
+### PlatformIO must be `platformio-core`, not `platformio`
+
+`pkgs.platformio` is a `buildFHSEnv` bubblewrap wrapper. This host sets
+`apparmor_restrict_unprivileged_userns=1` (an Ubuntu default), which denies
+unprivileged user namespaces to unconfined binaries — everything in
+`/nix/store`. Every invocation dies immediately with:
+
+```
+bwrap: setting up uid map: Permission denied
+```
+
+Confirmed to be the machine, not a tool sandbox. The FHS wrapper exists so
+PlatformIO's downloaded, dynamically-linked toolchains run on NixOS; Ubuntu is
+already FHS so it buys nothing. **On NixOS, swap back to `pkgs.platformio`** or
+those toolchains will not run.
 
 ## Conventions
 

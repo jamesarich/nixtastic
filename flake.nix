@@ -321,11 +321,25 @@
           # PlatformIO fetches its own cross-toolchains into
           # PLATFORMIO_CORE_DIR. Don't add gcc-arm-embedded here; two
           # toolchains on PATH is how you get baffling link errors.
+          #
+          # platformio-core, NOT platformio. The latter is a buildFHSEnv
+          # bubblewrap wrapper, and this host sets
+          # kernel apparmor_restrict_unprivileged_userns=1 (Ubuntu
+          # default), which denies unprivileged user namespaces to
+          # unconfined binaries — everything in /nix/store. Every pio
+          # invocation dies with:
+          #     bwrap: setting up uid map: Permission denied
+          # Verified this is the machine, not a tool sandbox.
+          #
+          # The FHS wrapper exists to make PlatformIO's downloaded,
+          # dynamically-linked toolchains run on NixOS. Ubuntu is already
+          # FHS, so it buys nothing here. ON NIXOS, SWAP THIS BACK to
+          # pkgs.platformio or the downloaded toolchains will not run.
           #########################################################
           firmware = pkgs.mkShell {
             name = "meshtastic-firmware";
             packages = common ++ nodeTools ++ (with pkgs; [
-              platformio
+              platformio-core
               python
               ccache
               cmake
