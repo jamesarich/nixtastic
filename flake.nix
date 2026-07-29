@@ -640,6 +640,14 @@
                     $g branch --quiet --set-upstream-to="$upstream" "$branch" >/dev/null 2>&1
                   if $g merge --ff-only --quiet "$upstream" 2>/dev/null; then
                     status="PULLED"; drift="-$behind fast-forwarded"
+                    # A fast-forward can move recorded submodule pointers.
+                    # Without re-syncing, the tree reads dirty again the
+                    # instant the pull finishes — firmware/protobufs does
+                    # this every time upstream bumps the proto pointer.
+                    if [ -f "$root/$dir/.gitmodules" ]; then
+                      $g submodule update --init --recursive --quiet 2>/dev/null || true
+                      drift="$drift +submodules"
+                    fi
                   else
                     status="FAILED"; drift="-$behind ff refused"
                   fi
