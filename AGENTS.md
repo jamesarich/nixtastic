@@ -70,9 +70,16 @@ problem. Versions are declared in `android-sdk-packages.txt`, applied with
 
 ### `android-cli` is NOT pinned by Nix
 
-The store binary is only a launcher. It unpacks the real ~84 MB CLI into
-`~/.android/bin/android-cli` and self-updates it there. Treat its version as
-unpinned; `flake.lock` does not control it.
+Two compounding reasons, so never treat its version as reproducible:
+
+1. The nixpkgs binary is only a **launcher** — it unpacks the real ~84 MB CLI
+   into `~/.android/bin/android-cli` and self-updates it there.
+2. **`cmdline-tools` 22.0.0+ ships the android CLI itself**, and that copy is
+   newer (1.0.15857036 vs nixpkgs 1.0.15498356). `androidHook` puts
+   `$ANDROID_HOME/cmdline-tools/latest/bin` on PATH, so the SDK's copy wins.
+
+The dev shells therefore do **not** carry `android-cli`; it exists only in
+`nix run .#bootstrap-sdk`, which must work on a machine with no SDK at all.
 
 ### Default branches differ
 
@@ -111,6 +118,30 @@ The repo is deliberately not a workspace entry: it is third-party rather than
 Meshtastic org, and *building* it needs the ARM GCC toolchain plus the nRF SDK
 — a toolchain no shell here provides. Add one only if you start patching
 bootloaders rather than flashing published ones.
+
+## Multi-repo sessions
+
+Start at the workspace root. [`CLAUDE.md`](./CLAUDE.md) is the router; read the
+protocol there before editing under any `<repo>/`.
+
+```bash
+nix run .#brief -- <repo>            # orient: branch, shell, docs to read, PRs
+nix run .#worktree -- <repo> <branch>  # isolated worktree WITH the right shell
+nix run .#worktree -- --list           # all worktrees across all repos
+nix run .#worktree -- --prune          # drop dead registrations
+```
+
+`.#brief` is generated live and reports what to read rather than inlining it —
+per-repo agent docs total ~66 KB. Doc precedence is
+`.specify/memory/constitution.md` → `AGENTS.md` → `CLAUDE.md` →
+`CONTRIBUTING.md`, then [`notes/`](./notes/) for repos that publish none.
+
+`.#worktree` writes a per-worktree `.envrc` selecting that repo's shell. Without
+it a worktree inherits only the workspace-root `.envrc` and silently gets the
+**default** shell — verified: no `scrcpy`, wrong `android` binary. Ignoring is
+done via `.git/info/exclude` (local, never committed) because only `android`
+gitignores `.claude/worktrees/`; editing a tracked `.gitignore` in an org repo
+is not ours to do.
 
 ## Verification status
 

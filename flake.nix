@@ -46,6 +46,10 @@
         # Shared .proto definitions. Also vendored as a submodule inside
         # firmware/protobufs — edit here, bump the pointer there.
         protobufs = { shell = "protobufs"; repo = "meshtastic/protobufs"; };
+        # Cross-platform design standards, tokens and brand assets. Work here
+        # is driven mostly through the org design board, not the repo:
+        # https://github.com/orgs/meshtastic/projects/16
+        design = { shell = "design"; repo = "meshtastic/design"; };
       };
 
       devShells = forAllSystems ({ pkgs, system }:
@@ -187,20 +191,21 @@
           # Google's android CLI — the agent-oriented front end over
           # adb / sdkmanager / avdmanager / AGP.
           #
-          # IMPORTANT: Nix pins the LAUNCHER ONLY, not the CLI.
+          # Used ONLY to bootstrap an SDK from nothing — deliberately not
+          # in any dev shell. Two reasons:
           #
-          # The store binary (1.0.15498356) is a small launcher. On first
-          # run it unpacks/downloads the real ~84M CLI into
-          # ~/.android/bin/android-cli and self-updates it, tracked by
-          # ~/.android/cli/last_update_check. Observed drifting to
-          # 1.0.15857036 while the store path stayed put.
+          #  1. cmdline-tools 22.0.0+ ships the android CLI itself, at
+          #     $ANDROID_HOME/cmdline-tools/latest/bin/android, and that
+          #     copy is NEWER (1.0.15857036 vs nixpkgs 1.0.15498356). It
+          #     wins on PATH anyway, so shipping ours was dead weight.
+          #  2. Nix pins only the LAUNCHER. The store binary unpacks the
+          #     real ~84M CLI into ~/.android/bin/android-cli and
+          #     self-updates it. Its effective version is NOT locked by
+          #     flake.lock.
           #
-          # There is no documented flag to disable that. So treat this as
-          # a convenience tool, NOT part of the reproducible toolchain —
-          # unlike the JDKs, its effective version is not locked by
-          # flake.lock. What Nix does buy: a consistent entry point, no
-          # manual install step, and autoPatchelfHook so it also runs on
-          # non-FHS systems.
+          # What it still buys: `nix run .#bootstrap-sdk` works on a
+          # machine with no SDK and no cmdline-tools at all, which is the
+          # chicken-and-egg the sdkmanager path cannot solve.
           #
           # Upstream ships x86_64-linux and aarch64-darwin only.
           #########################################################
@@ -297,7 +302,7 @@
             # No android-tools here: androidHook puts the SDK's own
             # platform-tools first on PATH, so a Nix adb would just be a
             # shadowed duplicate — and adb must match the SDK anyway.
-            packages = common ++ jvmTools ++ androidCli
+            packages = common ++ jvmTools
               ++ lib.optionals isLinux [ pkgs.scrcpy ];
             shellHook = jvmHook + androidHook
               + (banner "android" "Meshtastic-Android — compileSdk 37, minSdk 24")
@@ -340,10 +345,11 @@
           #########################################################
           mcp = pkgs.mkShellNoCC {
             name = "meshtastic-mcp";
-            # android-cli here too: this repo's hardware-free e2e drives
-            # an emulator, and `android emulator` + `android layout`
-            # cover that without hand-rolling avdmanager/adb calls.
-            packages = common ++ nodeTools ++ androidCli ++ [
+            # The android CLI comes from $ANDROID_HOME/cmdline-tools
+            # (androidHook puts it on PATH) — this repo's hardware-free
+            # e2e drives an emulator via `android emulator` / `android
+            # layout` rather than hand-rolled avdmanager/adb calls.
+            packages = common ++ nodeTools ++ [
               python
               pkgs.uv
               pkgs.nodejs_22
@@ -418,6 +424,36 @@
                 echo "  cd packages/rust && cargo build"
                 echo ""
               '';
+          };
+
+          #########################################################
+          # design — cross-platform design standards and assets
+          #
+          # Two real toolchains despite looking like an asset dump:
+          #   tokens/   node + style-dictionary (`npm run build`)
+          #   bin/generate-pngs.sh   inkscape --batch-process
+          #
+          # inkscape is a heavy closure. It is here because the repo's own
+          # script calls it by name; substituting resvg/librsvg would render
+          # differently and silently change shipped brand assets.
+          #
+          # Most work here starts from the org design board rather than the
+          # repo tree — `gh` (in common) is the primary tool.
+          #########################################################
+          design = pkgs.mkShellNoCC {
+            name = "meshtastic-design";
+            packages = common ++ [ pkgs.nodejs_22 ]
+              ++ lib.optionals isLinux [ pkgs.inkscape ];
+            shellHook = (banner "design" "design standards · tokens · brand assets") + ''
+              echo "  board   https://github.com/orgs/meshtastic/projects/16"
+              echo "  gh issue list --repo meshtastic/design"
+              echo "  cd tokens && npm ci && npm run build   (style-dictionary)"
+              echo "  ./bin/generate-pngs.sh                 (inkscape)"
+              echo ""
+              echo "  standards/meshtastic_design_standards_latest.md is the"
+              echo "  authoritative spec — versioned copies sit beside it."
+              echo ""
+            '';
           };
 
           #########################################################
@@ -669,6 +705,216 @@
               android --sdk="$sdk" sdk list
             '';
           };
+          # nix run .#brief <repo> — orient before touching a repo.
+          #
+          # Generated live rather than written down, so it cannot go stale the
+          # way a hand-maintained index does. Its job is to say WHAT TO READ,
+          # not to inline it: per-repo agent docs total ~66 KB and must not all
+          # be loaded.
+          brief = pkgs.writeShellApplication {
+            name = "meshtastic-brief";
+            runtimeInputs = [ pkgs.git pkgs.coreutils pkgs.gh ];
+            text = ''
+              root="''${MESHTASTIC_WORKSPACE:-$PWD}"
+              dir="''${1:-}"
+              if [ -z "$dir" ]; then
+                echo "usage: nix run .#brief <repo>"
+                echo ""
+                echo "repos:"
+                printf '%s\n' ${nixpkgs.lib.escapeShellArgs entries} |
+                  while IFS=$'\t' read -r d _ s; do printf '  %-24s %s\n' "$d" ".#$s"; done
+                exit 0
+              fi
+
+              shell=""
+              while IFS=$'\t' read -r d _ s; do
+                [ "$d" = "$dir" ] && shell="$s"
+              done <<< "$(printf '%s\n' ${nixpkgs.lib.escapeShellArgs entries})"
+
+              [ -n "$shell" ] || { echo "unknown repo: $dir"; exit 1; }
+              p="$root/$dir"
+              [ -d "$p/.git" ] || { echo "$dir not cloned — run: nix run .#sync"; exit 1; }
+              g="git -C $p"
+
+              echo ""
+              echo "  $dir"
+              echo "  ────────────────────────────────────────────────────"
+              printf '  shell        nix develop .#%s\n' "$shell"
+
+              branch=$($g rev-parse --abbrev-ref HEAD)
+              def=""
+              if r=$($g symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null); then
+                def="''${r#refs/remotes/origin/}"
+              fi
+              printf '  branch       %s' "$branch"
+              [ -n "$def" ] && [ "$branch" != "$def" ] && printf '   (default: %s)' "$def"
+              echo ""
+
+              if u=$($g rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null); then
+                c=$($g rev-list --left-right --count "$u...HEAD" 2>/dev/null || echo "0	0")
+                printf '  drift        -%s / +%s vs %s\n' "$(echo "$c" | cut -f1)" "$(echo "$c" | cut -f2)" "$u"
+              fi
+              d=$($g status --porcelain --untracked-files=no | wc -l)
+              [ "$d" -gt 0 ] && printf '  tree         %s tracked file(s) modified\n' "$d"
+
+              echo ""
+              echo "  READ BEFORE EDITING (in precedence order)"
+              any=false
+              for f in .specify/memory/constitution.md AGENTS.md CLAUDE.md CONTRIBUTING.md GOVERNANCE.md CODEOWNERS CONVENTIONS.md llms.txt; do
+                if [ -f "$p/$f" ]; then
+                  printf '    %-42s %6s\n' "$dir/$f" "$(( $(wc -c <"$p/$f") ))b"
+                  any=true
+                fi
+              done
+              if [ -f "$root/notes/$dir.md" ]; then
+                printf '    %-42s %6s  (workspace-local)\n' "notes/$dir.md" "$(( $(wc -c <"$root/notes/$dir.md") ))b"
+                any=true
+              fi
+              [ "$any" = false ] && echo "    (none found — read the code)"
+
+              # Spec Kit repos run a lifecycle; ad-hoc edits are the wrong shape.
+              if [ -d "$p/.specify" ]; then
+                echo ""
+                echo "  SPEC KIT — work flows through the spec lifecycle"
+                [ -f "$p/.specify/memory/constitution.md" ] && \
+                  echo "    constitution outranks other agent docs"
+                if [ -d "$p/specs" ]; then
+                  printf '    %s spec(s); most recent:\n' "$(find "$p/specs" -maxdepth 1 -mindepth 1 -type d | wc -l)"
+                  find "$p/specs" -maxdepth 1 -mindepth 1 -type d -printf '%f\n' 2>/dev/null \
+                    | sort | tail -3 | sed 's/^/      /'
+                fi
+              fi
+
+              for k in skills agents commands; do
+                if [ -d "$p/.claude/$k" ]; then
+                  printf '\n  .claude/%s\n' "$k"
+                  find "$p/.claude/$k" -maxdepth 1 -mindepth 1 -printf '    %f\n' 2>/dev/null | sort | head -12
+                fi
+              done
+
+              echo ""
+              echo "  COMMIT STYLE (last 5 on this branch — match it)"
+              $g log --oneline -5 --format='    %s' | cut -c1-74
+
+              if command -v gh >/dev/null; then
+                echo ""
+                echo "  OPEN PRs"
+                gh pr list --repo "meshtastic/$( $g remote get-url origin | sed 's|.*/||; s|\.git$||' )" \
+                  --limit 5 --json number,title \
+                  --template '{{range .}}    #{{.number}} {{.title}}{{"\n"}}{{end}}' 2>/dev/null \
+                  || echo "    (unavailable)"
+              fi
+
+              echo ""
+              if [ -d "$p/.claude/worktrees" ]; then
+                n=$(find "$p/.claude/worktrees" -maxdepth 1 -mindepth 1 -type d | wc -l)
+                [ "$n" -gt 0 ] && printf '  %s active worktree(s) — nix run .#worktree --list %s\n\n' "$n" "$dir"
+              fi
+            '';
+          };
+
+          # nix run .#worktree — worktrees that carry the right dev shell.
+          #
+          # A worktree inherits only the workspace-root .envrc, which selects
+          # the DEFAULT shell. Working android in a bare worktree therefore
+          # gets you no scrcpy and the host's android-cli instead of the
+          # pinned one. Writing a per-worktree .envrc fixes that.
+          #
+          # Ignoring is done via .git/info/exclude (local, never committed)
+          # because only `android` gitignores .claude/worktrees — editing a
+          # tracked .gitignore in someone else's repo is not ours to do.
+          worktree = pkgs.writeShellApplication {
+            name = "meshtastic-worktree";
+            runtimeInputs = [ pkgs.git pkgs.coreutils ];
+            text = ''
+              root="''${MESHTASTIC_WORKSPACE:-$PWD}"
+              usage() {
+                echo "usage:"
+                echo "  nix run .#worktree -- <repo> <branch> [name]   create"
+                echo "  nix run .#worktree -- --list [repo]            list"
+                echo "  nix run .#worktree -- --prune [repo]           drop dead registrations"
+              }
+
+              repo_shell() {
+                while IFS=$'\t' read -r d _ s; do
+                  [ "$d" = "$1" ] && { echo "$s"; return; }
+                done <<< "$(printf '%s\n' ${nixpkgs.lib.escapeShellArgs entries})"
+              }
+              all_repos() {
+                printf '%s\n' ${nixpkgs.lib.escapeShellArgs entries} | while IFS=$'\t' read -r d _ _; do echo "$d"; done
+              }
+
+              # Explicit if/else rather than `A && B || C`: with the latter,
+              # C also runs when A succeeds but B fails.
+              targets() {
+                if [ -n "''${1:-}" ]; then echo "$1"; else all_repos; fi
+              }
+
+              case "''${1:-}" in
+                ""|-h|--help) usage; exit 0 ;;
+                --list)
+                  while read -r d; do
+                    [ -d "$root/$d/.git" ] || continue
+                    out=$(git -C "$root/$d" worktree list | tail -n +2)
+                    if [ -n "$out" ]; then
+                      echo "  $d:"
+                      while IFS= read -r line; do printf '      %s\n' "$line"; done <<< "$out"
+                    fi
+                  done <<< "$(targets "''${2:-}")"
+                  exit 0 ;;
+                --prune)
+                  while read -r d; do
+                    [ -d "$root/$d/.git" ] || continue
+                    n=$(git -C "$root/$d" worktree prune --dry-run 2>/dev/null | wc -l)
+                    if [ "$n" -gt 0 ]; then
+                      git -C "$root/$d" worktree prune
+                      echo "  $d: pruned $n dead registration(s)"
+                    fi
+                  done <<< "$(targets "''${2:-}")"
+                  exit 0 ;;
+              esac
+
+              dir="$1"; branch="''${2:-}"; name="''${3:-$(echo "$branch" | tr '/' '-')}"
+              [ -n "$branch" ] || { usage; exit 1; }
+              shell=$(repo_shell "$dir")
+              [ -n "$shell" ] || { echo "unknown repo: $dir"; exit 1; }
+              p="$root/$dir"
+              [ -d "$p/.git" ] || { echo "$dir not cloned"; exit 1; }
+
+              wt="$p/.claude/worktrees/$name"
+              [ -e "$wt" ] && { echo "already exists: $wt"; exit 1; }
+
+              # Keep the host repo's tracked files untouched.
+              ex="$(git -C "$p" rev-parse --git-common-dir)/info/exclude"
+              for pat in '.claude/worktrees/' '.envrc' '.direnv/'; do
+                grep -qxF "$pat" "$ex" 2>/dev/null || echo "$pat" >> "$ex"
+              done
+
+              git -C "$p" fetch --quiet origin 2>/dev/null || true
+              if git -C "$p" rev-parse --verify --quiet "refs/heads/$branch" >/dev/null; then
+                git -C "$p" worktree add --quiet "$wt" "$branch"
+              elif git -C "$p" rev-parse --verify --quiet "refs/remotes/origin/$branch" >/dev/null; then
+                git -C "$p" worktree add --quiet --track -b "$branch" "$wt" "origin/$branch"
+              else
+                git -C "$p" worktree add --quiet -b "$branch" "$wt"
+              fi
+
+              cat > "$wt/.envrc" <<EOF
+              # Generated by: nix run .#worktree
+              # Selects $dir's shell explicitly. Without this the worktree would
+              # inherit the workspace-root .envrc and get the DEFAULT shell.
+              export MESHTASTIC_WORKSPACE="$root"
+              use flake "$root#$shell"
+              EOF
+
+              echo "  created  $wt"
+              echo "  branch   $branch"
+              echo "  shell    .#$shell"
+              echo ""
+              echo "  cd $wt && direnv allow"
+              echo "  nix run .#brief -- $dir"
+            '';
+          };
         in
         {
           sync = { type = "app"; program = "${sync}/bin/meshtastic-sync"; };
@@ -677,6 +923,8 @@
             type = "app";
             program = "${bootstrapSdk}/bin/meshtastic-bootstrap-sdk";
           };
+          brief = { type = "app"; program = "${brief}/bin/meshtastic-brief"; };
+          worktree = { type = "app"; program = "${worktree}/bin/meshtastic-worktree"; };
         });
 
       formatter = forAllSystems ({ pkgs, ... }: pkgs.nixpkgs-fmt);

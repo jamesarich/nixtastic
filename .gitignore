@@ -23,6 +23,11 @@
 # Notes belonging to a specific repo go in that repo instead.
 !/*.md
 
+# Workspace-local orientation notes for repos that publish no agent docs
+# of their own (apple, protobufs, gradle-flatpak-sources, design).
+!/notes/
+!/notes/*.md
+
 # --- explicitly excluded --------------------------------------------------
 # Listed for the reader's benefit; /* already covers them.
 #
