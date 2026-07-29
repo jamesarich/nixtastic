@@ -1,78 +1,86 @@
 # CLAUDE.md
 
-Workspace root for multi-repo Meshtastic work. Canonical guidance for **this
-repo** is [`AGENTS.md`](./AGENTS.md); if they diverge, `AGENTS.md` wins.
+Workspace root for multi-repo Meshtastic work. This file is the **router** —
+deliberately small, because the per-repo agent docs below total ~66 KB and
+cannot all be loaded.
 
-This file is the **router**. It is deliberately small because the per-repo
-agent docs below total ~66 KB and cannot all be loaded.
+- [`README.md`](./README.md) — human workflow
+- [`AGENTS.md`](./AGENTS.md) — canonical detail and the reasoning behind every
+  constraint. If the two ever disagree, `AGENTS.md` wins.
 
 ## Protocol — before editing under any `<repo>/`
 
-1. Run `nix run .#brief <repo>`. It reports the live branch, drift, correct dev
-   shell, and every agent/governance doc that repo actually has.
-2. **Read that repo's own docs before making changes.** Precedence:
+1. **`nix run .#brief -- <repo>`** — live branch, drift, correct shell, and
+   every agent/governance doc that repo actually has.
+2. **Read that repo's own docs first.** Precedence:
    `.specify/memory/constitution.md` → `AGENTS.md` → `CLAUDE.md` →
-   `CONTRIBUTING.md`. A repo with no `AGENTS.md` is not undocumented — see
+   `CONTRIBUTING.md`. A repo with no `AGENTS.md` is not undocumented — check
    [`notes/`](./notes/).
-3. Match **that repo's** conventions, not the workspace's. Commit style,
-   review process and governance differ per repo (see table).
-4. Never commit workspace-level changes into a sub-repo, or vice versa. They
-   are independent repos.
+3. **Match that repo's conventions, not the workspace's.** Commit style,
+   review process and governance differ per repo.
+4. **Never mix commits across repos.** Each is independent; this workspace is
+   its own repo too.
 
-This is a precondition, not a suggestion. A bare "read AGENTS.md" pointer has
-already been skipped in practice, which is why `.#brief` exists.
+A precondition, not a suggestion — a bare "read AGENTS.md" pointer has already
+been skipped in practice, which is why `.#brief` exists.
 
 ## The repos
 
 | Repo | Role | Stack | Shell | Branch | Commits | Agent docs |
 | --- | --- | --- | --- | --- | --- | --- |
-| `firmware` | device firmware | C++ / PlatformIO | `.#firmware` | `develop` | sentence-style, ad-hoc prefixes (`ESP32:`, `MUI:`) | `AGENTS.md` 20 KB |
-| `android` | Android + desktop app | Kotlin / Compose / AGP | `.#android` | `main` | Conventional | `AGENTS.md` 3 KB, Spec Kit, skills, subagents |
-| `apple` | iOS/macOS/watchOS clients | Swift / Xcode | `.#apple` | `main` | Conventional | **none** → [`notes/apple.md`](./notes/apple.md), Spec Kit |
+| `firmware` | device firmware | C++ / PlatformIO | `.#firmware` | `develop` | sentence-style, ad-hoc prefixes | `AGENTS.md` 20 KB |
+| `android` | Android + desktop app | Kotlin / Compose | `.#android` | `main` | Conventional | `AGENTS.md` 3 KB, Spec Kit, skills, subagents |
+| `apple` | Apple platform clients | Swift / Xcode | `.#apple` | `main` | Conventional | Spec Kit → [`notes/apple.md`](./notes/apple.md) |
 | `meshtastic-sdk` | KMP client SDK | Kotlin MP | `.#kotlin` | `main` | Conventional | `AGENTS.md` 6 KB, `GOVERNANCE.md`, `CODEOWNERS`, Spec Kit |
 | `MQTTastic-Client-KMP` | MQTT 5 client lib | Kotlin MP | `.#kotlin` | `main` | Conventional | `AGENTS.md` 14 KB |
 | `kzstd` | zstd codec lib | Kotlin MP | `.#kotlin` | `main` | Conventional | `AGENTS.md` 3 KB |
-| `gradle-flatpak-sources` | Flathub manifest plugin | Kotlin / Gradle | `.#kotlin` | `main` | Conventional | **none** → [`notes/gradle-flatpak-sources.md`](./notes/gradle-flatpak-sources.md) |
+| `gradle-flatpak-sources` | Flathub manifest plugin | Kotlin / Gradle | `.#kotlin` | `main` | Conventional | → [`notes/gradle-flatpak-sources.md`](./notes/gradle-flatpak-sources.md) |
 | `meshtastic-mcp` | MCP server + agent skills | Python / uv | `.#mcp` | `master` | Conventional | `AGENTS.md` 20 KB, `CONVENTIONS.md`, `llms.txt`, cursor + windsurf rules |
-| `protobufs` | shared `.proto` definitions | buf · deno · gradle · cargo | `.#protobufs` | `master` | mixed | **none** → [`notes/protobufs.md`](./notes/protobufs.md) |
-| `design` | design standards, tokens, brand assets | node · inkscape | `.#design` | `master` | Conventional | **none** → [`notes/design.md`](./notes/design.md) |
+| `protobufs` | shared `.proto` definitions | buf · deno · gradle · cargo | `.#protobufs` | `master` | mixed | → [`notes/protobufs.md`](./notes/protobufs.md) |
+| `design` | design standards, tokens, assets | node · inkscape | `.#design` | `master` | Conventional | → [`notes/design.md`](./notes/design.md) |
+
+Not in the workspace: `meshtastic-sniffer` (not the org), `meshtastic-backend`
+(Gradle 7.3.1, predates JDK 21), `pluginmeshtastic` (non-redistributable ATAK
+SDK).
 
 ## Cross-repo coupling
 
 - `protobufs` is vendored as a submodule at `firmware/protobufs`. Edit in
-  `protobufs`, bump the pointer in `firmware`.
-- `meshtastic-sdk` is consumed by `apple` and `android`; an ABI change breaks
+  `protobufs`, bump the pointer in `firmware`. Wire compatibility affects
+  firmware, both apps and the SDK **simultaneously**.
+- `meshtastic-sdk` is consumed by `apple` and `android` — an ABI change breaks
   them without touching their repos.
 - `gradle-flatpak-sources` packages `android`'s `:desktopApp` for Flathub.
-- `design` defines standards that `android`, `apple` and `web` implement; its
-  work is tracked on the org board
-  <https://github.com/orgs/meshtastic/projects/16> rather than in the repo.
+- `design` defines standards that `android`, `apple` and `web` implement;
+  tracked on <https://github.com/orgs/meshtastic/projects/16>, not in the repo.
 
 ## Spec Kit
 
-`android`, `apple` and `meshtastic-sdk` use Spec Kit. Their
-`.specify/memory/constitution.md` (8–12 KB) **outranks** other agent docs.
-`apple/CLAUDE.md` is Spec Kit-managed and dynamic — it points at the currently
-active `specs/<feature>/plan.md`. Read it to find the live plan; never hand-edit
-it.
+`android`, `apple` and `meshtastic-sdk` use it. Their
+`.specify/memory/constitution.md` (8–12 KB) **outranks** other agent docs, and
+work is expected to flow through the spec lifecycle rather than ad-hoc edits.
+
+`apple/CLAUDE.md` is Spec Kit-managed and **dynamic** — regenerated to point at
+the active `specs/<feature>/plan.md`. Read it to find the live plan; never
+hand-edit it.
 
 ## Worktrees
 
-Use `nix run .#worktree <repo> <branch>` — it creates the worktree under
-`<repo>/.claude/worktrees/` and writes an `.envrc` selecting the **correct**
-dev shell. Without it a worktree inherits the workspace default shell, so you
-get the wrong toolchain silently.
+`nix run .#worktree -- <repo> <branch>` creates one under
+`<repo>/.claude/worktrees/` with an `.envrc` selecting that repo's shell. A
+hand-made `git worktree` inherits only the workspace root `.envrc` and silently
+gets the **default** shell — wrong toolchain, no error.
 
-## Constraints that fail silently
+## Fails silently — check these first
 
-- **`MESHTASTIC_WORKSPACE` must be set** or JDK pinning is inert and Gradle
-  auto-provisions its own JDKs. `direnv` sets it.
-- **Six JDKs are required**, satisfying three separate Gradle mechanisms
-  (compile toolchains, per-repo daemon JVM criteria, per-module vendor
-  toolchains). Removing any one breaks a specific repo.
+- **`MESHTASTIC_WORKSPACE` unset** → JDK pinning inert, Gradle auto-provisions
+  its own JDKs. `direnv` sets it.
+- **Six JDKs required**, satisfying three separate Gradle mechanisms. Removing
+  any one breaks a specific repo.
 - **Toolchain config belongs in `gradle.properties`, never `GRADLE_OPTS`** —
   the daemon never sees the launcher's environment.
 - **Default branches are not all `main`** — see the table.
-- **This repo's `.gitignore` ignores everything by default.** A new file is
-  untracked until whitelisted.
-- **`nix flake check` only evaluates shells, it does not build them.**
+- **`.gitignore` here denies by default** — a new file is untracked until
+  whitelisted.
+- **`nix flake check` only evaluates shells** — passing eval does not mean a
+  repo builds.

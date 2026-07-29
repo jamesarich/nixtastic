@@ -1,42 +1,29 @@
 # AGENTS.md
 
-Guidance for agents working in this workspace. See [`README.md`](./README.md)
-for bootstrap instructions.
+Canonical detail for this workspace. Start elsewhere:
+
+- [`CLAUDE.md`](./CLAUDE.md) — the router: repo index, protocol, coupling
+- [`README.md`](./README.md) — daily workflow and commands
+
+This file is the **why**. Every constraint below was found by a failing build,
+not reasoned about in advance. Do not "simplify" them away.
 
 This repo tracks **only** the workspace definition. The Meshtastic repos inside
 it are independent git repos and must never be committed here.
 
-## Layout
+---
 
-| Directory | Shell | Notes |
-| --- | --- | --- |
-| `firmware` | `.#firmware` | PlatformIO. Default branch is **`develop`**. |
-| `android` | `.#android` | compileSdk 37, minSdk 24 |
-| `apple` | `.#apple` | macOS + Xcode only; cannot build on Linux |
-| `meshtastic-sdk` | `.#kotlin` | KMP |
-| `MQTTastic-Client-KMP` | `.#kotlin` | KMP |
-| `kzstd` | `.#kotlin` | KMP |
-| `gradle-flatpak-sources` | `.#kotlin` | Gradle plugin |
-| `meshtastic-mcp` | `.#mcp` | Python ≥3.11 + uv. Default branch **`master`**. |
-| `protobufs` | `.#protobufs` | buf · deno · gradle · cargo. Default **`master`**. |
-
-Deliberately absent: `meshtastic-sniffer` (not the org), `meshtastic-backend`
-(Gradle 7.3.1, predates JDK 21), `pluginmeshtastic` (needs the
-non-redistributable ATAK SDK).
-
-## Constraints that bite
-
-These were each found by a failing build. Do not "simplify" them away.
+## Gradle and JDKs
 
 ### `MESHTASTIC_WORKSPACE` must be set
 
-JDK pinning and `GRADLE_USER_HOME` only engage when it is. `direnv` sets it.
+JDK pinning and `GRADLE_USER_HOME` only engage when it is; `direnv` sets it.
 Without it Gradle auto-provisions its own JDKs into `~/.gradle/jdks` and the
-pinning is silently inert.
+pinning is silently inert — no error, just unpinned builds.
 
-### Six JDKs, three different mechanisms
+### Six JDKs, three separate mechanisms
 
-Gradle resolves JDKs three separate ways, and all three must be satisfied:
+Gradle resolves JDKs three different ways and **all three must be satisfied**:
 
 1. **Compile toolchains** — `jvmToolchain(...)` in build scripts.
 2. **Daemon JVM criteria** — per-repo `gradle/gradle-daemon-jvm.properties`.
@@ -44,68 +31,136 @@ Gradle resolves JDKs three separate ways, and all three must be satisfied:
    `android` requires **25**. Without a match the daemon will not start at all.
 3. **Per-module vendor toolchains** — `android`'s `:desktopApp` requires
    JetBrains **25** (`desktopApp/build.gradle.kts:129`), even though its daemon
-   runs on plain 25.
+   runs happily on plain 25.
 
 Hence `jdk21`, `jdk17`, `temurin-bin-11`, `jetbrains.jdk-21`, `jdk25`,
-`jetbrains.jdk`. Removing any one breaks a specific repo.
+`jetbrains.jdk`. Each is load-bearing for a specific repo.
+
+Each layer was invisible until the one before it was fixed. `nix flake check`
+and `javaToolchains` both passed while real builds still failed.
 
 ### Toolchain config goes in `gradle.properties`, never `GRADLE_OPTS`
 
-`GRADLE_OPTS` configures the *launcher* JVM. Toolchain resolution happens in
-the **daemon**, which never sees it. The flake writes a `gradle.properties`
-into `GRADLE_USER_HOME`. Verify with `./gradlew javaToolchains` — auto-detect
-and auto-download must both read `Disabled`.
+`GRADLE_OPTS` configures the **launcher** JVM. Toolchain resolution happens in
+the **daemon**, which never sees it. The flake writes `gradle.properties` into
+`GRADLE_USER_HOME`. Verify:
+
+```bash
+./gradlew javaToolchains    # auto-detect AND auto-download must read Disabled
+```
 
 ### Do not install Gradle
 
 Every repo pins its own via `./gradlew` (9.5.1 / 9.6.1). Nix supplies JDKs only.
 
-### The Android SDK is host-managed on purpose
+---
 
-Not `androidenv`. An `androidenv` SDK is read-only in `/nix/store` and AGP wants
-to write into `$ANDROID_HOME` — the documented `aapt2FromMavenOverride`
-problem. Versions are declared in `android-sdk-packages.txt`, applied with
-`nix run .#bootstrap-sdk`. Coordinates use android-cli's slash form
-(`platforms/android-37.0`), not sdkmanager's semicolon form.
+## Android
 
-### `android-cli` is NOT pinned by Nix
+### The SDK is host-managed on purpose
 
-Two compounding reasons, so never treat its version as reproducible:
+Not `androidenv`. An `androidenv` SDK is read-only in `/nix/store` while AGP
+wants to write into `$ANDROID_HOME` — the documented `aapt2FromMavenOverride`
+problem. Versions are declared in
+[`android-sdk-packages.txt`](./android-sdk-packages.txt) and applied with
+`nix run .#bootstrap-sdk`.
 
-1. The nixpkgs binary is only a **launcher** — it unpacks the real ~84 MB CLI
+Coordinates use android-cli's slash form (`platforms/android-37.0`), not
+sdkmanager's semicolon form (`platforms;android-37.0`).
+
+Trade-off, stated plainly: pinned by version, **not** by hash.
+
+### `android-cli` is not pinned by Nix
+
+Two compounding reasons — never treat its version as reproducible:
+
+1. The nixpkgs binary is only a **launcher**. It unpacks the real ~84 MB CLI
    into `~/.android/bin/android-cli` and self-updates it there.
 2. **`cmdline-tools` 22.0.0+ ships the android CLI itself**, and that copy is
    newer (1.0.15857036 vs nixpkgs 1.0.15498356). `androidHook` puts
    `$ANDROID_HOME/cmdline-tools/latest/bin` on PATH, so the SDK's copy wins.
 
-The dev shells therefore do **not** carry `android-cli`; it exists only in
+The dev shells therefore do **not** carry `android-cli`. It exists only in
 `nix run .#bootstrap-sdk`, which must work on a machine with no SDK at all.
+
+---
+
+## PlatformIO
+
+### Must be `platformio-core`, not `platformio`
+
+`pkgs.platformio` is a `buildFHSEnv` **bubblewrap** wrapper. Ubuntu sets
+`apparmor_restrict_unprivileged_userns=1`, denying unprivileged user namespaces
+to unconfined binaries — everything in `/nix/store`. Every invocation dies with:
+
+```
+bwrap: setting up uid map: Permission denied
+```
+
+Confirmed to be the machine, not a tool sandbox. The FHS wrapper exists so
+PlatformIO's downloaded, dynamically-linked toolchains run on NixOS; Ubuntu is
+already FHS, so it buys nothing.
+
+**On NixOS, swap back to `pkgs.platformio`** or those toolchains will not run.
+
+Also: do not add `gcc-arm-embedded`. PlatformIO fetches its own cross-toolchains
+into `PLATFORMIO_CORE_DIR`, and two on PATH produces baffling link errors.
+
+---
+
+## Git across repos
 
 ### Default branches differ
 
-`main`, `master` (mcp, protobufs) and `develop` (firmware) are all in use.
-Resolve `origin/HEAD` per repo — never hardcode `main`.
+`main`, `master` (`meshtastic-mcp`, `protobufs`, `design`) and `develop`
+(`firmware`) are all in use. Resolve `origin/HEAD` per repo — never hardcode.
 
-### Watch for single-branch clones
+### Single-branch clones hide drift
 
 A clone with `remote.origin.fetch = +refs/heads/main:...` can never fetch other
-branches, so their drift is invisible and `@{u}` fails even when the branch
-exists on origin. `nix run .#sync` detects this; `--pull` widens the refspec.
+branches, so their drift is invisible and `@{u}` fails **even when the branch
+exists on origin**. That reports a clean state which is wrong.
+`nix run .#sync` detects it; `--pull` widens the refspec.
 
-### `buf generate` needs network
+### Fast-forwards move submodule pointers
 
-`protobufs` uses a remote plugin (`buf.build/bufbuild/es:v2.1.0`).
+`firmware/protobufs` re-reads dirty immediately after a pull whenever upstream
+bumps the pointer. `--pull` re-syncs submodules automatically and reports
+`+submodules`.
+
+### `git stash` ignores submodule state
+
+A submodule checked out at a different commit than recorded is **not** stashable
+content — `git stash` returns "No local changes to save" and the state persists.
+
+### Worktrees need their shell attached
+
+A hand-made `git worktree` inherits only the workspace-root `.envrc` and gets
+the **default** shell — verified: no `scrcpy`, wrong `android` binary, no error.
+Use `nix run .#worktree`.
+
+Ignoring is done via `.git/info/exclude` (local, never committed) because only
+`android` gitignores `.claude/worktrees/`. Editing a tracked `.gitignore` in an
+org repo is not ours to do.
+
+---
+
+## `buf generate` needs network
+
+`protobufs` uses the remote plugin `buf.build/bufbuild/es:v2.1.0`.
 `protoc-gen-es` is deliberately not pinned locally. `buf lint` works offline.
+
+---
 
 ## Third-party firmware artifacts
 
-Not vendored here — fetch on demand rather than committing binaries.
+Fetched on demand, never vendored.
 
-**RAK4631 OTAFIX bootloader.** The nRF52840 SoftDevice+bootloader DFU bundle
-comes from [`oltaco/Adafruit_nRF52_Bootloader_OTAFIX`](https://github.com/oltaco/Adafruit_nRF52_Bootloader_OTAFIX)
-(Huw Duddy's fork of `adafruit/Adafruit_nRF52_Bootloader`, carrying the OTAFIX
-patches). Meshtastic's own `Adafruit_nRF52_Bootloader` fork is a different
-lineage and does **not** include them.
+**RAK4631 OTAFIX bootloader** — from
+[`oltaco/Adafruit_nRF52_Bootloader_OTAFIX`](https://github.com/oltaco/Adafruit_nRF52_Bootloader_OTAFIX)
+(Huw Duddy's fork of `adafruit/Adafruit_nRF52_Bootloader`). Meshtastic's own
+`Adafruit_nRF52_Bootloader` fork is a **different lineage without** the OTAFIX
+patches.
 
 ```bash
 gh release download 0.9.2-OTAFIX2.2-BP1.3 \
@@ -114,70 +169,32 @@ gh release download 0.9.2-OTAFIX2.2-BP1.3 \
 # sha256 c002d103370651cf955333409e6e713c069df2540f5786c70fdfe4901ca3c7dc
 ```
 
-The repo is deliberately not a workspace entry: it is third-party rather than
-Meshtastic org, and *building* it needs the ARM GCC toolchain plus the nRF SDK
-— a toolchain no shell here provides. Add one only if you start patching
-bootloaders rather than flashing published ones.
+Not a workspace entry: third-party rather than org, and building it needs ARM
+GCC plus the nRF SDK — a toolchain no shell here provides.
 
-## Multi-repo sessions
-
-Start at the workspace root. [`CLAUDE.md`](./CLAUDE.md) is the router; read the
-protocol there before editing under any `<repo>/`.
-
-```bash
-nix run .#brief -- <repo>            # orient: branch, shell, docs to read, PRs
-nix run .#worktree -- <repo> <branch>  # isolated worktree WITH the right shell
-nix run .#worktree -- --list           # all worktrees across all repos
-nix run .#worktree -- --prune          # drop dead registrations
-```
-
-`.#brief` is generated live and reports what to read rather than inlining it —
-per-repo agent docs total ~66 KB. Doc precedence is
-`.specify/memory/constitution.md` → `AGENTS.md` → `CLAUDE.md` →
-`CONTRIBUTING.md`, then [`notes/`](./notes/) for repos that publish none.
-
-`.#worktree` writes a per-worktree `.envrc` selecting that repo's shell. Without
-it a worktree inherits only the workspace-root `.envrc` and silently gets the
-**default** shell — verified: no `scrcpy`, wrong `android` binary. Ignoring is
-done via `.git/info/exclude` (local, never committed) because only `android`
-gitignores `.claude/worktrees/`; editing a tracked `.gitignore` in an org repo
-is not ours to do.
+---
 
 ## Verification status
 
-Confirmed working on x86_64-linux:
+Confirmed on x86_64-linux, by running them:
 
-- `nix flake check --all-systems`
-- `meshtastic-sdk` — `./gradlew :core:build` (JVM + Android + iOS klibs, tests,
-  Kover, ABI check)
-- `android` — `./gradlew :androidApp:assembleFdroidDebug` (3 APKs)
-- `protobufs` — `buf lint`
-- `meshtastic-mcp` — `uv sync --frozen`
-- `firmware` — `pio run -e heltec-v3` (7m40s, flashable factory image)
+| Repo | Verified |
+| --- | --- |
+| — | `nix flake check --all-systems` |
+| `meshtastic-sdk` | `./gradlew :core:build` — JVM + Android + iOS klibs, tests, Kover, ABI check |
+| `android` | `./gradlew :androidApp:assembleFdroidDebug` — 3 APKs |
+| `firmware` | `pio run -e heltec-v3` — flashable factory image, 7m40s |
+| `protobufs` | `buf lint` |
+| `meshtastic-mcp` | `uv sync --frozen` |
 
-Not verified: `.#apple` (needs macOS + Xcode).
+**Not verified:** `.#apple` — needs macOS + Xcode; nothing on Linux can close it.
 
-### PlatformIO must be `platformio-core`, not `platformio`
+---
 
-`pkgs.platformio` is a `buildFHSEnv` bubblewrap wrapper. This host sets
-`apparmor_restrict_unprivileged_userns=1` (an Ubuntu default), which denies
-unprivileged user namespaces to unconfined binaries — everything in
-`/nix/store`. Every invocation dies immediately with:
+## Conventions for changing this repo
 
-```
-bwrap: setting up uid map: Permission denied
-```
-
-Confirmed to be the machine, not a tool sandbox. The FHS wrapper exists so
-PlatformIO's downloaded, dynamically-linked toolchains run on NixOS; Ubuntu is
-already FHS so it buys nothing. **On NixOS, swap back to `pkgs.platformio`** or
-those toolchains will not run.
-
-## Conventions
-
-- Add a file to this repo → also whitelist it in `.gitignore`, which ignores
-  everything by default.
-- Changing `flake.nix` → run `nix flake check --all-systems` before committing.
-  Note it only *evaluates* shells; it does not build them. Eval passing does
-  not mean a repo builds.
+- New file → whitelist it in `.gitignore`, which denies by default.
+- Changed `flake.nix` → `nix flake check --all-systems` before committing. It
+  only **evaluates** shells; passing eval does not mean a repo builds.
 - `writeShellApplication` runs ShellCheck and fails the build on warnings.
+- Prefer verifying over asserting. Every claim above has a command behind it.
