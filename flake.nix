@@ -873,7 +873,10 @@
                 --prune)
                   while read -r d; do
                     [ -d "$root/$d/.git" ] || continue
-                    n=$(git -C "$root/$d" worktree prune --dry-run 2>/dev/null | wc -l)
+                    # --dry-run reports on STDERR, not stdout. Redirecting
+                    # it to /dev/null silently makes the count always zero,
+                    # so this must capture 2>&1 or --prune never fires.
+                    n=$(git -C "$root/$d" worktree prune --dry-run 2>&1 | wc -l)
                     if [ "$n" -gt 0 ]; then
                       git -C "$root/$d" worktree prune
                       echo "  $d: pruned $n dead registration(s)"
