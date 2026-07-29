@@ -189,6 +189,30 @@ Confirmed on x86_64-linux, by running them:
 
 **Not verified:** `.#apple` — needs macOS + Xcode; nothing on Linux can close it.
 
+### Fresh-machine bootstrap
+
+Verified on a second x86_64 Ubuntu host with nothing but Nix installed — empty
+store, no `~/.gradle`, no Android SDK, no `~/.platformio`:
+
+- `nix flake check --all-systems` — clean
+- all seven Linux shells (`kotlin`, `android`, `firmware`, `protobufs`, `mcp`,
+  `design`, `nodes`) entered successfully, built cold
+- **path-agnostic** — ran from `~/meshtastic-workspace`, not `~/meshtastic`.
+  Nothing may hardcode the directory name; derive from
+  `MESHTASTIC_WORKSPACE` or `$(dirname "$PWD")`.
+- `.#android` with **no SDK at all** enters fine and prints the `sdkmanager`
+  hint — confirming `androidHook`'s missing-SDK path warns rather than fails.
+
+That run is also what exposed three documentation defects invisible on a
+machine that already satisfies them: the workspace repo is private and needs
+credentials before step 2; `nix` is absent from `PATH` in non-interactive
+shells even under `bash -lc`; and the per-repo `.envrc` examples hardcoded
+`~/meshtastic`.
+
+Still open: `.#mcp` under `mkShellNoCC` is unproven — both test machines have
+`/usr/bin/cc`, so `uv sync` never had to build a wheel from source. Settling it
+needs a container without `build-essential`.
+
 ---
 
 ## Conventions for changing this repo

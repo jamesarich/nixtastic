@@ -6,8 +6,11 @@ toolchain for each supplied by Nix.
 It does not vendor the repos — it clones them, gives each one a dev shell, and
 keeps them oriented. Ten repos, eight shells, one place to start.
 
+The checkout directory can be named anything — everything derives from
+`MESHTASTIC_WORKSPACE`. Verified from `~/meshtastic-workspace` on a second host.
+
 ```
-~/meshtastic/
+~/meshtastic/                  (any name)
 ├── flake.nix              the toolchains
 ├── CLAUDE.md              agent router — repo index + protocol
 ├── AGENTS.md              why the constraints exist
@@ -24,8 +27,18 @@ keeps them oriented. Ten repos, eight shells, one place to start.
 # 1. Nix (flakes on by default)
 curl -fsSL https://install.determinate.systems/nix | sh -s -- install
 
-# 2. This workspace
+# 2. This workspace — PRIVATE, so the new machine needs credentials first
+#    SSH key already on the box:
 git clone git@github.com:jamesarich/meshtastic-workspace.git ~/meshtastic
+#    No key? authenticate, then clone over HTTPS:
+#      gh auth login && gh repo clone jamesarich/meshtastic-workspace ~/meshtastic
+#    No gh either? bundle it across from a machine that has it — no token
+#    ever lands on the new box:
+#      git -C ~/meshtastic bundle create /tmp/mw.bundle --all
+#      scp /tmp/mw.bundle newbox:/tmp/
+#      ssh newbox 'git clone -b main /tmp/mw.bundle ~/meshtastic &&
+#        git -C ~/meshtastic remote set-url origin \
+#          https://github.com/jamesarich/meshtastic-workspace'
 cd ~/meshtastic
 
 # 3. Auto-activate on cd — do this, everything below assumes it
@@ -158,7 +171,7 @@ that's correct, not a failure.
 **Talk to a node without a build toolchain**
 
 ```bash
-nix develop ~/meshtastic#nodes
+nix develop "$MESHTASTIC_WORKSPACE#nodes"   # or the path to this checkout
 uvx meshtastic --port /dev/ttyUSB0 --info
 esptool chip_id
 ```
@@ -218,6 +231,7 @@ These fail **quietly** — no error, just wrong behaviour.
 | A repo looks clean but is behind | single-branch clone | `nix run .#sync -- --pull` widens the refspec |
 | `firmware` dirty right after a pull | upstream moved the submodule pointer | `--pull` re-syncs automatically; else `git submodule update --init --recursive` |
 | `bwrap: setting up uid map` | FHS-wrapped `platformio` vs Ubuntu AppArmor | already fixed — the flake uses `platformio-core` |
+| `nix: command not found` over SSH or in a script | Nix's profile snippet isn't sourced by non-interactive shells, **even with `bash -lc`** | use the absolute path: `export PATH=/nix/var/nix/profiles/default/bin:$PATH` |
 
 Verify JDK pinning is live:
 
