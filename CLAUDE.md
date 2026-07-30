@@ -67,9 +67,10 @@ hand-edit it.
 ## Worktrees
 
 `nix run .#worktree -- <repo> <branch>` creates one under
-`<repo>/.claude/worktrees/` with an `.envrc` selecting that repo's shell. A
-hand-made `git worktree` inherits only the workspace root `.envrc` and silently
-gets the **default** shell — wrong toolchain, no error.
+`<repo>/.claude/worktrees/` with an `.envrc` selecting that repo's shell, and a
+`.mcp.json` so the `meshtastic-mcp` tools follow you in. A hand-made `git
+worktree` inherits only the workspace root `.envrc` and silently gets the
+**default** shell — wrong toolchain, no error.
 
 ## Fails silently — check these first
 
@@ -80,6 +81,15 @@ gets the **default** shell — wrong toolchain, no error.
   `firmware` is special: it tracks its own (`use nix`, pointing at upstream's
   flake), so it gets an untracked `.envrc-workspace` sidecar instead. Never
   edit a tracked `.envrc`.
+- **`.mcp.json` is generated too** — `.#sync` at the root, `.#worktree` per
+  worktree. It names store paths, so `nix flake update` breaks the server until
+  you re-run `.#sync`. Registering it by hand (`claude mcp add`) puts it in
+  `~/.claude.json`, outside the workspace, where `.#sync` cannot rebuild it and
+  every worktree silently loses the tools.
+- **`.#mcp` needs `LD_LIBRARY_PATH`** — `UV_PYTHON` pins the venv to the Nix
+  interpreter, whose loader cannot see the system `libstdc++`/`libz` that
+  manylinux wheels link. numpy, opencv and torch install fine and then fail to
+  import, blaming neither library.
 - **Six JDKs required**, satisfying three separate Gradle mechanisms. Removing
   any one breaks a specific repo.
 - **Toolchain config belongs in `gradle.properties`, never `GRADLE_OPTS`** —

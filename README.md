@@ -64,9 +64,25 @@ snippet: it sources nix-direnv *and* carries the override that keeps `firmware`
 off upstream's broken PlatformIO. It is the one line that must name your
 checkout path — everything else derives.
 
+Step 4 lists three files, and `.mcp.json` is deliberately not among them —
+plenty of projects track one, and a global ignore would hide it everywhere. It
+is handled per repo instead: `.#worktree` writes it into that repo's
+`.git/info/exclude`, and the root copy is caught by this repo's deny-by-default
+`.gitignore`.
+
 Step 5 writes a `.envrc` into each repo, which is what makes `cd android` select
 `.#android`. `direnv` requires explicit consent per file, so `sync` prints the
 `direnv allow` commands rather than running them.
+
+It also writes `.mcp.json` at the workspace root, registering the
+`meshtastic-mcp` server for whatever MCP client you run here. That needs its own
+one-time consent — start the client and approve it (`/mcp` in Claude Code) — and
+the bundled agent skills are a separate command, which `sync` prints when they
+are missing:
+
+```bash
+(cd meshtastic-mcp && uv run meshtastic-mcp skills install --dest ../.claude/skills)
+```
 
 Without direnv, `MESHTASTIC_WORKSPACE` is unset and **JDK pinning silently does
 nothing**. Set it manually if you skip step 3.
@@ -236,7 +252,7 @@ enter one explicitly.
 
 | Command | Does |
 | --- | --- |
-| `nix run .#sync` | fetch all, report drift. Read-only. |
+| `nix run .#sync` | fetch all, report drift. Read-only *for git*; always regenerates `.envrc` and `.mcp.json`. |
 | `nix run .#sync -- --pull` | fast-forward where safe |
 | `nix run .#sync -- --main` | switch each repo to its default branch, then pull |
 | `nix run .#brief -- <repo>` | orient: branch, shell, docs to read, PRs |
@@ -256,6 +272,8 @@ These fail **quietly** — no error, just wrong behaviour.
 | `cd <repo>` gives the wrong toolchain | that repo has no `.envrc`, so the workspace-root one loads and you get `.#default` | `nix run .#sync` |
 | `pio` dies with `bwrap` in `firmware` | upstream's tracked `.envrc` (`use nix`) won over ours | check `~/.config/direnv/direnvrc` sources this repo's `direnvrc`, and that `firmware/.envrc-workspace` exists |
 | Worktree missing tools (e.g. no `scrcpy`) | created by hand, got the default shell | make it with `nix run .#worktree` |
+| No `meshtastic-mcp` tools in the client | `.mcp.json` is per directory — a worktree, or a repo subdirectory, is not the workspace root | `nix run .#worktree` writes one per worktree; elsewhere run the client from the workspace root |
+| `meshtastic-mcp` server stops starting | its `.mcp.json` names store paths, which `nix flake update` invalidates | `nix run .#sync` regenerates it |
 | `./gradlew` can't start a daemon | repo needs a JDK vendor/version not present | all six JDKs must stay in `flake.nix` |
 | A repo looks clean but is behind | single-branch clone | `nix run .#sync -- --pull` widens the refspec |
 | `firmware` dirty right after a pull | upstream moved the submodule pointer | `--pull` re-syncs automatically; else `git submodule update --init --recursive` |

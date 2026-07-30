@@ -106,6 +106,22 @@ already FHS, so it buys nothing.
 Also: do not add `gcc-arm-embedded`. PlatformIO fetches its own cross-toolchains
 into `PLATFORMIO_CORE_DIR`, and two on PATH produces baffling link errors.
 
+### `yaml-cpp` is in the shell for the native target
+
+`variants/native/portduino.ini` links `-lyaml-cpp`, so `pio run -e native` —
+the hardware-free virtual radio — needs the headers. `meshtastic-mcp doctor`
+tells you to `sudo apt install libyaml-cpp-dev`, which would install it on one
+machine, outside the flake, invisibly.
+
+It sits in `packages`, not `buildInputs`: this is a native build, so
+nativeBuildInputs contribute `-isystem` too. `bluez` already demonstrated that
+— it is in `nodeTools` and its include dir was already reaching
+`NIX_CFLAGS_COMPILE`, which is what made the one-line addition enough.
+
+`doctor` still reports it missing when run *outside* `.#firmware`: it probes
+system paths and cannot see a store path. Upstream PR #48 teaches it to read
+the include path instead.
+
 ### clangd needs three things, not one
 
 `clang-tools` is the one deliberate exception to the rule above, and it is safe
@@ -212,6 +228,33 @@ Two ordering constraints, both silent when violated:
    `$(dirname "$PWD")` is correct and survives relocation. Worktrees sit three
    levels down, so `.#worktree` hardcodes the root instead.
 
+### `.mcp.json` is generated too
+
+Same rule, same reason: regenerate it, never hand-edit it. `.#sync` writes one
+at the workspace root and `.#worktree` writes one per worktree, both from
+`writeMcpJson` in `flake.nix`, registering the `meshtastic-mcp` server for
+whatever MCP client runs in that directory.
+
+`claude mcp add` would instead put it in `~/.claude.json`, which is what makes
+this worth generating: that file is outside the workspace, so it is the one
+piece `.#sync` could not rebuild on a fresh machine, and it binds the server to
+a single directory — leaving every worktree silently without the tools.
+
+Three consequences worth knowing:
+
+- **It names store paths** — `uv`, the interpreter, and the loader path are
+  resolved at generation time, so `nix flake update` invalidates them. Re-run
+  `.#sync`, exactly as for anything else generated here.
+- **`nix develop` is deliberately not in the command.** Wrapping it would keep
+  the paths fresh, but measured 4.6s per server start; the client launches this
+  on every session.
+- **Project-scope servers need consent once per machine**, the same model as
+  direnv. `.#sync` prints the reminder; approve with `/mcp`.
+
+The bundled agent skills are *not* installed from here — on a fresh machine that
+would trigger a full `uv sync` inside a git tool. `.#sync` prints the command
+when `.claude/skills/` is missing.
+
 ### `firmware` tracks its own `.envrc`, and it points at upstream
 
 `firmware/.envrc` is **upstream-tracked** and contains direnv's legacy
@@ -250,10 +293,22 @@ rather than overwriting the tracked file, which would otherwise leave every new
 firmware worktree dirty at creation.
 
 Ignoring is done two ways, neither of them a tracked `.gitignore` — editing one
-in an org repo is not ours to do. `.claude/worktrees/` goes in
-`.git/info/exclude` (local, never committed) because only `android` ignores it
-upstream. The direnv files go in `~/.config/git/ignore` — git's default
-excludesfile location, so no `core.excludesfile` setting is needed.
+in an org repo is not ours to do. `.claude/worktrees/` and `.mcp.json` go in
+`.git/info/exclude` (local, never committed) because only `android` ignores the
+former upstream, and `.mcp.json` is a file plenty of projects legitimately
+track — a global ignore would hide it everywhere. The direnv files do go in
+`~/.config/git/ignore` — git's default excludesfile location, so no
+`core.excludesfile` setting is needed.
+
+That first mechanism did not actually work until `7388ecb`. `rev-parse -C <p>
+--git-common-dir` answers *relative to `<p>`* — plain `.git` — and the result
+was being used relative to the caller's cwd, so every pattern landed in the
+**workspace** repo's `info/exclude` and none ever reached the repo it was meant
+for. `kzstd/.git/info/exclude` held nothing at all. It stayed invisible because
+`~/.config/git/ignore` already covered the direnv files; adding `.mcp.json`,
+which it does not cover, is what surfaced it. Fixed with
+`--path-format=absolute`. A reminder that a documented mechanism is not a
+verified one.
 
 ---
 
@@ -323,7 +378,18 @@ shells even under `bash -lc`; and the per-repo `.envrc` examples hardcoded
 
 Still open: `.#mcp` under `mkShellNoCC` is unproven — both test machines have
 `/usr/bin/cc`, so `uv sync` never had to build a wheel from source. Settling it
-needs a container without `build-essential`.
+needs a container without `build-essential`. `uv sync --all-extras` (5.1 GB,
+torch and scipy included) does **not** settle it: those all ship prebuilt
+manylinux wheels, so nothing compiled.
+
+That run did expose the neighbouring problem, which is now fixed. Those same
+prebuilt wheels fail to **load** under the Nix interpreter `UV_PYTHON` pins:
+they link `libstdc++`/`libz`, Nix's loader cannot see either, and numpy, opencv,
+torch and easyocr end up installed but not importable. The failure names neither
+library — it reads `Importing the numpy C-extensions failed`, with the real
+cause only on the traceback's last line. Hence `LD_LIBRARY_PATH` in the `.#mcp`
+shellHook, and again in the generated `.mcp.json` because the MCP client
+launches the server outside that shell.
 
 ---
 
