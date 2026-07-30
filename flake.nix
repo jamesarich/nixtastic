@@ -308,6 +308,71 @@
             echo "  ${repos}"
             echo ""
           '';
+          # Which PlatformIO is right depends on the HOST, not the target, and
+          # a flake cannot know the host: `builtins.pathExists /etc/NIXOS` does
+          # evaluate, but making outputs depend on the evaluating machine means
+          # the same flake and lock produce different derivations on NixOS than
+          # on Ubuntu — `nix flake check --all-systems` in CI would then be
+          # answering a question no NixOS contributor asked. So both are built,
+          # named, and checked, and the shellHook tells you when you picked the
+          # one that cannot work here.
+          #
+          # Upstream firmware's own flake selects `platformio` (verified — see
+          # firmware/flake.nix), which is the right call for the NixOS users it
+          # targets and the wrong one everywhere AppArmor restricts user
+          # namespaces.
+          mkFirmwareShell =
+            {
+              pio,
+              extraHook,
+            }:
+            pkgs.mkShell {
+              name = "meshtastic-firmware";
+              # clangdPio comes FIRST so its wrapper shadows the plain clangd
+              # in clang-tools. Verified with `command -v clangd` — do not
+              # reorder. clang-tools is still here for clang-tidy, clang-query
+              # and the rest, which need no wrapping.
+              packages = [
+                clangdPio
+                pio
+              ]
+              ++ common
+              ++ nodeTools
+              ++ (with pkgs; [
+                python
+                ccache
+                cmake
+                ninja
+                clang-tools # clang-tidy etc.; ships no compiler driver
+                yaml-cpp # -lyaml-cpp in the native/portduino link (variants/native/portduino.ini)
+              ]);
+              shellHook =
+                serialHook
+                + pythonHook
+                + (banner "firmware" "firmware — default env: heltec-v3")
+                + extraHook
+                + ''
+                  export PLATFORMIO_CORE_DIR="''${PLATFORMIO_CORE_DIR:-$HOME/.platformio}"
+                  echo "  pio run -e heltec-v3"
+                  echo "  pio run -e heltec-v3 -t upload"
+                  echo "  pio device monitor"
+                  if [ -n "''${MESHTASTIC_WORKSPACE:-}" ]; then
+                    fw="$MESHTASTIC_WORKSPACE/firmware"
+                    if [ ! -f "$fw/compile_commands.json" ]; then
+                      echo ""
+                      echo "  !  no compile_commands.json — clangd cannot resolve includes."
+                      echo "     pio run -e heltec-v3 -t compiledb"
+                    fi
+                    if [ ! -f "$fw/.clangd" ]; then
+                      echo ""
+                      echo "  !  no .clangd — clangd will reject the xtensa GCC flags."
+                      echo "     recreate it from AGENTS.md (Firmware / clangd)."
+                    fi
+                  fi
+                  echo ""
+                '';
+            };
+
         in
         {
           #########################################################
@@ -425,50 +490,38 @@
           # clang-format landing on PATH here is incidental — don't wire an
           # editor to it and end up fighting trunk over the same files.
           #########################################################
-          firmware = pkgs.mkShell {
-            name = "meshtastic-firmware";
-            # clangdPio comes FIRST so its wrapper shadows the plain clangd
-            # in clang-tools. Verified with `command -v clangd` — do not
-            # reorder. clang-tools is still here for clang-tidy, clang-query
-            # and the rest, which need no wrapping.
-            packages = [
-              clangdPio
-            ]
-            ++ common
-            ++ nodeTools
-            ++ (with pkgs; [
-              platformio-core
-              python
-              ccache
-              cmake
-              ninja
-              clang-tools # clang-tidy etc.; ships no compiler driver
-              yaml-cpp # -lyaml-cpp in the native/portduino link (variants/native/portduino.ini)
-            ]);
-            shellHook =
-              serialHook
-              + pythonHook
-              + (banner "firmware" "firmware — default env: heltec-v3")
-              + ''
-                export PLATFORMIO_CORE_DIR="''${PLATFORMIO_CORE_DIR:-$HOME/.platformio}"
-                echo "  pio run -e heltec-v3"
-                echo "  pio run -e heltec-v3 -t upload"
-                echo "  pio device monitor"
-                if [ -n "''${MESHTASTIC_WORKSPACE:-}" ]; then
-                  fw="$MESHTASTIC_WORKSPACE/firmware"
-                  if [ ! -f "$fw/compile_commands.json" ]; then
-                    echo ""
-                    echo "  !  no compile_commands.json — clangd cannot resolve includes."
-                    echo "     pio run -e heltec-v3 -t compiledb"
-                  fi
-                  if [ ! -f "$fw/.clangd" ]; then
-                    echo ""
-                    echo "  !  no .clangd — clangd will reject the xtensa GCC flags."
-                    echo "     recreate it from AGENTS.md (Firmware / clangd)."
-                  fi
-                fi
+          # The default. platformio-core is the bare Python package: no FHS
+          # sandbox, so nothing for AppArmor to deny. Correct on any distro
+          # that is already FHS, which is every mainstream Linux and macOS.
+          firmware = mkFirmwareShell {
+            pio = pkgs.platformio-core;
+            extraHook = ''
+              if [ -e /etc/NIXOS ]; then
+                echo "  !  NixOS detected, and this shell ships platformio-core."
+                echo "     PlatformIO downloads its own dynamically-linked"
+                echo "     toolchains, which will not run without an FHS tree."
+                echo "     Use:  nix develop .#firmware-fhs"
                 echo ""
-              '';
+              fi
+            '';
+          };
+
+          # For NixOS and anything else that is not FHS. pkgs.platformio is a
+          # buildFHSEnv wrapper, which is what lets PlatformIO's downloaded
+          # toolchains find /lib64/ld-linux-x86-64.so.2 and friends.
+          firmware-fhs = mkFirmwareShell {
+            pio = pkgs.platformio;
+            extraHook = ''
+              if [ ! -e /etc/NIXOS ]; then
+                echo "  !  This shell wraps PlatformIO in buildFHSEnv (bwrap)."
+                echo "     On a host with"
+                echo "     kernel.apparmor_restrict_unprivileged_userns=1"
+                echo "     (the Ubuntu default) every pio call dies with"
+                echo "     'bwrap: setting up uid map: Permission denied'."
+                echo "     On an FHS distro use:  nix develop .#firmware"
+                echo ""
+              fi
+            '';
           };
 
           #########################################################

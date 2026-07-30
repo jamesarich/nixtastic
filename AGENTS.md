@@ -87,7 +87,7 @@ The dev shells therefore do **not** carry `android-cli`. It exists only in
 
 ## PlatformIO
 
-### Must be `platformio-core`, not `platformio`
+### `platformio-core` by default, `platformio` in `.#firmware-fhs`
 
 `pkgs.platformio` is a `buildFHSEnv` **bubblewrap** wrapper. Ubuntu sets
 `apparmor_restrict_unprivileged_userns=1`, denying unprivileged user namespaces
@@ -101,7 +101,24 @@ Confirmed to be the machine, not a tool sandbox. The FHS wrapper exists so
 PlatformIO's downloaded, dynamically-linked toolchains run on NixOS; Ubuntu is
 already FHS, so it buys nothing.
 
-**On NixOS, swap back to `pkgs.platformio`** or those toolchains will not run.
+Both are built. `.#firmware` ships `platformio-core` and suits any host that is
+already FHS — every mainstream Linux, and macOS. `.#firmware-fhs` ships
+`pkgs.platformio` for NixOS and anything else non-FHS, where those downloaded
+toolchains cannot otherwise find `/lib64/ld-linux-x86-64.so.2`.
+
+This is **not** conditional on the evaluating machine, and deliberately so.
+`builtins.pathExists /etc/NIXOS` does evaluate inside a flake — checked, it does
+not throw in pure eval — but branching on it would make the same flake and lock
+produce different derivations on NixOS than on Ubuntu. `nix flake check
+--all-systems` in CI would then be answering a question no NixOS contributor
+asked, and two developers would silently get different `pio` binaries. So the
+choice is a shell name, and each shell's hook detects the mismatch at *runtime*
+and names the other one.
+
+Worth knowing where upstream stands: `firmware/flake.nix` selects
+`pkgs.platformio` — right for the NixOS users it targets, wrong on every host
+that restricts user namespaces. That divergence is the whole reason the
+workspace `direnvrc` overrides upstream's tracked `use nix`.
 
 Also: do not add `gcc-arm-embedded`. PlatformIO fetches its own cross-toolchains
 into `PLATFORMIO_CORE_DIR`, and two on PATH produces baffling link errors.

@@ -240,6 +240,7 @@ cd design && cd tokens && npm ci && npm run build
 | `.#kotlin` | `meshtastic-sdk`, `MQTTastic-Client-KMP`, `kzstd`, `gradle-flatpak-sources` |
 | `.#android` | `android` |
 | `.#firmware` | `firmware` |
+| `.#firmware-fhs` | `firmware`, on NixOS and other non-FHS hosts |
 | `.#mcp` | `meshtastic-mcp` |
 | `.#protobufs` | `protobufs` |
 | `.#design` | `design` |
