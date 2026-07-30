@@ -6,11 +6,12 @@ toolchain for each supplied by Nix.
 It does not vendor the repos — it clones them, gives each one a dev shell, and
 keeps them oriented. Ten repos, eight shells, one place to start.
 
-The checkout directory can be named anything — everything derives from
-`MESHTASTIC_WORKSPACE`. Verified from `~/meshtastic-workspace` on a second host.
+The checkout directory can be named anything and live anywhere — everything
+derives from `MESHTASTIC_WORKSPACE`. Verified by bootstrapping a second host
+into `~/meshtastic-workspace`, a different name from the one used below.
 
 ```
-~/meshtastic/                  (any name)
+$MESHTASTIC_WORKSPACE/         (any path, any name)
 ├── flake.nix              the toolchains
 ├── direnvrc               sourced by ~/.config/direnv/direnvrc
 ├── CLAUDE.md              agent router — repo index + protocol
@@ -25,30 +26,31 @@ The checkout directory can be named anything — everything derives from
 ## One-time setup
 
 ```bash
+# 0. Where it lives. Any path, any name — every step below derives from this.
+WORKSPACE=~/meshtastic
+
 # 1. Nix (flakes on by default)
 curl -fsSL https://install.determinate.systems/nix | sh -s -- install
 
-# 2. This workspace — PRIVATE, so the new machine needs credentials first
-#    SSH key already on the box:
-git clone git@github.com:jamesarich/nixtastic.git ~/meshtastic
-#    No key? authenticate, then clone over HTTPS:
-#      gh auth login && gh repo clone jamesarich/nixtastic ~/meshtastic
-#    No gh either? bundle it across from a machine that has it — no token
-#    ever lands on the new box:
-#      git -C ~/meshtastic bundle create /tmp/nixtastic.bundle --all
+# 2. This repo — substitute your own fork if you have one
+git clone https://github.com/jamesarich/nixtastic.git "$WORKSPACE"
+#    Private copy? The new machine needs credentials first:
+#      SSH key on the box:  git clone git@github.com:OWNER/nixtastic.git "$WORKSPACE"
+#      otherwise:           gh auth login && gh repo clone OWNER/nixtastic "$WORKSPACE"
+#    Neither? Bundle it across from a machine that already has it, so no
+#    token ever lands on the new box:
+#      git -C EXISTING_CHECKOUT bundle create /tmp/nixtastic.bundle --all
 #      scp /tmp/nixtastic.bundle newbox:/tmp/
-#      ssh newbox 'git clone -b main /tmp/nixtastic.bundle ~/meshtastic &&
-#        git -C ~/meshtastic remote set-url origin \
-#          https://github.com/jamesarich/nixtastic'
-cd ~/meshtastic
+#      ssh newbox "git clone -b main /tmp/nixtastic.bundle $WORKSPACE"
+cd "$WORKSPACE"
 
 # 3. Auto-activate on cd — do this, everything below assumes it
 nix profile install nixpkgs#nix-direnv
 mkdir -p ~/.config/direnv
-echo "source \"$PWD/direnvrc\"" > ~/.config/direnv/direnvrc
+echo "source \"$WORKSPACE/direnvrc\"" > ~/.config/direnv/direnvrc
 direnv allow
 
-# 4. Exclude direnv files globally, so they never dirty an org repo
+# 4. Exclude direnv files globally, so they never dirty a cloned repo
 mkdir -p ~/.config/git
 printf '.envrc\n.direnv/\n.envrc-workspace\n' >> ~/.config/git/ignore
 
@@ -94,7 +96,7 @@ nothing**. Set it manually if you skip step 3.
 ### Morning — see what moved
 
 ```bash
-cd ~/meshtastic
+cd "$MESHTASTIC_WORKSPACE"
 nix run .#sync                 # read-only: fetch + report drift
 nix run .#sync -- --pull       # fast-forward everything that safely can
 ```

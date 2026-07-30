@@ -13,6 +13,11 @@
 !/.gitignore
 !/LICENSE
 !/.envrc
+# CI. Both levels must be un-ignored: a negation cannot re-include a file if
+# one of its parent directories is still excluded.
+!/.github/
+!/.github/workflows/
+!/.github/workflows/*.yml
 # Sourced from ~/.config/direnv/direnvrc. Tracked so a fresh machine inherits
 # the `use nix` override that keeps firmware off upstream's broken platformio.
 !/direnvrc

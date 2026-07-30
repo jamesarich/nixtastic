@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 James Rich
+# SPDX-License-Identifier: GPL-3.0-only
+#
+# The gate AGENTS.md asks for by hand, enforced. Two jobs, because they fail
+# for different reasons and a combined one hides which.
+#
+# `--all-systems` is why a single Linux runner is enough: it EVALUATES every
+# shell for aarch64-darwin and aarch64-linux too, without building them. That
+# is exactly the check that caught `stdenv.cc.cc.lib` possibly not existing on
+# darwin. It is also the limit — passing eval does not mean a repo builds, and
+# nothing here can prove that without the repos, the SDK and ~15 GB of clones.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A second push should cancel the first: these jobs are pure evaluation, so an
+# in-flight run for a superseded commit tells you nothing you still care about.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  flake-check:
+    name: nix flake check --all-systems
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@v22
+      # writeShellApplication runs ShellCheck and fails the build on warnings,
+      # so this also gates the sync / worktree / brief / bootstrap-sdk scripts.
+      - run: nix flake check --all-systems --print-build-logs
+
+  format:
+    name: nix fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@v22
+      # `nix fmt` rewrites in place and always exits 0, so checking the exit
+      # code proves nothing — diff the tree instead. nixfmt is the declared
+      # formatter (flake.nix `formatter`), and the tree is expected to already
+      # satisfy it: `nix fmt` must be a no-op on a clean checkout.
+      - run: nix fmt
+      - run: git diff --exit-code
