@@ -133,15 +133,66 @@ bumps the pointer. `--pull` re-syncs submodules automatically and reports
 A submodule checked out at a different commit than recorded is **not** stashable
 content — `git stash` returns "No local changes to save" and the state persists.
 
+### Per-repo `.envrc` files are generated, never hand-written
+
+direnv loads only the **nearest** `.envrc`. A repo with none falls back to the
+workspace-root file and gets `.#default` — wrong toolchain, no error. So
+`nix run .#sync` writes one per repo, idempotently, never clobbering.
+
+Two ordering constraints, both silent when violated:
+
+1. **`export MESHTASTIC_WORKSPACE` must precede `use flake`.** nix-direnv runs
+   the flake's `shellHook` during `use_flake` — verified, not assumed: entering
+   `meshtastic-sdk` via `direnv exec` yields `GRADLE_USER_HOME` set and
+   `./gradlew javaToolchains` reporting auto-detect and auto-download
+   `Disabled`, with all six JDKs `Detected by: Gradle property`. Export it
+   afterwards and the hook has already run against an unset variable.
+2. **Derive the workspace path.** Repos are direct children, so
+   `$(dirname "$PWD")` is correct and survives relocation. Worktrees sit three
+   levels down, so `.#worktree` hardcodes the root instead.
+
+### `firmware` tracks its own `.envrc`, and it points at upstream
+
+`firmware/.envrc` is **upstream-tracked** and contains direnv's legacy
+`use nix`. That resolves through `firmware/shell.nix` → flake-compat →
+firmware's own `flake.nix:45`, whose devShell uses `pkgs.platformio` — the
+bwrap-wrapped build that cannot run here. Allowing it hands you the exact
+failure this workspace exists to avoid.
+
+Overwriting it is not an option: it is tracked, so the repo would read dirty
+forever (blocking `--pull`) and the change could land in an org PR. Instead
+[`direnvrc`](./direnvrc) overrides `use_nix` to prefer an untracked
+`.envrc-workspace` sidecar that `sync` writes alongside. With no sidecar
+present the override is transparent, so unrelated projects are unaffected.
+
+Verified: `direnv exec firmware` yields `pio` at the **same store path** as
+`nix develop .#firmware`, `pio --version` runs, and `git status` in `firmware`
+is empty even with `--untracked-files=all`.
+
+### direnv's `allowed` codes read backwards
+
+`direnv status` prints `Found RC allowed 0` for **allowed** and `1` for
+**blocked**. Reading it the intuitive way inverts the meaning of every
+diagnosis. Confirm with `direnv exec <dir> true`, which errors plainly if
+blocked. Editing an `.envrc` revokes its approval — expect to re-`allow`
+after any change here.
+
 ### Worktrees need their shell attached
 
 A hand-made `git worktree` inherits only the workspace-root `.envrc` and gets
 the **default** shell — verified: no `scrcpy`, wrong `android` binary, no error.
 Use `nix run .#worktree`.
 
-Ignoring is done via `.git/info/exclude` (local, never committed) because only
-`android` gitignores `.claude/worktrees/`. Editing a tracked `.gitignore` in an
-org repo is not ours to do.
+A worktree is a full checkout, so it carries whatever `.envrc` the repo tracks.
+For `firmware` that means `.#worktree` writes the `.envrc-workspace` sidecar
+rather than overwriting the tracked file, which would otherwise leave every new
+firmware worktree dirty at creation.
+
+Ignoring is done two ways, neither of them a tracked `.gitignore` — editing one
+in an org repo is not ours to do. `.claude/worktrees/` goes in
+`.git/info/exclude` (local, never committed) because only `android` ignores it
+upstream. The direnv files go in `~/.config/git/ignore` — git's default
+excludesfile location, so no `core.excludesfile` setting is needed.
 
 ---
 

@@ -12,6 +12,7 @@ The checkout directory can be named anything — everything derives from
 ```
 ~/meshtastic/                  (any name)
 ├── flake.nix              the toolchains
+├── direnvrc               sourced by ~/.config/direnv/direnvrc
 ├── CLAUDE.md              agent router — repo index + protocol
 ├── AGENTS.md              why the constraints exist
 ├── notes/                 orientation for repos with no agent docs
@@ -44,15 +45,28 @@ cd ~/meshtastic
 # 3. Auto-activate on cd — do this, everything below assumes it
 nix profile install nixpkgs#nix-direnv
 mkdir -p ~/.config/direnv
-echo 'source "$HOME/.nix-profile/share/nix-direnv/direnvrc"' > ~/.config/direnv/direnvrc
+echo "source \"$PWD/direnvrc\"" > ~/.config/direnv/direnvrc
 direnv allow
 
-# 4. Clone every Meshtastic repo
-nix run .#sync
+# 4. Exclude direnv files globally, so they never dirty an org repo
+mkdir -p ~/.config/git
+printf '.envrc\n.direnv/\n.envrc-workspace\n' >> ~/.config/git/ignore
 
-# 5. Android SDK packages (needs cmdline-tools already present)
+# 5. Clone every repo and give each one its shell
+nix run .#sync          # then run the `direnv allow` lines it prints
+
+# 6. Android SDK packages (needs cmdline-tools already present)
 nix run .#bootstrap-sdk
 ```
+
+Step 3 points at [`direnvrc`](./direnvrc) in this repo rather than pasting a
+snippet: it sources nix-direnv *and* carries the override that keeps `firmware`
+off upstream's broken PlatformIO. It is the one line that must name your
+checkout path — everything else derives.
+
+Step 5 writes a `.envrc` into each repo, which is what makes `cd android` select
+`.#android`. `direnv` requires explicit consent per file, so `sync` prints the
+`direnv allow` commands rather than running them.
 
 Without direnv, `MESHTASTIC_WORKSPACE` is unset and **JDK pinning silently does
 nothing**. Set it manually if you skip step 3.
@@ -225,7 +239,9 @@ These fail **quietly** — no error, just wrong behaviour.
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| Gradle downloads its own JDKs | `MESHTASTIC_WORKSPACE` unset | `direnv allow` at the workspace root |
+| Gradle downloads its own JDKs | `MESHTASTIC_WORKSPACE` unset, or a hand-written repo `.envrc` that exports it *after* `use flake` | `nix run .#sync` regenerates the file correctly; then `direnv allow` |
+| `cd <repo>` gives the wrong toolchain | that repo has no `.envrc`, so the workspace-root one loads and you get `.#default` | `nix run .#sync` |
+| `pio` dies with `bwrap` in `firmware` | upstream's tracked `.envrc` (`use nix`) won over ours | check `~/.config/direnv/direnvrc` sources this repo's `direnvrc`, and that `firmware/.envrc-workspace` exists |
 | Worktree missing tools (e.g. no `scrcpy`) | created by hand, got the default shell | make it with `nix run .#worktree` |
 | `./gradlew` can't start a daemon | repo needs a JDK vendor/version not present | all six JDKs must stay in `flake.nix` |
 | A repo looks clean but is behind | single-branch clone | `nix run .#sync -- --pull` widens the refspec |

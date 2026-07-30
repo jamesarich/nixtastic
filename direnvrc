@@ -1,0 +1,59 @@
+# Workspace direnv configuration.
+#
+# Wire it up once per machine (README step 3):
+#
+#   mkdir -p ~/.config/direnv
+#   echo "source \"$PWD/direnvrc\"" > ~/.config/direnv/direnvrc
+#
+# Tracked here rather than left as a snippet to paste, so a fresh machine gets
+# identical behaviour and the reasoning below travels with it.
+
+# nix-direnv caches `use flake` evaluation and — the part that matters more —
+# registers a GC root per dev shell, so nix-collect-garbage cannot delete a
+# closure you are actively using.
+#
+# Sourced from the nix profile rather than a pinned store path, so it tracks
+# `nix profile upgrade`.
+source "$HOME/.nix-profile/share/nix-direnv/direnvrc"
+
+# ---------------------------------------------------------------------------
+# Redirect an upstream `use nix` to the workspace's own dev shell.
+#
+# Some org repos TRACK their own .envrc. firmware's contains `use nix`, which
+# resolves through firmware/shell.nix -> flake-compat -> firmware's own
+# flake.nix, whose devShell uses pkgs.platformio: the bubblewrap-wrapped build
+# that cannot run on an Ubuntu host with
+# apparmor_restrict_unprivileged_userns=1. Every pio invocation then dies with
+# "bwrap: setting up uid map: Permission denied" — the exact failure this
+# workspace pins platformio-core to avoid.
+#
+# Editing that file is not an option. It is tracked, so overwriting it would
+# leave the repo permanently dirty (which blocks `nix run .#sync -- --pull`)
+# and could be committed into an org PR by accident.
+#
+# So `nix run .#sync` writes an untracked .envrc-workspace sidecar alongside
+# the tracked .envrc, and this override prefers it.
+#
+# Deliberately scoped: with no sidecar present, upstream's `use nix` runs
+# exactly as before. Unrelated projects on this machine are unaffected.
+# ---------------------------------------------------------------------------
+if declare -f use_nix >/dev/null 2>&1; then
+  # Rename nix-direnv's implementation rather than discard it, so the
+  # fallback below is the real thing. Pure bash: `declare -f` emits
+  # "use_nix () \n{ ... }", and stripping the leading name leaves a body that
+  # can be re-bound under a new one.
+  _meshtastic_use_nix_orig=$(declare -f use_nix)
+  eval "_meshtastic_upstream_use_nix${_meshtastic_use_nix_orig#use_nix}"
+  unset _meshtastic_use_nix_orig
+
+  use_nix() {
+    if [ -f "$PWD/.envrc-workspace" ]; then
+      watch_file "$PWD/.envrc-workspace"
+      log_status "meshtastic-workspace: .envrc-workspace overrides upstream 'use nix'"
+      # shellcheck source=/dev/null
+      . "$PWD/.envrc-workspace"
+      return
+    fi
+    _meshtastic_upstream_use_nix "$@"
+  }
+fi

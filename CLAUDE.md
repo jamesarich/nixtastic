@@ -74,7 +74,12 @@ gets the **default** shell — wrong toolchain, no error.
 ## Fails silently — check these first
 
 - **`MESHTASTIC_WORKSPACE` unset** → JDK pinning inert, Gradle auto-provisions
-  its own JDKs. `direnv` sets it.
+  its own JDKs. `direnv` sets it. In a per-repo `.envrc` it must be exported
+  **before** `use flake`, or the shellHook runs too early to see it.
+- **Never hand-write a repo `.envrc`** — `nix run .#sync` generates them.
+  `firmware` is special: it tracks its own (`use nix`, pointing at upstream's
+  flake), so it gets an untracked `.envrc-workspace` sidecar instead. Never
+  edit a tracked `.envrc`.
 - **Six JDKs required**, satisfying three separate Gradle mechanisms. Removing
   any one breaks a specific repo.
 - **Toolchain config belongs in `gradle.properties`, never `GRADLE_OPTS`** —
