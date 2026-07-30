@@ -5,21 +5,30 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   };
 
-  outputs = { self, nixpkgs }:
+  outputs =
+    { self, nixpkgs }:
     let
       # x86_64-darwin is absent on purpose: nixpkgs 26.11 dropped Intel
       # macOS support outright (it throws on eval). Apple-silicon only.
-      systems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ];
-      forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f {
-        inherit system;
-        pkgs = import nixpkgs {
-          inherit system;
-          # Google ships android-cli as an unfree prebuilt binary. Allow
-          # that one package rather than opening up allowUnfree wholesale.
-          config.allowUnfreePredicate = p:
-            builtins.elem (nixpkgs.lib.getName p) [ "android-cli" ];
-        };
-      });
+      systems = [
+        "x86_64-linux"
+        "aarch64-linux"
+        "aarch64-darwin"
+      ];
+      forAllSystems =
+        f:
+        nixpkgs.lib.genAttrs systems (
+          system:
+          f {
+            inherit system;
+            pkgs = import nixpkgs {
+              inherit system;
+              # Google ships android-cli as an unfree prebuilt binary. Allow
+              # that one package rather than opening up allowUnfree wholesale.
+              config.allowUnfreePredicate = p: builtins.elem (nixpkgs.lib.getName p) [ "android-cli" ];
+            };
+          }
+        );
     in
     {
       #############################################################
@@ -35,24 +44,55 @@
       #   pluginmeshtastic     — needs the non-redistributable ATAK SDK
       #############################################################
       workspace = {
-        firmware = { shell = "firmware"; repo = "meshtastic/firmware"; };
-        android = { shell = "android"; repo = "meshtastic/Meshtastic-Android"; };
-        apple = { shell = "apple"; repo = "meshtastic/Meshtastic-Apple"; };
-        meshtastic-sdk = { shell = "kotlin"; repo = "meshtastic/meshtastic-sdk"; };
-        MQTTastic-Client-KMP = { shell = "kotlin"; repo = "meshtastic/MQTTastic-Client-KMP"; };
-        kzstd = { shell = "kotlin"; repo = "meshtastic/kzstd"; };
-        gradle-flatpak-sources = { shell = "kotlin"; repo = "meshtastic/gradle-flatpak-sources"; };
-        meshtastic-mcp = { shell = "mcp"; repo = "meshtastic/meshtastic-mcp"; };
+        firmware = {
+          shell = "firmware";
+          repo = "meshtastic/firmware";
+        };
+        android = {
+          shell = "android";
+          repo = "meshtastic/Meshtastic-Android";
+        };
+        apple = {
+          shell = "apple";
+          repo = "meshtastic/Meshtastic-Apple";
+        };
+        meshtastic-sdk = {
+          shell = "kotlin";
+          repo = "meshtastic/meshtastic-sdk";
+        };
+        MQTTastic-Client-KMP = {
+          shell = "kotlin";
+          repo = "meshtastic/MQTTastic-Client-KMP";
+        };
+        kzstd = {
+          shell = "kotlin";
+          repo = "meshtastic/kzstd";
+        };
+        gradle-flatpak-sources = {
+          shell = "kotlin";
+          repo = "meshtastic/gradle-flatpak-sources";
+        };
+        meshtastic-mcp = {
+          shell = "mcp";
+          repo = "meshtastic/meshtastic-mcp";
+        };
         # Shared .proto definitions. Also vendored as a submodule inside
         # firmware/protobufs — edit here, bump the pointer there.
-        protobufs = { shell = "protobufs"; repo = "meshtastic/protobufs"; };
+        protobufs = {
+          shell = "protobufs";
+          repo = "meshtastic/protobufs";
+        };
         # Cross-platform design standards, tokens and brand assets. Work here
         # is driven mostly through the org design board, not the repo:
         # https://github.com/orgs/meshtastic/projects/16
-        design = { shell = "design"; repo = "meshtastic/design"; };
+        design = {
+          shell = "design";
+          repo = "meshtastic/design";
+        };
       };
 
-      devShells = forAllSystems ({ pkgs, system }:
+      devShells = forAllSystems (
+        { pkgs, ... }:
         let
           inherit (pkgs) lib;
           isLinux = pkgs.stdenv.isLinux;
@@ -116,14 +156,16 @@
           # .home where it exists — on Darwin it differs from the
           # derivation root, and Gradle wants a real JAVA_HOME layout.
           # The JetBrains build has no .home, hence the fallback.
-          toolchainPaths = lib.concatStringsSep ","
-            (map (j: j.home or "${j}") jdks);
+          toolchainPaths = lib.concatStringsSep "," (map (j: j.home or "${j}") jdks);
 
-          jvmTools = with pkgs; [
-            primaryJdk
-            ktlint
-            kotlin-language-server
-          ] ++ jdks;
+          jvmTools =
+            with pkgs;
+            [
+              primaryJdk
+              ktlint
+              kotlin-language-server
+            ]
+            ++ jdks;
 
           # These MUST land in gradle.properties, not GRADLE_OPTS.
           # GRADLE_OPTS configures the launcher JVM only; toolchain
@@ -187,31 +229,9 @@
             export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           '';
 
-          #########################################################
-          # Google's android CLI — the agent-oriented front end over
-          # adb / sdkmanager / avdmanager / AGP.
-          #
-          # Used ONLY to bootstrap an SDK from nothing — deliberately not
-          # in any dev shell. Two reasons:
-          #
-          #  1. cmdline-tools 22.0.0+ ships the android CLI itself, at
-          #     $ANDROID_HOME/cmdline-tools/latest/bin/android, and that
-          #     copy is NEWER (1.0.15857036 vs nixpkgs 1.0.15498356). It
-          #     wins on PATH anyway, so shipping ours was dead weight.
-          #  2. Nix pins only the LAUNCHER. The store binary unpacks the
-          #     real ~84M CLI into ~/.android/bin/android-cli and
-          #     self-updates it. Its effective version is NOT locked by
-          #     flake.lock.
-          #
-          # What it still buys: `nix run .#bootstrap-sdk` works on a
-          # machine with no SDK and no cmdline-tools at all, which is the
-          # chicken-and-egg the sdkmanager path cannot solve.
-          #
-          # Upstream ships x86_64-linux and aarch64-darwin only.
-          #########################################################
-          androidCli = lib.optional
-            (lib.meta.availableOn pkgs.stdenv.hostPlatform pkgs.android-cli)
-            pkgs.android-cli;
+          # android-cli deliberately appears in NO dev shell — it exists
+          # only inside `nix run .#bootstrap-sdk`, where the reasoning is
+          # written out in full.
 
           #########################################################
           # Python (meshtastic-mcp, firmware build scripts, node CLI)
@@ -229,14 +249,17 @@
           #########################################################
           # Talking to physical nodes over serial / BLE.
           #########################################################
-          nodeTools = with pkgs; [
-            esptool
-            picocom
-            usbutils
-          ] ++ lib.optionals isLinux [
-            android-tools # adb, for the Android app + MCP emulator e2e
-            bluez
-          ];
+          nodeTools =
+            with pkgs;
+            [
+              esptool
+              picocom
+              usbutils
+            ]
+            ++ lib.optionals isLinux [
+              android-tools # adb, for the Android app + MCP emulator e2e
+              bluez
+            ];
 
           #########################################################
           # clangd for firmware.
@@ -290,8 +313,19 @@
           #########################################################
           default = pkgs.mkShell {
             name = "meshtastic";
-            packages = common ++ jvmTools ++ nodeTools ++ [ python pkgs.uv pkgs.nodejs_22 ];
-            shellHook = jvmHook + androidHook + serialHook
+            packages =
+              common
+              ++ jvmTools
+              ++ nodeTools
+              ++ [
+                python
+                pkgs.uv
+                pkgs.nodejs_22
+              ];
+            shellHook =
+              jvmHook
+              + androidHook
+              + serialHook
               + (banner "workspace" "all toolchains — use a focused shell for real work")
               + ''
                 echo "  .#kotlin    meshtastic-sdk · MQTTastic-Client-KMP · kzstd · gradle-flatpak-sources"
@@ -311,11 +345,15 @@
           #########################################################
           kotlin = pkgs.mkShellNoCC {
             name = "meshtastic-kotlin";
-            packages = common ++ jvmTools
+            packages =
+              common
+              ++ jvmTools
               # gradle-flatpak-sources emits Flathub offline manifests;
               # flatpak-builder is what you check its output against.
               ++ lib.optionals isLinux [ pkgs.flatpak-builder ];
-            shellHook = jvmHook + androidHook
+            shellHook =
+              jvmHook
+              + androidHook
               + (banner "kotlin" "meshtastic-sdk · MQTTastic-Client-KMP · kzstd · gradle-flatpak-sources")
               + ''
                 echo "  JDKs: 21 (default), 17, 11 — Gradle toolchains resolved from Nix"
@@ -332,9 +370,10 @@
             # No android-tools here: androidHook puts the SDK's own
             # platform-tools first on PATH, so a Nix adb would just be a
             # shadowed duplicate — and adb must match the SDK anyway.
-            packages = common ++ jvmTools
-              ++ lib.optionals isLinux [ pkgs.scrcpy ];
-            shellHook = jvmHook + androidHook
+            packages = common ++ jvmTools ++ lib.optionals isLinux [ pkgs.scrcpy ];
+            shellHook =
+              jvmHook
+              + androidHook
               + (banner "android" "Meshtastic-Android — compileSdk 37, minSdk 24")
               + ''
                 echo "  ./gradlew :androidApp:assembleFdroidDebug"
@@ -390,7 +429,12 @@
             # in clang-tools. Verified with `command -v clangd` — do not
             # reorder. clang-tools is still here for clang-tidy, clang-query
             # and the rest, which need no wrapping.
-            packages = [ clangdPio ] ++ common ++ nodeTools ++ (with pkgs; [
+            packages = [
+              clangdPio
+            ]
+            ++ common
+            ++ nodeTools
+            ++ (with pkgs; [
               platformio-core
               python
               ccache
@@ -398,26 +442,30 @@
               ninja
               clang-tools # clang-tidy etc.; ships no compiler driver
             ]);
-            shellHook = serialHook + pythonHook + (banner "firmware" "firmware — default env: heltec-v3") + ''
-              export PLATFORMIO_CORE_DIR="''${PLATFORMIO_CORE_DIR:-$HOME/.platformio}"
-              echo "  pio run -e heltec-v3"
-              echo "  pio run -e heltec-v3 -t upload"
-              echo "  pio device monitor"
-              if [ -n "''${MESHTASTIC_WORKSPACE:-}" ]; then
-                fw="$MESHTASTIC_WORKSPACE/firmware"
-                if [ ! -f "$fw/compile_commands.json" ]; then
-                  echo ""
-                  echo "  !  no compile_commands.json — clangd cannot resolve includes."
-                  echo "     pio run -e heltec-v3 -t compiledb"
+            shellHook =
+              serialHook
+              + pythonHook
+              + (banner "firmware" "firmware — default env: heltec-v3")
+              + ''
+                export PLATFORMIO_CORE_DIR="''${PLATFORMIO_CORE_DIR:-$HOME/.platformio}"
+                echo "  pio run -e heltec-v3"
+                echo "  pio run -e heltec-v3 -t upload"
+                echo "  pio device monitor"
+                if [ -n "''${MESHTASTIC_WORKSPACE:-}" ]; then
+                  fw="$MESHTASTIC_WORKSPACE/firmware"
+                  if [ ! -f "$fw/compile_commands.json" ]; then
+                    echo ""
+                    echo "  !  no compile_commands.json — clangd cannot resolve includes."
+                    echo "     pio run -e heltec-v3 -t compiledb"
+                  fi
+                  if [ ! -f "$fw/.clangd" ]; then
+                    echo ""
+                    echo "  !  no .clangd — clangd will reject the xtensa GCC flags."
+                    echo "     recreate it from AGENTS.md (Firmware / clangd)."
+                  fi
                 fi
-                if [ ! -f "$fw/.clangd" ]; then
-                  echo ""
-                  echo "  !  no .clangd — clangd will reject the xtensa GCC flags."
-                  echo "     recreate it from AGENTS.md (Firmware / clangd)."
-                fi
-              fi
-              echo ""
-            '';
+                echo ""
+              '';
           };
 
           #########################################################
@@ -429,21 +477,28 @@
             # (androidHook puts it on PATH) — this repo's hardware-free
             # e2e drives an emulator via `android emulator` / `android
             # layout` rather than hand-rolled avdmanager/adb calls.
-            packages = common ++ nodeTools ++ [
-              python
-              pkgs.uv
-              pkgs.nodejs_22
-              pkgs.ruff
-            ];
-            shellHook = serialHook + androidHook + pythonHook
-              + (banner "mcp" "meshtastic-mcp — Python >=3.11, uv.lock") + ''
-              # Let uv build venvs against the Nix interpreter rather than
-              # downloading its own CPython.
-              export UV_PYTHON="${python}/bin/python3"
-              export UV_PYTHON_DOWNLOADS=never
-              echo "  uv sync && uv run pytest"
-              echo ""
-            '';
+            packages =
+              common
+              ++ nodeTools
+              ++ [
+                python
+                pkgs.uv
+                pkgs.nodejs_22
+                pkgs.ruff
+              ];
+            shellHook =
+              serialHook
+              + androidHook
+              + pythonHook
+              + (banner "mcp" "meshtastic-mcp — Python >=3.11, uv.lock")
+              + ''
+                # Let uv build venvs against the Nix interpreter rather than
+                # downloading its own CPython.
+                export UV_PYTHON="${python}/bin/python3"
+                export UV_PYTHON_DOWNLOADS=never
+                echo "  uv sync && uv run pytest"
+                echo ""
+              '';
           };
 
           #########################################################
@@ -455,11 +510,16 @@
           #########################################################
           apple = pkgs.mkShellNoCC {
             name = "meshtastic-apple";
-            packages = common ++ lib.optionals pkgs.stdenv.isDarwin (with pkgs; [
-              swiftlint
-              swift-format
-              xcbeautify
-            ]);
+            packages =
+              common
+              ++ lib.optionals pkgs.stdenv.isDarwin (
+                with pkgs;
+                [
+                  swiftlint
+                  swift-format
+                  xcbeautify
+                ]
+              );
             shellHook = (banner "apple" "Meshtastic-Apple — iOS · macOS · watchOS · visionOS") + ''
               if [ "$(uname)" != "Darwin" ]; then
                 echo "  !  This repo builds only on macOS with Xcode."
@@ -487,15 +547,19 @@
           #########################################################
           protobufs = pkgs.mkShellNoCC {
             name = "meshtastic-protobufs";
-            packages = common ++ jvmTools ++ (with pkgs; [
-              buf
-              nanopb
-              deno
-              nodejs_22
-              cargo
-              rustc
-            ]);
-            shellHook = jvmHook
+            packages =
+              common
+              ++ jvmTools
+              ++ (with pkgs; [
+                buf
+                nanopb
+                deno
+                nodejs_22
+                cargo
+                rustc
+              ]);
+            shellHook =
+              jvmHook
               + (banner "protobufs" "shared .proto definitions — buf · deno · gradle · cargo")
               + ''
                 echo "  buf lint && buf generate     (generate needs network: remote plugin)"
@@ -522,8 +586,7 @@
           #########################################################
           design = pkgs.mkShellNoCC {
             name = "meshtastic-design";
-            packages = common ++ [ pkgs.nodejs_22 ]
-              ++ lib.optionals isLinux [ pkgs.inkscape ];
+            packages = common ++ [ pkgs.nodejs_22 ] ++ lib.optionals isLinux [ pkgs.inkscape ];
             shellHook = (banner "design" "design standards · tokens · brand assets") + ''
               echo "  board   https://github.com/orgs/meshtastic/projects/16"
               echo "  gh issue list --repo meshtastic/design"
@@ -541,38 +604,70 @@
           #########################################################
           nodes = pkgs.mkShellNoCC {
             name = "meshtastic-nodes";
-            packages = common ++ nodeTools ++ [ python pkgs.uv ];
-            shellHook = serialHook + pythonHook + (banner "nodes" "serial · BLE · flashing") + ''
-              export UV_PYTHON="${python}/bin/python3"
-              echo "  uvx meshtastic --info"
-              echo "  uvx meshtastic --port /dev/ttyUSB0 --nodes"
-              echo "  esptool.py chip_id"
-              echo ""
-            '';
+            packages =
+              common
+              ++ nodeTools
+              ++ [
+                python
+                pkgs.uv
+              ];
+            shellHook =
+              serialHook
+              + pythonHook
+              + (banner "nodes" "serial · BLE · flashing")
+              + ''
+                export UV_PYTHON="${python}/bin/python3"
+                echo "  uvx meshtastic --info"
+                echo "  uvx meshtastic --port /dev/ttyUSB0 --nodes"
+                echo "  esptool.py chip_id"
+                echo ""
+              '';
           };
-        });
+        }
+      );
 
       #############################################################
       # nix run .#sync — clone any missing workspace repo, then
       # report the state of each one. Safe to re-run; it never
       # touches a repo that already exists beyond reading its status.
       #############################################################
-      apps = forAllSystems ({ pkgs, system }:
+      apps = forAllSystems (
+        { pkgs, ... }:
         let
-          # Same guard as the devShells use — upstream ships android-cli
-          # for x86_64-linux and aarch64-darwin only.
-          androidCli = nixpkgs.lib.optional
-            (nixpkgs.lib.meta.availableOn pkgs.stdenv.hostPlatform pkgs.android-cli)
-            pkgs.android-cli;
+          #########################################################
+          # Google's android CLI — the agent-oriented front end over
+          # adb / sdkmanager / avdmanager / AGP.
+          #
+          # Lives HERE and only here: used to bootstrap an SDK from
+          # nothing, and deliberately in no dev shell. Two reasons:
+          #
+          #  1. cmdline-tools 22.0.0+ ships the android CLI itself, at
+          #     $ANDROID_HOME/cmdline-tools/latest/bin/android, and that
+          #     copy is NEWER (1.0.15857036 vs nixpkgs 1.0.15498356). It
+          #     wins on PATH anyway, so shipping ours was dead weight.
+          #  2. Nix pins only the LAUNCHER. The store binary unpacks the
+          #     real ~84M CLI into ~/.android/bin/android-cli and
+          #     self-updates it. Its effective version is NOT locked by
+          #     flake.lock.
+          #
+          # What it still buys: `nix run .#bootstrap-sdk` works on a
+          # machine with no SDK and no cmdline-tools at all, which is the
+          # chicken-and-egg the sdkmanager path cannot solve.
+          #
+          # Upstream ships x86_64-linux and aarch64-darwin only, hence
+          # the availableOn guard.
+          #########################################################
+          androidCli = nixpkgs.lib.optional (nixpkgs.lib.meta.availableOn pkgs.stdenv.hostPlatform pkgs.android-cli) pkgs.android-cli;
 
-          entries = nixpkgs.lib.mapAttrsToList
-            (dir: v: "${dir}\t${v.repo}\t${v.shell}")
-            self.workspace;
+          entries = nixpkgs.lib.mapAttrsToList (dir: v: "${dir}\t${v.repo}\t${v.shell}") self.workspace;
           sync = pkgs.writeShellApplication {
             name = "meshtastic-sync";
             # coreutils is explicit because mktemp/wc/cut/tr are load-bearing
             # here; relying on the ambient PATH made this work by luck.
-            runtimeInputs = [ pkgs.git pkgs.coreutils ];
+            runtimeInputs = [
+              pkgs.git
+              pkgs.coreutils
+            ];
             text = ''
               # Modes:
               #   (default)  clone anything missing, fetch, report status.
@@ -836,7 +931,11 @@
           # (so AGP is happy) but its contents are declared in a file.
           bootstrapSdk = pkgs.writeShellApplication {
             name = "meshtastic-bootstrap-sdk";
-            runtimeInputs = [ pkgs.jdk21 pkgs.coreutils ] ++ androidCli;
+            runtimeInputs = [
+              pkgs.jdk21
+              pkgs.coreutils
+            ]
+            ++ androidCli;
             text = ''
               root="''${MESHTASTIC_WORKSPACE:-$PWD}"
               sdk="''${ANDROID_HOME:-$HOME/Android/Sdk}"
@@ -878,7 +977,11 @@
           # be loaded.
           brief = pkgs.writeShellApplication {
             name = "meshtastic-brief";
-            runtimeInputs = [ pkgs.git pkgs.coreutils pkgs.gh ];
+            runtimeInputs = [
+              pkgs.git
+              pkgs.coreutils
+              pkgs.gh
+            ];
             text = ''
               root="''${MESHTASTIC_WORKSPACE:-$PWD}"
               dir="''${1:-}"
@@ -990,7 +1093,10 @@
           # tracked .gitignore in someone else's repo is not ours to do.
           worktree = pkgs.writeShellApplication {
             name = "meshtastic-worktree";
-            runtimeInputs = [ pkgs.git pkgs.coreutils ];
+            runtimeInputs = [
+              pkgs.git
+              pkgs.coreutils
+            ];
             text = ''
               root="''${MESHTASTIC_WORKSPACE:-$PWD}"
               usage() {
@@ -1098,16 +1204,29 @@
           };
         in
         {
-          sync = { type = "app"; program = "${sync}/bin/meshtastic-sync"; };
-          default = { type = "app"; program = "${sync}/bin/meshtastic-sync"; };
+          sync = {
+            type = "app";
+            program = "${sync}/bin/meshtastic-sync";
+          };
+          default = {
+            type = "app";
+            program = "${sync}/bin/meshtastic-sync";
+          };
           bootstrap-sdk = {
             type = "app";
             program = "${bootstrapSdk}/bin/meshtastic-bootstrap-sdk";
           };
-          brief = { type = "app"; program = "${brief}/bin/meshtastic-brief"; };
-          worktree = { type = "app"; program = "${worktree}/bin/meshtastic-worktree"; };
-        });
+          brief = {
+            type = "app";
+            program = "${brief}/bin/meshtastic-brief";
+          };
+          worktree = {
+            type = "app";
+            program = "${worktree}/bin/meshtastic-worktree";
+          };
+        }
+      );
 
-      formatter = forAllSystems ({ pkgs, ... }: pkgs.nixpkgs-fmt);
+      formatter = forAllSystems ({ pkgs, ... }: pkgs.nixfmt);
     };
 }
