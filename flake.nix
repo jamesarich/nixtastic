@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 James Rich
+# SPDX-License-Identifier: GPL-3.0-only
 {
   description = "Meshtastic workspace — dev shells for the Meshtastic org repos (firmware, apps, Kotlin libraries, MCP tooling)";
 

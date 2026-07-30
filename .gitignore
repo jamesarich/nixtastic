@@ -11,6 +11,7 @@
 
 # --- workspace definition -------------------------------------------------
 !/.gitignore
+!/LICENSE
 !/.envrc
 # Sourced from ~/.config/direnv/direnvrc. Tracked so a fresh machine inherits
 # the `use nix` override that keeps firmware off upstream's broken platformio.

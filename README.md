@@ -1,4 +1,4 @@
-# meshtastic-workspace
+# nixtastic
 
 One base directory for working across every Meshtastic repo, with the right
 toolchain for each supplied by Nix.
@@ -30,16 +30,16 @@ curl -fsSL https://install.determinate.systems/nix | sh -s -- install
 
 # 2. This workspace — PRIVATE, so the new machine needs credentials first
 #    SSH key already on the box:
-git clone git@github.com:jamesarich/meshtastic-workspace.git ~/meshtastic
+git clone git@github.com:jamesarich/nixtastic.git ~/meshtastic
 #    No key? authenticate, then clone over HTTPS:
-#      gh auth login && gh repo clone jamesarich/meshtastic-workspace ~/meshtastic
+#      gh auth login && gh repo clone jamesarich/nixtastic ~/meshtastic
 #    No gh either? bundle it across from a machine that has it — no token
 #    ever lands on the new box:
-#      git -C ~/meshtastic bundle create /tmp/mw.bundle --all
-#      scp /tmp/mw.bundle newbox:/tmp/
-#      ssh newbox 'git clone -b main /tmp/mw.bundle ~/meshtastic &&
+#      git -C ~/meshtastic bundle create /tmp/nixtastic.bundle --all
+#      scp /tmp/nixtastic.bundle newbox:/tmp/
+#      ssh newbox 'git clone -b main /tmp/nixtastic.bundle ~/meshtastic &&
 #        git -C ~/meshtastic remote set-url origin \
-#          https://github.com/jamesarich/meshtastic-workspace'
+#          https://github.com/jamesarich/nixtastic'
 cd ~/meshtastic
 
 # 3. Auto-activate on cd — do this, everything below assumes it
@@ -299,3 +299,15 @@ file here is untracked until you whitelist it.**
 
 `.cache/` is the workspace-local Gradle cache and grows to several GB. It's
 disposable; deleting it costs a re-download, nothing else.
+
+---
+
+## License
+
+GPL-3.0-only — see [LICENSE](./LICENSE). Chosen to match the Meshtastic org,
+where `firmware` and `meshtastic-mcp` are both GPL-3.0, so donating this repo
+upstream would need no relicensing conversation.
+
+It covers this repo only: the flake, `direnvrc`, and the docs. The ten repos it
+clones are separate projects under their own licenses, and nothing here vendors
+any of their code.

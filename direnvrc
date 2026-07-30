@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 James Rich
+# SPDX-License-Identifier: GPL-3.0-only
+#
 # Workspace direnv configuration.
 #
 # Wire it up once per machine (README step 3):
@@ -49,7 +52,7 @@ if declare -f use_nix >/dev/null 2>&1; then
   use_nix() {
     if [ -f "$PWD/.envrc-workspace" ]; then
       watch_file "$PWD/.envrc-workspace"
-      log_status "meshtastic-workspace: .envrc-workspace overrides upstream 'use nix'"
+      log_status "nixtastic: .envrc-workspace overrides upstream 'use nix'"
       # shellcheck source=/dev/null
       . "$PWD/.envrc-workspace"
       return
