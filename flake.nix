@@ -441,6 +441,7 @@
               cmake
               ninja
               clang-tools # clang-tidy etc.; ships no compiler driver
+              yaml-cpp # -lyaml-cpp in the native/portduino link (variants/native/portduino.ini)
             ]);
             shellHook =
               serialHook
@@ -496,6 +497,18 @@
                 # downloading its own CPython.
                 export UV_PYTHON="${python}/bin/python3"
                 export UV_PYTHON_DOWNLOADS=never
+                # ...which means the venv's manylinux wheels (numpy, opencv,
+                # torch — the [ui]/[sdr] extras) load against Nix's loader,
+                # and it cannot see the system libstdc++/libz they link. The
+                # import dies as "Importing the numpy C-extensions failed",
+                # naming neither library; the real cause is the last line of
+                # the traceback (libstdc++.so.6 / libz.so.1 not found).
+                export LD_LIBRARY_PATH="${
+                  pkgs.lib.makeLibraryPath [
+                    pkgs.stdenv.cc.cc.lib
+                    pkgs.zlib
+                  ]
+                }''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
                 echo "  uv sync && uv run pytest"
                 echo ""
               '';
