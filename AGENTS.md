@@ -106,6 +106,67 @@ already FHS, so it buys nothing.
 Also: do not add `gcc-arm-embedded`. PlatformIO fetches its own cross-toolchains
 into `PLATFORMIO_CORE_DIR`, and two on PATH produces baffling link errors.
 
+### clangd needs three things, not one
+
+`clang-tools` is the one deliberate exception to the rule above, and it is safe
+for a checkable reason: the package ships **no bare compiler driver**. Its
+`bin/` holds `clangd`, `clang-format`, `clang-tidy` and friends — no `clang`,
+`clang++`, `cc` or `gcc` to shadow PlatformIO's cross-compilers.
+
+Getting from "clangd is installed" to "clangd works" took three pieces. Each
+was invisible until the previous one was fixed, and the error count on
+`src/main.cpp` went 37 → 13 → 9 → **0**:
+
+1. **A compile database.** `pio run -e heltec-v3 -t compiledb` writes 714
+   entries to `firmware/compile_commands.json` (~33 MB). Upstream already
+   gitignores `/compile_commands.json`, so generating it leaves the tree clean.
+
+2. **`--query-driver`.** The database records
+   `xtensa-esp32s3-elf-g++` invocations, and clangd cannot guess that driver's
+   builtin system include paths. Without it every translation unit dies at the
+   first libc header — `'machine/endian.h' file not found`. This is a clangd
+   **command-line flag**; `.clangd` config cannot set it. So the flake wraps
+   the binary (`clangdPio`) rather than asking each editor to pass it, and that
+   wrapper is listed **first** in the firmware shell so it shadows the plain
+   `clangd` in `clang-tools`. Do not reorder. Confirm with:
+
+   ```bash
+   command -v clangd    # must be the .../clangd/bin/clangd wrapper
+   ```
+
+3. **A `.clangd` file.** The database quotes GCC flags clang rejects outright
+   (`-mlongcalls`, `-mtext-section-literals`, `-fstrict-volatile-bitfields`,
+   `-fno-tree-switch-conversion`, `-freorder-blocks`, `-fno-jump-tables`), plus
+   one include chain that reaches a host glibc header expecting `__GLIBC_USE`,
+   which newlib does not define. Upstream tracks no `.clangd`, so ours is local
+   and globally ignored. Recreate `firmware/.clangd` as:
+
+   ```yaml
+   CompileFlags:
+     Remove:
+       - -mlongcalls
+       - -mtext-section-literals
+       - -fstrict-volatile-bitfields
+       - -fno-tree-switch-conversion
+       - -freorder-blocks
+       - -fno-jump-tables
+     Add:
+       - "-D__GLIBC_USE(x)=0"
+   ```
+
+   This affects clangd only. The real build never sees it.
+
+Verify the whole chain with `clangd --check=src/main.cpp`. Note that `--check`
+reports its refactoring probe as errors: eight `ExtractFunction ==> FAIL:
+Cannot extract break/continue` lines are expected and are **not** diagnostics.
+Read the `[diagnostic_name]` lines, not the total.
+
+**Formatting is not clangd's job here.** firmware's tracked
+`.vscode/settings.json` sets `editor.defaultFormatter` to `trunk.io` for
+`[cpp]`, and trunk fetches its own `clang-format`. The `clang-format` on PATH
+from `clang-tools` is incidental — do not wire an editor to it and end up
+fighting trunk over the same files.
+
 ---
 
 ## Git across repos

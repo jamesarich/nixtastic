@@ -172,6 +172,19 @@ pio run -e heltec-v3 -t upload
 pio device monitor
 ```
 
+Code intelligence needs a compile database — once per environment, and again
+after changing `platformio.ini`:
+
+```bash
+pio run -e heltec-v3 -t compiledb   # ~40s, writes compile_commands.json
+clangd --check=src/main.cpp         # optional: confirm it parses
+```
+
+The shell wraps `clangd` with `--query-driver` so it can read the xtensa
+toolchain's system headers, and `firmware/.clangd` strips the GCC-only flags.
+Both are already in place; the shell warns if either goes missing. Any editor
+with an LSP client picks it up.
+
 **Work on the SDK**
 
 ```bash

@@ -238,6 +238,36 @@
             bluez
           ];
 
+          #########################################################
+          # clangd for firmware.
+          #
+          # compile_commands.json alone is NOT enough. Its entries invoke
+          # PlatformIO's cross-compiler (xtensa-esp32s3-elf-g++ for ESP32,
+          # arm-none-eabi-g++ for nRF52), and clangd cannot guess that
+          # driver's builtin system include paths. Every translation unit
+          # then dies at the first libc header:
+          #
+          #     'machine/endian.h' file not found  ->  1 error, stopping now
+          #
+          # --query-driver lets clangd execute the driver to extract them.
+          # It is a clangd COMMAND-LINE flag; .clangd config cannot set it.
+          # So wrap the binary rather than ask every editor to pass it —
+          # same reasoning as platformio-core over platformio: the shell
+          # should hand you a tool that already works.
+          #
+          # The glob is deliberately narrow: only PlatformIO's own package
+          # dir, only gcc/g++ drivers. clangd will not execute anything else.
+          #########################################################
+          clangdPio = pkgs.writeShellApplication {
+            name = "clangd";
+            text = ''
+              pio_dir="''${PLATFORMIO_CORE_DIR:-$HOME/.platformio}"
+              exec ${pkgs.clang-tools}/bin/clangd \
+                --query-driver="$pio_dir/packages/*/bin/*-gcc,$pio_dir/packages/*/bin/*-g++" \
+                "$@"
+            '';
+          };
+
           serialHook = lib.optionalString isLinux ''
             if [ -n "$(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null)" ]; then
               if ! id -nG | grep -qw dialout; then
@@ -335,21 +365,57 @@
           # dynamically-linked toolchains run on NixOS. Ubuntu is already
           # FHS, so it buys nothing here. ON NIXOS, SWAP THIS BACK to
           # pkgs.platformio or the downloaded toolchains will not run.
+          #
+          # clang-tools is the ONE exception to the "no second toolchain"
+          # rule above, and it is safe for a specific reason: the package
+          # ships no bare compiler driver. Its bin/ is clangd, clang-format,
+          # clang-tidy and friends — no `clang`, `clang++`, `cc` or `gcc` to
+          # shadow the cross-compilers PlatformIO downloads. Verified by
+          # listing the derivation's bin/.
+          #
+          # clangd needs compile_commands.json, which PlatformIO generates:
+          #     pio run -e heltec-v3 -t compiledb
+          # Upstream already gitignores /compile_commands.json, so producing
+          # it leaves the tree clean.
+          #
+          # Formatting stays with trunk: firmware's tracked
+          # .vscode/settings.json sets editor.defaultFormatter to trunk.io
+          # for [cpp], and trunk fetches its own clang-format. The
+          # clang-format landing on PATH here is incidental — don't wire an
+          # editor to it and end up fighting trunk over the same files.
           #########################################################
           firmware = pkgs.mkShell {
             name = "meshtastic-firmware";
-            packages = common ++ nodeTools ++ (with pkgs; [
+            # clangdPio comes FIRST so its wrapper shadows the plain clangd
+            # in clang-tools. Verified with `command -v clangd` — do not
+            # reorder. clang-tools is still here for clang-tidy, clang-query
+            # and the rest, which need no wrapping.
+            packages = [ clangdPio ] ++ common ++ nodeTools ++ (with pkgs; [
               platformio-core
               python
               ccache
               cmake
               ninja
+              clang-tools # clang-tidy etc.; ships no compiler driver
             ]);
             shellHook = serialHook + pythonHook + (banner "firmware" "firmware — default env: heltec-v3") + ''
               export PLATFORMIO_CORE_DIR="''${PLATFORMIO_CORE_DIR:-$HOME/.platformio}"
               echo "  pio run -e heltec-v3"
               echo "  pio run -e heltec-v3 -t upload"
               echo "  pio device monitor"
+              if [ -n "''${MESHTASTIC_WORKSPACE:-}" ]; then
+                fw="$MESHTASTIC_WORKSPACE/firmware"
+                if [ ! -f "$fw/compile_commands.json" ]; then
+                  echo ""
+                  echo "  !  no compile_commands.json — clangd cannot resolve includes."
+                  echo "     pio run -e heltec-v3 -t compiledb"
+                fi
+                if [ ! -f "$fw/.clangd" ]; then
+                  echo ""
+                  echo "  !  no .clangd — clangd will reject the xtensa GCC flags."
+                  echo "     recreate it from AGENTS.md (Firmware / clangd)."
+                fi
+              fi
               echo ""
             '';
           };
