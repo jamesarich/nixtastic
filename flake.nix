@@ -1354,6 +1354,37 @@
         }
       );
 
-      formatter = forAllSystems ({ pkgs, ... }: pkgs.nixfmt);
+      # `nix fmt` passes the paths to format, and passes NOTHING when run bare.
+      # Plain `pkgs.nixfmt` then falls back to stdin, reads an empty stream and
+      # dies with `unexpected end of input` — so bare `nix fmt` has never worked
+      # here, and nixfmt now warns that the bare invocation is deprecated at all.
+      # CI caught it on its first run. Hence the wrapper.
+      #
+      # `git ls-files` rather than `find`: the ten cloned repos live under this
+      # directory and ship their own .nix files (firmware carries a flake), so a
+      # bare find would reformat someone else's tracked source. Deny-by-default
+      # means this lists exactly the files this repo owns.
+      formatter = forAllSystems (
+        { pkgs, ... }:
+        pkgs.writeShellApplication {
+          name = "nixtastic-fmt";
+          runtimeInputs = [
+            pkgs.nixfmt
+            pkgs.git
+          ];
+          text = ''
+            if [ "$#" -gt 0 ]; then
+              files=( "$@" )
+            else
+              mapfile -t files < <(git ls-files '*.nix')
+            fi
+            if [ "''${#files[@]}" -eq 0 ]; then
+              echo "no .nix files to format" >&2
+              exit 0
+            fi
+            nixfmt "''${files[@]}"
+          '';
+        }
+      );
     };
 }
