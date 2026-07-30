@@ -288,12 +288,18 @@ passing does not mean any repo builds.
 | `nix run .#worktree -- <repo> <branch>` | worktree with the correct shell |
 | `nix run .#worktree -- --list \| --prune` | manage worktrees across all repos |
 | `nix run .#bootstrap-sdk` | install Android SDK packages from the pinned list |
+| `nix run .#doctor` | check the wiring below; exits non-zero if anything is broken |
 
 ---
 
 ## When something looks wrong
 
-These fail **quietly** — no error, just wrong behaviour.
+These fail **quietly** — no error, just wrong behaviour. Run this first; it
+checks most of the table and prints the exact command to fix what it finds:
+
+```bash
+nix run .#doctor
+```
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |

@@ -1382,6 +1382,175 @@
               echo "  nix run .#brief -- $dir"
             '';
           };
+
+          #########################################################
+          # nix run .#doctor — check the wiring the README's
+          # "When something looks wrong" table describes.
+          #
+          # Every failure mode in that table is silent: nothing errors,
+          # you just get the wrong toolchain, an unpinned JDK, or an MCP
+          # server that stopped starting. Reading a table to diagnose
+          # silence is the part worth automating — setup happens once
+          # per machine, but these recur.
+          #
+          # direnv is deliberately NOT in runtimeInputs. It is the
+          # user's install being checked; adding ours would make the
+          # check pass by construction.
+          #########################################################
+          doctor = pkgs.writeShellApplication {
+            name = "meshtastic-doctor";
+            runtimeInputs = [
+              pkgs.git
+              pkgs.coreutils
+              pkgs.jq
+            ];
+            text = ''
+              root="''${MESHTASTIC_WORKSPACE:-$PWD}"
+              fails=0
+              warns=0
+
+              ok()   { printf '  ok    %-18s %s\n' "$1" "''${2:-}"; }
+              warn() { printf '  WARN  %-18s %s\n' "$1" "''${2:-}"; warns=$((warns + 1)); }
+              bad()  { printf '  FAIL  %-18s %s\n' "$1" "''${2:-}"; fails=$((fails + 1)); }
+              fix()  { printf '        %-18s -> %s\n' "" "$1"; }
+
+              echo ""
+              echo "  nixtastic doctor"
+              echo "  ────────────────────────────────────────────────────"
+
+              # --- the workspace itself -------------------------------
+              if [ -z "''${MESHTASTIC_WORKSPACE:-}" ]; then
+                # Everything downstream keys off this. Unset is the single
+                # highest-consequence failure here: JDK pinning goes inert
+                # and Gradle silently provisions its own toolchains.
+                bad "workspace" "MESHTASTIC_WORKSPACE unset (guessed $root)"
+                fix "cd $root && direnv allow"
+              elif [ ! -f "$root/flake.nix" ]; then
+                bad "workspace" "$root has no flake.nix"
+              else
+                ok "workspace" "$root"
+              fi
+
+              # --- direnv ---------------------------------------------
+              if ! command -v direnv >/dev/null 2>&1; then
+                bad "direnv" "not on PATH"
+                fix "nix profile install nixpkgs#nix-direnv"
+              else
+                ok "direnv" "$(command -v direnv)"
+              fi
+
+              drc="''${XDG_CONFIG_HOME:-$HOME/.config}/direnv/direnvrc"
+              if [ ! -f "$drc" ]; then
+                bad "direnvrc" "$drc missing"
+                fix "mkdir -p $(dirname "$drc") && echo 'source \"$root/direnvrc\"' > $drc"
+              elif ! grep -qF "$root/direnvrc" "$drc"; then
+                # Sourcing someone else's direnvrc is not neutral: this
+                # repo's carries the use_nix override that keeps firmware
+                # off upstream's PlatformIO choice.
+                bad "direnvrc" "does not source $root/direnvrc"
+                fix "echo 'source \"$root/direnvrc\"' > $drc"
+              else
+                ok "direnvrc" "sources this repo"
+              fi
+
+              gitignore="''${XDG_CONFIG_HOME:-$HOME/.config}/git/ignore"
+              missing=""
+              for pat in .envrc .direnv/ .envrc-workspace; do
+                grep -qxF "$pat" "$gitignore" 2>/dev/null || missing="$missing $pat"
+              done
+              if [ -n "$missing" ]; then
+                warn "git ignore" "missing:$missing"
+                fix "mkdir -p $(dirname "$gitignore") && printf '%s\\n'$missing >> $gitignore"
+              else
+                ok "git ignore" "direnv files excluded globally"
+              fi
+
+              # --- per-repo shells ------------------------------------
+              cloned=0
+              noenvrc=""
+              while IFS=$'\t' read -r dir _ _; do
+                [ -d "$root/$dir/.git" ] || continue
+                cloned=$((cloned + 1))
+                # firmware tracks its own .envrc, so the sidecar is the
+                # file that matters there — see AGENTS.md.
+                if [ ! -e "$root/$dir/.envrc" ] && [ ! -e "$root/$dir/.envrc-workspace" ]; then
+                  noenvrc="$noenvrc $dir"
+                fi
+              done <<< "$(printf '%s\n' ${nixpkgs.lib.escapeShellArgs entries})"
+
+              if [ "$cloned" -eq 0 ]; then
+                bad "repos" "none cloned"
+                fix "nix run .#sync"
+              elif [ -n "$noenvrc" ]; then
+                bad "repos" "$cloned cloned; no .envrc:$noenvrc"
+                fix "nix run .#sync"
+              else
+                ok "repos" "$cloned cloned, each with a shell"
+              fi
+
+              if [ -d "$root/firmware/.git" ] && [ ! -e "$root/firmware/.envrc-workspace" ]; then
+                warn "firmware envrc" "no .envrc-workspace sidecar"
+                fix "nix run .#sync"
+              fi
+
+              # --- JDK pinning ----------------------------------------
+              # The failure this catches is silent and expensive: Gradle
+              # downloading its own JDKs behind Nix's back.
+              guh="''${GRADLE_USER_HOME:-$root/.cache/gradle}"
+              if [ ! -f "$guh/gradle.properties" ]; then
+                warn "jdk pinning" "no gradle.properties in $guh"
+                fix "enter any JVM shell once: nix develop .#kotlin"
+              elif ! grep -q 'auto-download=false' "$guh/gradle.properties"; then
+                bad "jdk pinning" "auto-download not disabled"
+              else
+                ok "jdk pinning" "$guh"
+              fi
+
+              # --- Android SDK ----------------------------------------
+              sdk="''${ANDROID_HOME:-$HOME/Android/Sdk}"
+              if [ ! -d "$sdk/platform-tools" ]; then
+                warn "android sdk" "no platform-tools in $sdk"
+                fix "nix run .#bootstrap-sdk"
+              else
+                ok "android sdk" "$sdk"
+              fi
+
+              # --- MCP registration -----------------------------------
+              # Store paths are the whole point of checking this: they go
+              # stale on `nix flake update` and the server then fails to
+              # start with nothing said anywhere.
+              mcp="$root/.mcp.json"
+              if [ ! -f "$mcp" ]; then
+                warn "mcp registration" "no .mcp.json"
+                fix "nix run .#sync"
+              elif ! jq -e . "$mcp" >/dev/null 2>&1; then
+                bad "mcp registration" ".mcp.json does not parse"
+                fix "nix run .#sync"
+              else
+                cmd=$(jq -r '.mcpServers.meshtastic.command // ""' "$mcp")
+                if [ -z "$cmd" ] || [ ! -x "$cmd" ]; then
+                  bad "mcp registration" "command missing: ''${cmd:-unset}"
+                  fix "nix run .#sync   (store paths go stale on flake update)"
+                else
+                  ok "mcp registration" "command resolves"
+                fi
+              fi
+
+              if [ -d "$root/.claude/skills/meshtastic-device-ops" ]; then
+                ok "agent skills" "$root/.claude/skills"
+              else
+                warn "agent skills" "bundled skills not installed"
+                fix "(cd $root/meshtastic-mcp && uv run meshtastic-mcp skills install --dest $root/.claude/skills)"
+              fi
+
+              echo ""
+              if [ "$fails" -gt 0 ]; then
+                printf '  %s failure(s), %s warning(s)\n\n' "$fails" "$warns"
+                exit 1
+              fi
+              printf '  all clear (%s warning(s))\n\n' "$warns"
+            '';
+          };
         in
         {
           sync = {
@@ -1403,6 +1572,10 @@
           worktree = {
             type = "app";
             program = "${worktree}/bin/meshtastic-worktree";
+          };
+          doctor = {
+            type = "app";
+            program = "${doctor}/bin/meshtastic-doctor";
           };
         }
       );
