@@ -1,10 +1,17 @@
 # nixtastic
 
+[![ci](https://github.com/jamesarich/nixtastic/actions/workflows/ci.yml/badge.svg)](https://github.com/jamesarich/nixtastic/actions/workflows/ci.yml)
+
 One base directory for working across every Meshtastic repo, with the right
 toolchain for each supplied by Nix.
 
 It does not vendor the repos — it clones them, gives each one a dev shell, and
-keeps them oriented. Ten repos, eight shells, one place to start.
+keeps them oriented. One place to start; see [Shells](#shells) for the full set.
+
+**Needs:** Nix with flakes, `git`, and a Linux or Apple-silicon host (Intel macOS
+is out — nixpkgs dropped it). Everything else — JDKs, the Android SDK,
+PlatformIO, `buf`, Node — is supplied per shell. Budget tens of GB: the repos,
+their build caches and the Nix store all land on the same disk.
 
 The checkout directory can be named anything and live anywhere — everything
 derives from `MESHTASTIC_WORKSPACE`. Verified by bootstrapping a second host
@@ -63,7 +70,9 @@ nix run .#bootstrap-sdk
 
 Step 3 points at [`direnvrc`](./direnvrc) in this repo rather than pasting a
 snippet: it sources nix-direnv *and* carries the override that keeps `firmware`
-off upstream's broken PlatformIO. It is the one line that must name your
+on this workspace's PlatformIO rather than the one upstream's tracked `.envrc`
+selects. (Upstream is not wrong — it targets NixOS, where its choice is the
+correct one. See [Shells](#shells).) It is the one line that must name your
 checkout path — everything else derives.
 
 Step 4 lists three files, and `.mcp.json` is deliberately not among them —
@@ -239,8 +248,8 @@ cd design && cd tokens && npm ci && npm run build
 | --- | --- |
 | `.#kotlin` | `meshtastic-sdk`, `MQTTastic-Client-KMP`, `kzstd`, `gradle-flatpak-sources` |
 | `.#android` | `android` |
-| `.#firmware` | `firmware` |
-| `.#firmware-fhs` | `firmware`, on NixOS and other non-FHS hosts |
+| `.#firmware` | `firmware` — on any FHS host, i.e. every mainstream distro and macOS |
+| `.#firmware-fhs` | `firmware` — on NixOS and other non-FHS hosts |
 | `.#mcp` | `meshtastic-mcp` |
 | `.#protobufs` | `protobufs` |
 | `.#design` | `design` |
@@ -251,11 +260,28 @@ cd design && cd tokens && npm ci && npm run build
 `direnv` picks these automatically per directory. `nix develop .#<shell>` to
 enter one explicitly.
 
+The two `firmware` shells differ only in which PlatformIO they carry, and the
+right one depends on the **host**, not the target. `.#firmware` ships
+`platformio-core`; `.#firmware-fhs` ships `pkgs.platformio`, whose `buildFHSEnv`
+wrapper is what lets PlatformIO's downloaded toolchains find a dynamic loader on
+a non-FHS system — and whose bubblewrap sandbox is what AppArmor denies on
+Ubuntu. Each shell notices at startup when you have picked the wrong one and
+names the other. The flake does not choose for you, on purpose:
+[`AGENTS.md`](./AGENTS.md) has the reasoning.
+
+### Flake outputs
+
+`devShells` and `apps` per system, plus `formatter` (nixfmt, wrapped so bare
+`nix fmt` works) and a non-standard `workspace` attribute — the repo list the
+apps are generated from. `nix flake check --all-systems` evaluates every shell
+for all three systems, and CI runs it on push and PR. It only **evaluates**;
+passing does not mean any repo builds.
+
 ### Commands
 
 | Command | Does |
 | --- | --- |
-| `nix run .#sync` | fetch all, report drift. Read-only *for git*; always regenerates `.envrc` and `.mcp.json`. |
+| `nix run .#sync` | fetch all, report drift. Read-only *for git*; always regenerates `.envrc` and `.mcp.json`. Bare `nix run .` is the same thing. |
 | `nix run .#sync -- --pull` | fast-forward where safe |
 | `nix run .#sync -- --main` | switch each repo to its default branch, then pull |
 | `nix run .#brief -- <repo>` | orient: branch, shell, docs to read, PRs |
@@ -280,7 +306,8 @@ These fail **quietly** — no error, just wrong behaviour.
 | `./gradlew` can't start a daemon | repo needs a JDK vendor/version not present | all six JDKs must stay in `flake.nix` |
 | A repo looks clean but is behind | single-branch clone | `nix run .#sync -- --pull` widens the refspec |
 | `firmware` dirty right after a pull | upstream moved the submodule pointer | `--pull` re-syncs automatically; else `git submodule update --init --recursive` |
-| `bwrap: setting up uid map` | FHS-wrapped `platformio` vs Ubuntu AppArmor | already fixed — the flake uses `platformio-core` |
+| `bwrap: setting up uid map` | FHS-wrapped `platformio` vs Ubuntu AppArmor | you are in `.#firmware-fhs` on an FHS host — use `.#firmware` |
+| PlatformIO's toolchains won't run on NixOS | `.#firmware` ships `platformio-core`, which has no FHS tree | use `.#firmware-fhs`; the shell says so at startup |
 | `nix: command not found` over SSH or in a script | Nix's profile snippet isn't sourced by non-interactive shells, **even with `bash -lc`** | use the absolute path: `export PATH=/nix/var/nix/profiles/default/bin:$PATH` |
 
 Verify JDK pinning is live:
@@ -297,8 +324,10 @@ found by a failing build.
 ## Housekeeping
 
 `.gitignore` denies everything by default and whitelists specific paths, so Nix
-copies ~40 KB into the store instead of the ~15 GB of checked-out repos. **A new
-file here is untracked until you whitelist it.**
+copies only this repo's own tracked files into the store — a few hundred KB —
+rather than the tens of GB of checked-out repos sitting beside them. **A new file
+here is untracked until you whitelist it**, which is deliberate: forgetting is
+inert, whereas an accidental `git add` of `firmware/` would not be.
 
 `.cache/` is the workspace-local Gradle cache and grows to several GB. It's
 disposable; deleting it costs a re-download, nothing else.
@@ -311,6 +340,6 @@ GPL-3.0-only — see [LICENSE](./LICENSE). Chosen to match the Meshtastic org,
 where `firmware` and `meshtastic-mcp` are both GPL-3.0, so donating this repo
 upstream would need no relicensing conversation.
 
-It covers this repo only: the flake, `direnvrc`, and the docs. The ten repos it
+It covers this repo only: the flake, `direnvrc`, and the docs. The repos it
 clones are separate projects under their own licenses, and nothing here vendors
 any of their code.

@@ -135,9 +135,11 @@ nativeBuildInputs contribute `-isystem` too. `bluez` already demonstrated that
 — it is in `nodeTools` and its include dir was already reaching
 `NIX_CFLAGS_COMPILE`, which is what made the one-line addition enough.
 
-`doctor` still reports it missing when run *outside* `.#firmware`: it probes
-system paths and cannot see a store path. Upstream PR #48 teaches it to read
-the include path instead.
+Since meshtastic-mcp `a156611`, `doctor` reads the compiler's include path
+(`CPATH`, `C_INCLUDE_PATH`, `CPLUS_INCLUDE_PATH` and the `-isystem` flags in
+`NIX_CFLAGS_COMPILE`) rather than only `/usr/include`, so inside `.#firmware` it
+now reports this **ok**. Outside any shell it still reports missing, correctly:
+nothing has put yaml-cpp on that host's include path.
 
 ### clangd needs three things, not one
 
