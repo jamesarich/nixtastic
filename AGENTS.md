@@ -467,4 +467,10 @@ launches the server outside that shell.
   devShells and apps are merely evaluated (verified by feeding it an app with
   a guaranteed SC2086 failure, which passed). That is why every tool script is
   listed in `checks` — remove one and ShellCheck silently stops gating it.
+- The tool scripts are real files in [`scripts/`](./scripts), not flake
+  strings — edit them there. The flake assembles each tool (`lib.sh` is
+  prepended to `sync` and `worktree`; everything Nix must supply arrives as
+  `NIXTASTIC_*` env vars via `runtimeEnv`), so ShellCheck still sees each
+  tool whole when `checks` builds. New scripts must be whitelisted in
+  `.gitignore` **and** at least `git add`ed, or pure eval cannot see them.
 - Prefer verifying over asserting. Every claim above has a command behind it.

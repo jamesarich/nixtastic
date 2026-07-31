@@ -20,6 +20,7 @@ into `~/meshtastic-workspace`, a different name from the one used below.
 ```
 $MESHTASTIC_WORKSPACE/         (any path, any name)
 ├── flake.nix              the toolchains
+├── scripts/               the tool scripts (.#sync, .#worktree, .#doctor, …)
 ├── direnvrc               sourced by ~/.config/direnv/direnvrc
 ├── CLAUDE.md              agent router — repo index + protocol
 ├── AGENTS.md              why the constraints exist

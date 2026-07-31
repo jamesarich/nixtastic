@@ -24,6 +24,11 @@
 !/flake.nix
 !/flake.lock
 !/android-sdk-packages.txt
+# The tool scripts the flake assembles into .#sync, .#worktree, .#brief,
+# .#doctor and .#bootstrap-sdk. Real files so they are editable with shell
+# tooling; must be tracked or pure eval cannot see them.
+!/scripts/
+!/scripts/*.sh
 
 # --- documentation --------------------------------------------------------
 # Policy, not a list: any markdown at the workspace root is workspace
