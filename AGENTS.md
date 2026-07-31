@@ -270,6 +270,16 @@ Three consequences worth knowing:
 - **Project-scope servers need consent once per machine**, the same model as
   direnv. `.#sync` prints the reminder; approve with `/mcp`.
 
+**Upstream may track its own `.mcp.json`** — `android`, `firmware` and
+`meshtastic-mcp` all do (android's registers context7 for the team). A tracked
+file always wins: neither `.#worktree` nor `.#sync` will write ours where one
+exists, because overwriting would dirty the tree and stomp the team's
+registrations. (`.#worktree` used to do exactly that, unconditionally — the
+same failure class the `.envrc` sidecar exists to avoid, one file over.) The
+consequence: in an `android` or `firmware` worktree the meshtastic-mcp tools
+are not project-registered — run the client from the workspace root when you
+need them.
+
 The bundled agent skills are *not* installed from here — on a fresh machine that
 would trigger a full `uv sync` inside a git tool. `.#sync` prints the command
 when `.claude/skills/` is missing.
@@ -300,16 +310,45 @@ diagnosis. Confirm with `direnv exec <dir> true`, which errors plainly if
 blocked. Editing an `.envrc` revokes its approval — expect to re-`allow`
 after any change here.
 
-### Worktrees need their shell attached
+### Worktrees need outfitting — and `sync` now adopts strays
 
-A hand-made `git worktree` inherits only the workspace-root `.envrc` and gets
-the **default** shell — verified: no `scrcpy`, wrong `android` binary, no error.
-Use `nix run .#worktree`.
+An earlier claim here — that a hand-made `git worktree` gets the **default**
+shell — went stale when the per-repo `.envrc` files landed (f6b6888) and has
+been re-verified the other way: a bare worktree **under** the repo (e.g.
+`android/.claude/worktrees/x`) inherits the repo's own `.envrc` from the
+nearest ancestor, evaluated with cwd at the repo, so it gets the right shell
+*and* the right `MESHTASTIC_WORKSPACE`. What a bare worktree still lacks, all
+silent:
 
-A worktree is a full checkout, so it carries whatever `.envrc` the repo tracks.
-For `firmware` that means `.#worktree` writes the `.envrc-workspace` sidecar
-rather than overwriting the tracked file, which would otherwise leave every new
-firmware worktree dirty at creation.
+- **`.mcp.json`** — it is per directory, so the MCP tools are simply absent.
+  (Unless upstream tracks its own, as `android` and `firmware` do — theirs
+  wins, ours is never written beside it; see the `.mcp.json` section above.)
+- **The `.envrc-workspace` sidecar** where the repo tracks its own `.envrc`.
+  A bare `firmware` worktree runs upstream's `use nix` → bwrap-broken
+  platformio. (`.#worktree` writes the sidecar rather than overwriting the
+  tracked file, which would leave the worktree dirty at creation.)
+- **Any shell at all** if parked outside the repo tree — nothing to inherit.
+
+`nix run .#worktree` writes all of this up front; `nix run .#sync` **adopts**
+worktrees created behind its back (hand-made, agent skills, harness
+isolation), writing whichever of the three pieces is missing, idempotently.
+`nix run .#doctor` warns about unoutfitted ones.
+
+### Agent-harness worktree isolation makes a decoy workspace
+
+An agent harness's worktree isolation (Claude Code's `isolation: "worktree"`,
+`EnterWorktree`) run at the workspace root makes a worktree **of the
+workspace repo** — verified: it lands in `.claude/worktrees/agent-*` with the
+tracked files and **none of the org repos**, which are untracked. Its copy of
+the tracked root `.envrc` would have pointed every cache and clone at that
+decoy; the root `.envrc` now resolves the **main checkout** via
+`git rev-parse --git-common-dir` and exports that instead (in the real root
+the two are identical). `use flake` stays bare on purpose — a workspace
+worktree exists to test its own flake edits.
+
+Even with that guard, harness isolation is the wrong tool for **repo** work:
+the repos are not in the worktree. Use `nix run .#worktree -- <repo>
+<branch>`.
 
 Ignoring is done two ways, neither of them a tracked `.gitignore` — editing one
 in an org repo is not ours to do. `.claude/worktrees/` and `.mcp.json` go in

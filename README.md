@@ -152,9 +152,15 @@ nix run .#worktree -- android fix/6360-coarse-position
 cd android/.claude/worktrees/fix-6360-coarse-position && direnv allow
 ```
 
-The worktree gets **that repo's** shell. Creating one by hand with `git
-worktree add` gets you the workspace default shell instead, silently — wrong
-toolchain, no obvious error.
+The worktree arrives fully outfitted: **that repo's** shell, plus the
+`.mcp.json` the MCP tools need — unless upstream tracks its own `.mcp.json`
+(`android` and `firmware` do), in which case theirs wins and the meshtastic
+tools stay with clients run from the workspace root. One made by hand with
+`git worktree add` (or by an agent skill) inherits the right shell from the
+repo's `.envrc` these days, but silently lacks the generated files — for
+`firmware`, including the sidecar that keeps it off upstream's broken
+PlatformIO. `nix run .#sync` adopts strays and writes whatever is missing;
+`nix run .#doctor` warns about them.
 
 ### Wrapping up
 
@@ -296,7 +302,7 @@ repo builds.
 
 | Command | Does |
 | --- | --- |
-| `nix run .#sync` | fetch all, report drift. Read-only *for git*; always regenerates `.envrc` and `.mcp.json`. Bare `nix run .` is the same thing. |
+| `nix run .#sync` | fetch all, report drift. Read-only *for git*; always regenerates `.envrc` and `.mcp.json`, and adopts worktrees it didn't create. Bare `nix run .` is the same thing. |
 | `nix run .#sync -- --pull` | fast-forward where safe |
 | `nix run .#sync -- --main` | switch each repo to its default branch, then pull |
 | `nix run .#brief -- <repo>` | orient: branch, shell, docs to read, PRs |
@@ -321,7 +327,8 @@ nix run .#doctor
 | Gradle downloads its own JDKs | `MESHTASTIC_WORKSPACE` unset, or a hand-written repo `.envrc` that exports it *after* `use flake` | `nix run .#sync` regenerates the file correctly; then `direnv allow` |
 | `cd <repo>` gives the wrong toolchain | that repo has no `.envrc`, so the workspace-root one loads and you get `.#default` | `nix run .#sync` |
 | `pio` dies with `bwrap` in `firmware` | upstream's tracked `.envrc` (`use nix`) won over ours | check `~/.config/direnv/direnvrc` sources this repo's `direnvrc`, and that `firmware/.envrc-workspace` exists |
-| Worktree missing tools (e.g. no `scrcpy`) | created by hand, got the default shell | make it with `nix run .#worktree` |
+| Worktree has no MCP tools, or `firmware` worktree hits `bwrap` | created by hand or by an agent harness — no `.mcp.json`, no sidecar | `nix run .#sync` adopts it; prefer `nix run .#worktree` next time |
+| An agent's isolated worktree has no repos in it | harness worktree isolation clones the *workspace* repo; the org repos are untracked | use `nix run .#worktree -- <repo> <branch>` for repo work |
 | No `meshtastic-mcp` tools in the client | `.mcp.json` is per directory — a worktree, or a repo subdirectory, is not the workspace root | `nix run .#worktree` writes one per worktree; elsewhere run the client from the workspace root |
 | `meshtastic-mcp` server stops starting | its `.mcp.json` names store paths, which `nix flake update` invalidates | `nix run .#sync` regenerates it |
 | `./gradlew` can't start a daemon | repo needs a JDK vendor/version not present | all six JDKs must stay in `flake.nix` |

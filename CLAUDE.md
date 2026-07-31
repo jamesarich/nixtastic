@@ -67,10 +67,19 @@ hand-edit it.
 ## Worktrees
 
 `nix run .#worktree -- <repo> <branch>` creates one under
-`<repo>/.claude/worktrees/` with an `.envrc` selecting that repo's shell, and a
-`.mcp.json` so the `meshtastic-mcp` tools follow you in. A hand-made `git
-worktree` inherits only the workspace root `.envrc` and silently gets the
-**default** shell — wrong toolchain, no error.
+`<repo>/.claude/worktrees/` with the repo's shell wired up and a `.mcp.json`
+so the `meshtastic-mcp` tools follow you in — except where upstream tracks
+its own `.mcp.json` (`android`, `firmware`): theirs wins, so run the client
+from the workspace root for the meshtastic tools there. A worktree made any
+other way (hand-rolled `git worktree`, agent skills) silently lacks these
+files — for `firmware`, including the sidecar that keeps it off upstream's
+broken PlatformIO; `nix run .#sync` adopts such strays and writes what's
+missing.
+
+**Never use the harness's own worktree isolation (`isolation: "worktree"`,
+`EnterWorktree`) for repo work.** At the workspace root it creates a worktree
+of the *workspace* repo, which contains none of the org repos — they are
+untracked. Use `nix run .#worktree` instead.
 
 ## Fails silently — check these first
 
