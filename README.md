@@ -314,6 +314,10 @@ repo builds.
 | `nix run .#bootstrap-sdk` | install Android SDK packages from the pinned list |
 | `nix run .#doctor` | check the wiring below; exits non-zero if anything is broken |
 
+Shorter spellings for all of these live in the [`justfile`](./justfile) —
+`just sync`, `just brief android`, `just doctor`, `just check` — and `just` is
+in every dev shell.
+
 ---
 
 ## When something looks wrong

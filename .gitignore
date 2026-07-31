@@ -29,6 +29,8 @@
 # tooling; must be tracked or pure eval cannot see them.
 !/scripts/
 !/scripts/*.sh
+# Thin `just` aliases over the flake apps.
+!/justfile
 
 # --- documentation --------------------------------------------------------
 # Policy, not a list: any markdown at the workspace root is workspace

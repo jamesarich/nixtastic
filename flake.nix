@@ -308,6 +308,13 @@
             echo "  ${repos}"
             echo ""
           '';
+          # Which repos a shell serves, derived from the workspace table
+          # so a banner cannot drift when a repo is added or moved.
+          reposFor =
+            shellName:
+            lib.concatStringsSep " · " (
+              lib.attrNames (lib.filterAttrs (_: v: v.shell == shellName) self.workspace)
+            );
           # Which PlatformIO is right depends on the HOST, not the target, and
           # a flake cannot know the host: `builtins.pathExists /etc/NIXOS` does
           # evaluate, but making outputs depend on the evaluating machine means
@@ -404,7 +411,7 @@
               + serialHook
               + (banner "workspace" "all toolchains — use a focused shell for real work")
               + ''
-                echo "  .#kotlin    meshtastic-sdk · MQTTastic-Client-KMP · kzstd · gradle-flatpak-sources"
+                echo "  .#kotlin    ${reposFor "kotlin"}"
                 echo "  .#android   Meshtastic-Android"
                 echo "  .#firmware  firmware (PlatformIO)"
                 echo "  .#mcp       meshtastic-mcp"
@@ -430,7 +437,7 @@
             shellHook =
               jvmHook
               + androidHook
-              + (banner "kotlin" "meshtastic-sdk · MQTTastic-Client-KMP · kzstd · gradle-flatpak-sources")
+              + (banner "kotlin" (reposFor "kotlin"))
               + ''
                 echo "  JDKs: 21 (default), 17, 11 — Gradle toolchains resolved from Nix"
                 echo "  Build with ./gradlew (each repo pins its own Gradle: 9.5.1 / 9.6.1)"
@@ -780,8 +787,7 @@
             runtimeEnv = toolEnv;
             text = builtins.readFile ./scripts/lib.sh + builtins.readFile ./scripts/sync.sh;
           };
-        in
-        let
+
           # nix run .#bootstrap-sdk — reconcile $ANDROID_HOME against
           # android-sdk-packages.txt. This is the portability answer for
           # the one thing Nix isn't managing: the SDK stays writable
@@ -922,6 +928,25 @@
             sync = "${self.packages.${system}.sync}/bin/meshtastic-sync";
             worktree = "${self.packages.${system}.worktree}/bin/meshtastic-worktree";
           } (builtins.readFile ./scripts/tools-tests.sh);
+
+          # statix + deadnix over this repo's own tracked files. ${self}
+          # is the store copy, which the deny-by-default .gitignore
+          # keeps to exactly this repo — the cloned org repos (and their
+          # .direnv nixpkgs symlinks) never land there, so the linters
+          # cannot wander into other people's code.
+          nix-lint =
+            pkgs.runCommand "nixtastic-nix-lint"
+              {
+                nativeBuildInputs = [
+                  pkgs.statix
+                  pkgs.deadnix
+                ];
+              }
+              ''
+                statix check ${self}
+                deadnix --fail ${self}
+                touch "$out"
+              '';
         }
       );
 
