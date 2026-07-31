@@ -296,7 +296,9 @@ The check is two commands, run by CI on push and PR:
 `nix flake check --all-systems --no-build` evaluates every output for all
 three systems, and plain `nix flake check` **builds** this system's `checks`
 — which is when writeShellApplication runs ShellCheck, so the scripts are
-gated for real. Shells are only ever **evaluated**; passing does not mean any
+gated for real, and when the fixture tests for `sync`/`worktree`'s git-state
+logic run (`tools-tests`, a fake ten-repo workspace exercised offline in the
+build sandbox). Shells are only ever **evaluated**; passing does not mean any
 repo builds.
 
 ### Commands

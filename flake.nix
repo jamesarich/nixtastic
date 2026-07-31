@@ -902,10 +902,26 @@
       # darwin and aarch64 checks on this machine too, and dies on
       # "platform mismatch" — verified, not assumed.
       checks = forAllSystems (
-        { system, ... }:
+        { system, pkgs, ... }:
         self.packages.${system}
         // {
           formatter = self.formatter.${system};
+
+          # Fixture tests for the git-state logic in sync and worktree —
+          # drift reporting, fast-forward safety, adoption, tracked-file
+          # respect — against a fake workspace of ten tiny repos with
+          # local bare origins. Offline by construction, so the build
+          # sandbox is a feature: every behaviour tested is pure git
+          # state. runCommand attrs become env vars in the script.
+          tools-tests = pkgs.runCommand "nixtastic-tools-tests" {
+            nativeBuildInputs = [
+              pkgs.git
+              pkgs.coreutils
+              pkgs.jq
+            ];
+            sync = "${self.packages.${system}.sync}/bin/meshtastic-sync";
+            worktree = "${self.packages.${system}.worktree}/bin/meshtastic-worktree";
+          } (builtins.readFile ./scripts/tools-tests.sh);
         }
       );
 

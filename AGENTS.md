@@ -473,4 +473,10 @@ launches the server outside that shell.
   `NIXTASTIC_*` env vars via `runtimeEnv`), so ShellCheck still sees each
   tool whole when `checks` builds. New scripts must be whitelisted in
   `.gitignore` **and** at least `git add`ed, or pure eval cannot see them.
+- The git-state logic in `sync` and `worktree` has fixture tests —
+  [`scripts/tools-tests.sh`](./scripts/tools-tests.sh), built as
+  `checks.<system>.tools-tests` against a fake ten-repo workspace with local
+  bare origins (offline by construction, so the build sandbox is a feature).
+  Changing drift/pull/adoption behaviour means extending them; `nix flake
+  check` runs them.
 - Prefer verifying over asserting. Every claim above has a command behind it.
