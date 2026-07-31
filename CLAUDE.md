@@ -1,8 +1,8 @@
 # CLAUDE.md
 
 Workspace root for multi-repo Meshtastic work. This file is the **router** —
-deliberately small, because the per-repo agent docs below total ~66 KB and
-cannot all be loaded.
+deliberately small, because the per-repo agent docs are far too large to all
+be loaded.
 
 - [`README.md`](./README.md) — human workflow
 - [`AGENTS.md`](./AGENTS.md) — canonical detail and the reasoning behind every
@@ -28,16 +28,19 @@ been skipped in practice, which is why `.#brief` exists.
 
 | Repo | Role | Stack | Shell | Branch | Commits | Agent docs |
 | --- | --- | --- | --- | --- | --- | --- |
-| `firmware` | device firmware | C++ / PlatformIO | `.#firmware` | `develop` | sentence-style, ad-hoc prefixes | `AGENTS.md` 20 KB |
-| `android` | Android + desktop app | Kotlin / Compose | `.#android` | `main` | Conventional | `AGENTS.md` 3 KB, Spec Kit, skills, subagents |
+| `firmware` | device firmware | C++ / PlatformIO | `.#firmware` | `develop` | sentence-style, ad-hoc prefixes | `AGENTS.md` |
+| `android` | Android + desktop app | Kotlin / Compose | `.#android` | `main` | Conventional | `AGENTS.md`, Spec Kit, skills, subagents |
 | `apple` | Apple platform clients | Swift / Xcode | `.#apple` | `main` | Conventional | Spec Kit → [`notes/apple.md`](./notes/apple.md) |
-| `meshtastic-sdk` | KMP client SDK | Kotlin MP | `.#kotlin` | `main` | Conventional | `AGENTS.md` 6 KB, `GOVERNANCE.md`, `CODEOWNERS`, Spec Kit |
-| `MQTTastic-Client-KMP` | MQTT 5 client lib | Kotlin MP | `.#kotlin` | `main` | Conventional | `AGENTS.md` 14 KB |
-| `kzstd` | zstd codec lib | Kotlin MP | `.#kotlin` | `main` | Conventional | `AGENTS.md` 3 KB |
+| `meshtastic-sdk` | KMP client SDK | Kotlin MP | `.#kotlin` | `main` | Conventional | `AGENTS.md`, `GOVERNANCE.md`, `CODEOWNERS`, Spec Kit |
+| `MQTTastic-Client-KMP` | MQTT 5 client lib | Kotlin MP | `.#kotlin` | `main` | Conventional | `AGENTS.md` |
+| `kzstd` | zstd codec lib | Kotlin MP | `.#kotlin` | `main` | Conventional | `AGENTS.md` |
 | `gradle-flatpak-sources` | Flathub manifest plugin | Kotlin / Gradle | `.#kotlin` | `main` | Conventional | → [`notes/gradle-flatpak-sources.md`](./notes/gradle-flatpak-sources.md) |
-| `meshtastic-mcp` | MCP server + agent skills | Python / uv | `.#mcp` | `master` | Conventional | `AGENTS.md` 20 KB, `CONVENTIONS.md`, `llms.txt`, cursor + windsurf rules |
+| `meshtastic-mcp` | MCP server + agent skills | Python / uv | `.#mcp` | `master` | Conventional | `AGENTS.md`, `CONVENTIONS.md`, `llms.txt`, cursor + windsurf rules |
 | `protobufs` | shared `.proto` definitions | buf · deno · gradle · cargo | `.#protobufs` | `master` | mixed | → [`notes/protobufs.md`](./notes/protobufs.md) |
 | `design` | design standards, tokens, assets | node · inkscape | `.#design` | `master` | Conventional | → [`notes/design.md`](./notes/design.md) |
+
+The table is orientation; `nix run .#brief -- <repo>` is truth — it reads the
+live branch, drift, and doc inventory (with sizes) every time.
 
 Not in the workspace: `meshtastic-sniffer` (not the org), `meshtastic-backend`
 (Gradle 7.3.1, predates JDK 21), `pluginmeshtastic` (non-redistributable ATAK

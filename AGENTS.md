@@ -8,6 +8,11 @@ Canonical detail for this workspace. Start elsewhere:
 This file is the **why**. Every constraint below was found by a failing build,
 not reasoned about in advance. Do not "simplify" them away.
 
+One rule keeps it from going stale: prose here records **decisions and
+reasons**, which age well. Live state — branches, drift, doc inventories,
+wiring — belongs to the tools (`brief`, `sync`, `doctor`), which cannot go
+stale. If a fact can be asked live, ask the tool; don't restate it here.
+
 This repo tracks **only** the workspace definition. The Meshtastic repos inside
 it are independent git repos and must never be committed here.
 
@@ -401,7 +406,8 @@ GCC plus the nRF SDK — a toolchain no shell here provides.
 
 ## Verification status
 
-Confirmed on x86_64-linux, by running them:
+A report, not a promise — these were run on x86_64-linux, 2026-07-29 through
+2026-07-31:
 
 | Repo | Verified |
 | --- | --- |
@@ -416,8 +422,8 @@ Confirmed on x86_64-linux, by running them:
 
 ### Fresh-machine bootstrap
 
-Verified on a second x86_64 Ubuntu host with nothing but Nix installed — empty
-store, no `~/.gradle`, no Android SDK, no `~/.platformio`:
+Verified 2026-07-29 on a second x86_64 Ubuntu host with nothing but Nix
+installed — empty store, no `~/.gradle`, no Android SDK, no `~/.platformio`:
 
 - `nix flake check --all-systems` — clean (a historical record: that single
   command predates the `checks` output and now fails on purpose — see

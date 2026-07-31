@@ -156,15 +156,12 @@ nix run .#worktree -- android fix/6360-coarse-position
 cd android/.claude/worktrees/fix-6360-coarse-position && direnv allow
 ```
 
-The worktree arrives fully outfitted: **that repo's** shell, plus the
-`.mcp.json` the MCP tools need — unless upstream tracks its own `.mcp.json`
-(`android` and `firmware` do), in which case theirs wins and the meshtastic
-tools stay with clients run from the workspace root. One made by hand with
-`git worktree add` (or by an agent skill) inherits the right shell from the
-repo's `.envrc` these days, but silently lacks the generated files — for
-`firmware`, including the sidecar that keeps it off upstream's broken
-PlatformIO. `nix run .#sync` adopts strays and writes whatever is missing;
-`nix run .#doctor` warns about them.
+The worktree arrives fully outfitted — **that repo's** shell plus its
+generated files. One made any other way (`git worktree add`, an agent) is
+missing pieces, all silently; `nix run .#sync` adopts it and writes what's
+absent, and `doctor` warns about stragglers. The full accounting — what a
+bare worktree lacks, and why upstream's tracked `.mcp.json` wins in `android`
+and `firmware` worktrees — is in [`AGENTS.md`](./AGENTS.md) → Worktrees.
 
 ### Wrapping up
 
