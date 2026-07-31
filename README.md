@@ -25,7 +25,7 @@ $MESHTASTIC_WORKSPACE/         (any path, any name)
 ├── AGENTS.md              why the constraints exist
 ├── notes/                 orientation for repos with no agent docs
 ├── firmware/  android/  apple/  meshtastic-sdk/  …   ← the repos
-└── .cache/                workspace-local Gradle cache
+└── .cache/                workspace-local Gradle home + PlatformIO cache
 ```
 
 ---
@@ -156,10 +156,16 @@ toolchain, no obvious error.
 ### Wrapping up
 
 ```bash
-nix run .#worktree -- --list           # what's still open, everywhere
-git -C android worktree remove <path>  # done with one
-nix run .#worktree -- --prune          # clear dead registrations
+nix run .#worktree -- --list                       # what's still open, everywhere
+nix run .#worktree -- --remove android <name>      # done with one
+nix run .#worktree -- --prune                      # clear dead registrations
 ```
+
+`--remove` deletes the branch too, but only when `git branch -d` agrees it is
+merged — an unmerged branch is the entire reason you made a worktree, so it is
+kept and the force command printed. It refuses outright on uncommitted changes,
+which is what `git worktree remove` does anyway; the difference is you get the
+`--force` line rather than a plumbing error.
 
 ---
 
@@ -286,7 +292,7 @@ passing does not mean any repo builds.
 | `nix run .#sync -- --main` | switch each repo to its default branch, then pull |
 | `nix run .#brief -- <repo>` | orient: branch, shell, docs to read, PRs |
 | `nix run .#worktree -- <repo> <branch>` | worktree with the correct shell |
-| `nix run .#worktree -- --list \| --prune` | manage worktrees across all repos |
+| `nix run .#worktree -- --list \| --remove \| --prune` | manage worktrees across all repos |
 | `nix run .#bootstrap-sdk` | install Android SDK packages from the pinned list |
 | `nix run .#doctor` | check the wiring below; exits non-zero if anything is broken |
 
@@ -335,8 +341,9 @@ rather than the tens of GB of checked-out repos sitting beside them. **A new fil
 here is untracked until you whitelist it**, which is deliberate: forgetting is
 inert, whereas an accidental `git add` of `firmware/` would not be.
 
-`.cache/` is the workspace-local Gradle cache and grows to several GB. It's
-disposable; deleting it costs a re-download, nothing else.
+`.cache/` holds the workspace-local Gradle home and PlatformIO's object cache,
+and grows to several GB. It's disposable; deleting it costs a re-download and a
+cold rebuild, nothing else.
 
 ---
 

@@ -340,7 +340,6 @@
               ++ nodeTools
               ++ (with pkgs; [
                 python
-                ccache
                 cmake
                 ninja
                 clang-tools # clang-tidy etc.; ships no compiler driver
@@ -353,6 +352,16 @@
                 + extraHook
                 + ''
                   export PLATFORMIO_CORE_DIR="''${PLATFORMIO_CORE_DIR:-$HOME/.platformio}"
+                  # `ccache` used to sit in this shell's packages and do
+                  # nothing whatsoever: PlatformIO drives the compilers
+                  # through SCons and never invokes it, and firmware's
+                  # platformio.ini sets no build_cache_dir either. Its own
+                  # object cache is the supported mechanism, and the env
+                  # override is honoured — verified with `pio project
+                  # config`, which reports the value back. Workspace-local,
+                  # beside the Gradle cache, because .cache/ is documented
+                  # as disposable.
+                  export PLATFORMIO_BUILD_CACHE_DIR="''${PLATFORMIO_BUILD_CACHE_DIR:-''${MESHTASTIC_WORKSPACE:-$HOME}/.cache/platformio-build}"
                   echo "  pio run -e heltec-v3"
                   echo "  pio run -e heltec-v3 -t upload"
                   echo "  pio device monitor"
@@ -1265,6 +1274,7 @@
                 echo "usage:"
                 echo "  nix run .#worktree -- <repo> <branch> [name]   create"
                 echo "  nix run .#worktree -- --list [repo]            list"
+                echo "  nix run .#worktree -- --remove <repo> <name>   remove one"
                 echo "  nix run .#worktree -- --prune [repo]           drop dead registrations"
               }
 
@@ -1294,6 +1304,44 @@
                       while IFS= read -r line; do printf '      %s\n' "$line"; done <<< "$out"
                     fi
                   done <<< "$(targets "''${2:-}")"
+                  exit 0 ;;
+                --remove)
+                  # The create side generates the path, so the remove side
+                  # should not make you retype it. `git worktree remove` alone
+                  # means knowing where the tool put it.
+                  dir="''${2:-}"; name="''${3:-}"
+                  [ -n "$dir" ] && [ -n "$name" ] || { usage; exit 1; }
+                  p="$root/$dir"
+                  [ -d "$p/.git" ] || { echo "$dir not cloned"; exit 1; }
+                  wt="$p/.claude/worktrees/$name"
+                  [ -d "$wt" ] || { echo "no such worktree: $wt"; exit 1; }
+
+                  # Refuse on uncommitted work. `git worktree remove` already
+                  # does, but say so in this tool's own voice rather than
+                  # letting a plumbing error surface.
+                  if [ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]; then
+                    echo "  refusing: $wt has uncommitted changes"
+                    echo "  commit, stash, or: git -C $p worktree remove --force $wt"
+                    exit 1
+                  fi
+
+                  branch=$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+                  git -C "$p" worktree remove "$wt"
+                  echo "  removed  $wt"
+
+                  # Only delete the branch when git agrees it is merged: -d
+                  # refuses otherwise, and that refusal is the safety check.
+                  # An unmerged branch is the whole point of having made a
+                  # worktree, so losing it silently would be the worst
+                  # possible outcome here.
+                  if [ -n "$branch" ] && [ "$branch" != "HEAD" ]; then
+                    if git -C "$p" branch -d "$branch" >/dev/null 2>&1; then
+                      echo "  deleted  branch $branch (merged)"
+                    else
+                      echo "  kept     branch $branch (not merged)"
+                      echo "           git -C $p branch -D $branch   to force"
+                    fi
+                  fi
                   exit 0 ;;
                 --prune)
                   while read -r d; do
