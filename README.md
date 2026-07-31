@@ -339,6 +339,7 @@ nix run .#doctor
 | No `meshtastic-mcp` tools in the client | `.mcp.json` is per directory — a worktree, or a repo subdirectory, is not the workspace root | `nix run .#worktree` writes one per worktree; elsewhere run the client from the workspace root |
 | `meshtastic-mcp` server stops starting | its `.mcp.json` names store paths, which `nix flake update` invalidates | `nix run .#sync` regenerates it |
 | `./gradlew` can't start a daemon | repo needs a JDK vendor/version not present | all six JDKs must stay in `flake.nix` |
+| Compose UI tests all die with `LibraryLoadException` / `libGL.so.1` | Nix glibc can't see the host's mesa | the JVM shells export `libglvnd` on `LD_LIBRARY_PATH`; re-enter the shell |
 | A repo looks clean but is behind | single-branch clone | `nix run .#sync -- --pull` widens the refspec |
 | `firmware` dirty right after a pull | upstream moved the submodule pointer | `--pull` re-syncs automatically; else `git submodule update --init --recursive` |
 | `bwrap: setting up uid map` | FHS-wrapped `platformio` vs Ubuntu AppArmor | you are in `.#firmware-fhs` on an FHS host — use `.#firmware` |

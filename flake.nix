@@ -185,6 +185,21 @@
           jvmHook = ''
             export JAVA_HOME="${primaryJdk.home}"
 
+            ${lib.optionalString isLinux ''
+              # Compose Desktop tests (Skiko) dlopen libGL.so.1 at load time even
+              # for CPU raster rendering. The Nix JVM's glibc never reads the
+              # host's ld.so cache, so the host's own mesa is invisible and every
+              # Compose UI test in a jvmTest run dies with LibraryLoadException —
+              # 26 at once in Meshtastic-Android's :feature:settings, none of them
+              # naming libGL; the real cause is the last Caused-by line. libglvnd
+              # (the GL dispatch library) satisfies the link; verified sufficient
+              # for the headless raster tests. Same failure class as the manylinux
+              # wheels in .#mcp.
+              export LD_LIBRARY_PATH="${
+                pkgs.lib.makeLibraryPath [ pkgs.libglvnd ]
+              }''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+            ''}
+
             # Writing gradle.properties means owning GRADLE_USER_HOME, so
             # this only engages when MESHTASTIC_WORKSPACE is set (i.e. via
             # the workspace .envrc). Your ~/.gradle is never touched.

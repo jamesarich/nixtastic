@@ -58,6 +58,17 @@ the **daemon**, which never sees it. The flake writes `gradle.properties` into
 
 Every repo pins its own via `./gradlew` (9.5.1 / 9.6.1). Nix supplies JDKs only.
 
+### Compose Desktop tests need `libGL` on the loader path
+
+Skiko dlopens `libGL.so.1` at load time even for CPU raster rendering, and the
+Nix JVM's glibc never reads the host's ld.so cache — so the host's mesa is
+invisible and every Compose UI test in a `jvmTest` run dies with
+`LibraryLoadException` (26 at once in Meshtastic-Android's
+`:feature:settings`), the real cause buried in the last `Caused by:` line. The
+JVM shells therefore put `libglvnd` on `LD_LIBRARY_PATH` on Linux — verified
+sufficient for headless raster tests. Same failure class as the manylinux
+wheels in `.#mcp`.
+
 ---
 
 ## Android
