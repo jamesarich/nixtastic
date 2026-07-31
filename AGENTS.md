@@ -482,3 +482,12 @@ launches the server outside that shell.
   Changing drift/pull/adoption behaviour means extending them; `nix flake
   check` runs them.
 - Prefer verifying over asserting. Every claim above has a command behind it.
+- **A structural change is not finished until the docs are re-audited.** One
+  audit day (2026-07-31) found the same failure three times: a claim verified
+  once, the code moved, the claim stayed ("hand-made worktrees get the default
+  shell", "flake check gates the scripts", "bootstrap-sdk needs
+  cmdline-tools"). Before committing a change that moves code, renames a
+  mechanism, or alters tool behaviour: grep `CLAUDE.md`, `AGENTS.md`,
+  `README.md`, `notes/` and the `flake.nix`/`scripts/` comments for the names
+  touched, and re-verify each affected claim **by running its command** — the
+  maxim above applies to the docs themselves.
