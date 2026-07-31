@@ -361,6 +361,12 @@ inert, whereas an accidental `git add` of `firmware/` would not be.
 and grows to several GB. It's disposable; deleting it costs a re-download and a
 cold rebuild, nothing else.
 
+A scheduled workflow opens a weekly `chore: nix flake update` PR (Mondays),
+validated **inside its own run** — the ci workflow never fires on it, because
+PRs created with `GITHUB_TOKEN` don't trigger other workflows. After merging,
+run `nix run .#sync` on each machine: the generated `.mcp.json` files name
+store paths the update invalidates.
+
 ---
 
 ## License

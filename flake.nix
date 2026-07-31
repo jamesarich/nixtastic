@@ -1615,6 +1615,27 @@
                 ok "direnvrc" "sources this repo"
               fi
 
+              # direnv on PATH but never hooked into the shell is the
+              # same silent failure one level up: cd does nothing, no
+              # error, and every "direnv sets it" claim in the docs goes
+              # quietly false. DIRENV_DIR set right now is the strongest
+              # evidence — this very process is running under it.
+              if [ -n "''${DIRENV_DIR:-}" ]; then
+                ok "direnv hook" "active in this shell"
+              else
+                shellrc=""
+                case "''${SHELL:-}" in
+                  */zsh) shellrc="$HOME/.zshrc" ;;
+                  */bash) shellrc="$HOME/.bashrc" ;;
+                esac
+                if [ -n "$shellrc" ] && grep -q 'direnv hook' "$shellrc" 2>/dev/null; then
+                  ok "direnv hook" "wired in $shellrc"
+                else
+                  warn "direnv hook" "not active, and no 'direnv hook' line in ''${shellrc:-your shell rc}"
+                  fix "add:  eval \"\$(direnv hook ''${SHELL##*/})\""
+                fi
+              fi
+
               gitignore="''${XDG_CONFIG_HOME:-$HOME/.config}/git/ignore"
               missing=""
               for pat in .envrc .direnv/ .envrc-workspace; do
@@ -1698,12 +1719,37 @@
               fi
 
               # --- Android SDK ----------------------------------------
+              # Reconcile against the DECLARED list, not just existence.
+              # bootstrap-sdk applies android-sdk-packages.txt on demand,
+              # but nothing detected drift between runs — and a missing
+              # package surfaces as an AGP resolution error naming
+              # nothing. The slash-form coordinates map 1:1 onto SDK
+              # directories (platforms/android-37.0 is literally
+              # $sdk/platforms/android-37.0), so presence of each
+              # directory is the check.
               sdk="''${ANDROID_HOME:-$HOME/Android/Sdk}"
+              pkglist="$root/android-sdk-packages.txt"
               if [ ! -d "$sdk/platform-tools" ]; then
                 warn "android sdk" "no platform-tools in $sdk"
                 fix "nix run .#bootstrap-sdk"
+              elif [ ! -f "$pkglist" ]; then
+                warn "android sdk" "no android-sdk-packages.txt at $root"
               else
-                ok "android sdk" "$sdk"
+                declared=0
+                sdkmissing=""
+                while read -r coord; do
+                  case "$coord" in ""|\#*) continue ;; esac
+                  declared=$((declared + 1))
+                  if [ ! -d "$sdk/$coord" ]; then
+                    sdkmissing="$sdkmissing $coord"
+                  fi
+                done < "$pkglist"
+                if [ -n "$sdkmissing" ]; then
+                  warn "android sdk" "declared but not installed:$sdkmissing"
+                  fix "nix run .#bootstrap-sdk"
+                else
+                  ok "android sdk" "$sdk — $declared declared, all present"
+                fi
               fi
 
               # --- MCP registration -----------------------------------

@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 James Rich
+# SPDX-License-Identifier: GPL-3.0-only
+#
+# Weekly nixpkgs bump as a pre-validated PR. Repeatability decays without
+# a loop: the lock ages, and the first `nix flake update` after months of
+# drift lands every breakage at once. A small weekly PR keeps the delta
+# reviewable.
+#
+# The checks run HERE, before the PR is opened, and that placement is
+# load-bearing: a PR created with the workflow's own GITHUB_TOKEN does not
+# trigger other workflows (GitHub suppresses recursive runs), so the ci
+# workflow will NOT run on the bump PR. Validate first or not at all.
+#
+# Requires the repo setting "Allow GitHub Actions to create and approve
+# pull requests" (Settings → Actions → General), i.e.
+# can_approve_pull_request_reviews=true on the workflow-permissions API.
+name: update-flake-lock
+
+on:
+  schedule:
+    # Mondays 11:30 UTC — early morning US Central, before the work day.
+    - cron: "30 11 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: DeterminateSystems/nix-installer-action@v22
+      - run: nix flake update
+      # Same two-command gate as ci.yml, same reasons: eval everything
+      # for all systems, then build this system's checks (which is when
+      # writeShellApplication runs ShellCheck on the tool scripts).
+      - run: nix flake check --all-systems --no-build
+      - run: nix flake check --print-build-logs
+      # No-op (no PR, no branch) when flake.lock is already current.
+      - uses: peter-evans/create-pull-request@v8.1.1
+        with:
+          branch: update-flake-lock
+          title: "chore: nix flake update (weekly)"
+          commit-message: "chore: nix flake update"
+          body: |
+            Weekly nixpkgs bump, validated **inside this workflow** before the
+            PR was opened — `nix flake check --all-systems --no-build` plus a
+            built `nix flake check`. The ci workflow will not run here: PRs
+            created with `GITHUB_TOKEN` never trigger other workflows.
+
+            After merging, on each machine:
+
+            ```
+            nix run .#sync
+            ```
+
+            The generated `.mcp.json` files name store paths that this update
+            invalidates; `sync` regenerates them (root and adopted worktrees).
+            Entering a dev shell refreshes the pinned JDK list in
+            `gradle.properties` on its own.
