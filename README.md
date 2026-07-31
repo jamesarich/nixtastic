@@ -21,6 +21,7 @@ into `~/meshtastic-workspace`, a different name from the one used below.
 $MESHTASTIC_WORKSPACE/         (any path, any name)
 ├── flake.nix              the toolchains
 ├── scripts/               the tool scripts (.#sync, .#worktree, .#doctor, …)
+├── justfile               short spellings: just sync / brief / doctor / check
 ├── direnvrc               sourced by ~/.config/direnv/direnvrc
 ├── CLAUDE.md              agent router — repo index + protocol
 ├── AGENTS.md              why the constraints exist
@@ -68,7 +69,9 @@ printf '.envrc\n.direnv/\n.envrc-workspace\n' >> ~/.config/git/ignore
 # 5. Clone every repo and give each one its shell
 nix run .#sync          # then run the `direnv allow` lines it prints
 
-# 6. Android SDK packages (needs cmdline-tools already present)
+# 6. Android SDK packages — works from NOTHING on x86_64-linux and
+#    Apple silicon (the pinned android-cli bootstraps the SDK itself);
+#    on aarch64-linux it tells you the sdkmanager fallback instead.
 nix run .#bootstrap-sdk
 ```
 
@@ -81,9 +84,9 @@ checkout path — everything else derives.
 
 Step 4 lists three files, and `.mcp.json` is deliberately not among them —
 plenty of projects track one, and a global ignore would hide it everywhere. It
-is handled per repo instead: `.#worktree` writes it into that repo's
-`.git/info/exclude`, and the root copy is caught by this repo's deny-by-default
-`.gitignore`.
+is handled per repo instead: `.#sync` and `.#worktree` write it into each
+repo's `.git/info/exclude`, and the root copy is caught by this repo's
+deny-by-default `.gitignore`.
 
 Step 5 writes a `.envrc` into each repo, which is what makes `cd android` select
 `.#android`. `direnv` requires explicit consent per file, so `sync` prints the
@@ -382,6 +385,6 @@ GPL-3.0-only — see [LICENSE](./LICENSE). Chosen to match the Meshtastic org,
 where `firmware` and `meshtastic-mcp` are both GPL-3.0, so donating this repo
 upstream would need no relicensing conversation.
 
-It covers this repo only: the flake, `direnvrc`, and the docs. The repos it
-clones are separate projects under their own licenses, and nothing here vendors
-any of their code.
+It covers this repo only: the flake, the `scripts/`, `direnvrc`, the
+`justfile` and the docs. The repos it clones are separate projects under their
+own licenses, and nothing here vendors any of their code.

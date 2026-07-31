@@ -81,7 +81,18 @@ missing.
 of the *workspace* repo, which contains none of the org repos — they are
 untracked. Use `nix run .#worktree` instead.
 
+## Changing the workspace itself
+
+The tool scripts are real files in `scripts/` — edit them there, not in
+`flake.nix`, and follow the Conventions section of `AGENTS.md`. The gate is
+two commands (`just check` runs both): `nix flake check --all-systems
+--no-build`, then `nix flake check` — the second builds the tools (ShellCheck)
+and runs their fixture tests.
+
 ## Fails silently — check these first
+
+`nix run .#doctor` checks most of this list and prints the fix for what it
+finds — run it before diagnosing by hand.
 
 - **`MESHTASTIC_WORKSPACE` unset** → JDK pinning inert, Gradle auto-provisions
   its own JDKs. `direnv` sets it. In a per-repo `.envrc` it must be exported

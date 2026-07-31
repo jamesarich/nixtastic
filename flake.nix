@@ -717,8 +717,10 @@
       # ShellCheck. Keeping them only in `apps` meant CI never did.
       #
       # nix run .#sync — clone any missing workspace repo, then
-      # report the state of each one. Safe to re-run; it never
-      # touches a repo that already exists beyond reading its status.
+      # report the state of each one. Safe to re-run: git state is
+      # only ever read (or fast-forwarded, under --pull), and the only
+      # writes are the generated workspace files — .envrc sidecars,
+      # .mcp.json, info/exclude patterns — regenerated idempotently.
       #############################################################
       packages = forAllSystems (
         { pkgs, ... }:

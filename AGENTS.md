@@ -251,8 +251,8 @@ Two ordering constraints, both silent when violated:
 
 Same rule, same reason: regenerate it, never hand-edit it. `.#sync` writes one
 at the workspace root and `.#worktree` writes one per worktree, both from
-`writeMcpJson` in `flake.nix`, registering the `meshtastic-mcp` server for
-whatever MCP client runs in that directory.
+`write_mcp_json` in [`scripts/lib.sh`](./scripts/lib.sh), registering the
+`meshtastic-mcp` server for whatever MCP client runs in that directory.
 
 `claude mcp add` would instead put it in `~/.claude.json`, which is what makes
 this worth generating: that file is outside the workspace, so it is the one
@@ -419,7 +419,9 @@ Confirmed on x86_64-linux, by running them:
 Verified on a second x86_64 Ubuntu host with nothing but Nix installed — empty
 store, no `~/.gradle`, no Android SDK, no `~/.platformio`:
 
-- `nix flake check --all-systems` — clean
+- `nix flake check --all-systems` — clean (a historical record: that single
+  command predates the `checks` output and now fails on purpose — see
+  Conventions below for the two-command form that replaced it)
 - all seven Linux shells (`kotlin`, `android`, `firmware`, `protobufs`, `mcp`,
   `design`, `nodes`) entered successfully, built cold
 - **path-agnostic** — ran from `~/meshtastic-workspace`, not `~/meshtastic`.
