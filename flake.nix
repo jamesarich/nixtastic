@@ -3,6 +3,11 @@
 {
   description = "Meshtastic workspace — dev shells for the Meshtastic org repos (firmware, apps, Kotlin libraries, MCP tooling)";
 
+  # warn-dirty is deliberately NOT set via nixConfig here: an untrusted
+  # nixConfig setting makes nix print an "ignoring untrusted flake
+  # configuration setting" warning on every run — trading one line of noise
+  # for two (verified). The suppression lives in .envrc as NIX_CONFIG,
+  # which needs no trust because it is the user's own environment.
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   };

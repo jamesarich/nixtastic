@@ -216,6 +216,27 @@ else
   fi
 fi
 
+# --- MCP user scope -----------------------------------------
+# Project scope cannot follow you into android/, firmware/ or their
+# worktrees — upstream tracks its own .mcp.json there, and ours is
+# never written beside it. A user-scope registration pointing at the
+# STABLE launcher (bin/meshtastic-mcp-launch, rewritten by sync with
+# fresh store paths) covers every directory and survives flake updates.
+launcher="$root/bin/meshtastic-mcp-launch"
+ucmd=$(jq -r '.mcpServers.meshtastic.command // ""' "$HOME/.claude.json" 2>/dev/null || true)
+if [ ! -x "$launcher" ]; then
+  warn "mcp user scope" "no launcher at bin/meshtastic-mcp-launch"
+  fix "nix run .#sync"
+elif [ "$ucmd" = "$launcher" ]; then
+  ok "mcp user scope" "registered via the stable launcher"
+elif [ -n "$ucmd" ]; then
+  warn "mcp user scope" "registered, but not via the launcher: $ucmd"
+  fix "claude mcp remove --scope user meshtastic && claude mcp add --scope user meshtastic -- $launcher"
+else
+  warn "mcp user scope" "not registered — tools absent in android/, firmware/, worktrees"
+  fix "claude mcp add --scope user meshtastic -- $launcher"
+fi
+
 if [ -d "$root/.claude/skills/meshtastic-device-ops" ]; then
   ok "agent skills" "$root/.claude/skills"
 else

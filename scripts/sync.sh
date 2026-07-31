@@ -309,6 +309,16 @@ if write_mcp_json "$root" "$root"; then
   # same consent model as direnv. Say so rather than letting
   # it look broken on first use.
   echo "      approve once:  claude  (then /mcp)"
+  # The stable launcher a USER-scope registration points at; rewritten
+  # with fresh store paths every run so `nix flake update` cannot strand
+  # that registration. Rationale with write_mcp_launcher in lib.sh.
+  write_mcp_launcher "$root"
+  if ! jq -e '.mcpServers.meshtastic' "$HOME/.claude.json" >/dev/null 2>&1; then
+    echo "  no user-scope registration — the tools are absent in android/,"
+    echo "  firmware/ and their worktrees (upstream's tracked .mcp.json wins"
+    echo "  there) until you run, once ever:"
+    echo "      claude mcp add --scope user meshtastic -- $root/bin/meshtastic-mcp-launch"
+  fi
   # The bundled skills are what turn 90 tool names into a
   # procedure. Not installed here: on a fresh machine that
   # would trigger a full uv sync inside a git tool.

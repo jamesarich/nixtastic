@@ -72,8 +72,9 @@ hand-edit it.
 `nix run .#worktree -- <repo> <branch>` creates one under
 `<repo>/.claude/worktrees/` with the repo's shell wired up and a `.mcp.json`
 so the `meshtastic-mcp` tools follow you in — except where upstream tracks
-its own `.mcp.json` (`android`, `firmware`): theirs wins, so run the client
-from the workspace root for the meshtastic tools there. A worktree made any
+its own `.mcp.json` (`android`, `firmware`): theirs wins, and the
+**user-scope launcher registration** (`doctor` checks it, `sync` prints the
+command) is what carries the meshtastic tools there instead. A worktree made any
 other way (hand-rolled `git worktree`, agent skills) silently lacks these
 files — for `firmware`, including the sidecar that keeps it off upstream's
 broken PlatformIO; `nix run .#sync` adopts such strays and writes what's
@@ -106,9 +107,14 @@ finds — run it before diagnosing by hand.
   edit a tracked `.envrc`.
 - **`.mcp.json` is generated too** — `.#sync` at the root, `.#worktree` per
   worktree. It names store paths, so `nix flake update` breaks the server until
-  you re-run `.#sync`. Registering it by hand (`claude mcp add`) puts it in
-  `~/.claude.json`, outside the workspace, where `.#sync` cannot rebuild it and
-  every worktree silently loses the tools.
+  you re-run `.#sync`. A bare `claude mcp add` (local scope, store paths in
+  `~/.claude.json`) is the trap; the sanctioned form is **user scope pointed
+  at the stable `bin/meshtastic-mcp-launch`**, which `sync` rewrites — that
+  one reaches `android/`, `firmware/` and every worktree, and never goes
+  stale.
+- **The direnv hook fires only in interactive shells** — scripts and agent
+  subshells get no repo environment, so Gradle silently runs unpinned. From
+  non-interactive contexts use `direnv exec <repo-or-worktree> <cmd>`.
 - **`.#mcp` needs `LD_LIBRARY_PATH`** — `UV_PYTHON` pins the venv to the Nix
   interpreter, whose loader cannot see the system `libstdc++`/`libz` that
   manylinux wheels link. numpy, opencv and torch install fine and then fail to

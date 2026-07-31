@@ -93,10 +93,13 @@ Step 5 writes a `.envrc` into each repo, which is what makes `cd android` select
 `direnv allow` commands rather than running them.
 
 It also writes `.mcp.json` at the workspace root, registering the
-`meshtastic-mcp` server for whatever MCP client you run here. That needs its own
-one-time consent — start the client and approve it (`/mcp` in Claude Code) — and
-the bundled agent skills are a separate command, which `sync` prints when they
-are missing:
+`meshtastic-mcp` server for whatever MCP client you run here — approve it once
+via `/mcp` — and `bin/meshtastic-mcp-launch`, a stable launcher for the
+**user-scope** registration that carries the tools into `android/`,
+`firmware/` and every worktree (their upstream-tracked `.mcp.json` wins over
+project scope). `sync` prints the one-time `claude mcp add --scope user`
+command until it exists. The bundled agent skills are a separate command,
+printed when they are missing:
 
 ```bash
 (cd meshtastic-mcp && uv run meshtastic-mcp skills install --dest ../.claude/skills)
@@ -336,7 +339,7 @@ nix run .#doctor
 | `pio` dies with `bwrap` in `firmware` | upstream's tracked `.envrc` (`use nix`) won over ours | check `~/.config/direnv/direnvrc` sources this repo's `direnvrc`, and that `firmware/.envrc-workspace` exists |
 | Worktree has no MCP tools, or `firmware` worktree hits `bwrap` | created by hand or by an agent harness — no `.mcp.json`, no sidecar | `nix run .#sync` adopts it; prefer `nix run .#worktree` next time |
 | An agent's isolated worktree has no repos in it | harness worktree isolation clones the *workspace* repo; the org repos are untracked | use `nix run .#worktree -- <repo> <branch>` for repo work |
-| No `meshtastic-mcp` tools in the client | `.mcp.json` is per directory — a worktree, or a repo subdirectory, is not the workspace root | `nix run .#worktree` writes one per worktree; elsewhere run the client from the workspace root |
+| No `meshtastic-mcp` tools in the client | `.mcp.json` is per directory, and `android`/`firmware` track their own | register the stable launcher once, user-scope: `claude mcp add --scope user meshtastic -- $MESHTASTIC_WORKSPACE/bin/meshtastic-mcp-launch` — `doctor` checks it |
 | `meshtastic-mcp` server stops starting | its `.mcp.json` names store paths, which `nix flake update` invalidates | `nix run .#sync` regenerates it |
 | `./gradlew` can't start a daemon | repo needs a JDK vendor/version not present | all six JDKs must stay in `flake.nix` |
 | Compose UI tests all die with `LibraryLoadException` / `libGL.so.1` | Nix glibc can't see the host's mesa | the JVM shells export `libglvnd` on `LD_LIBRARY_PATH`; re-enter the shell |

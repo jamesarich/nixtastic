@@ -70,6 +70,13 @@ grep -q 'use flake "\$MESHTASTIC_WORKSPACE#kotlin"' "$root/kzstd/.envrc" || { ec
 grep -qxF '.mcp.json' "$root/kzstd/.git/info/exclude" || { echo "T1: ensure_excludes did not reach kzstd"; exit 1; }
 [ -f "$root/.mcp.json" ] || { echo "T1: root .mcp.json missing"; exit 1; }
 jq -e '.mcpServers.meshtastic' "$root/.mcp.json" >/dev/null || { echo "T1: root .mcp.json malformed"; exit 1; }
+[ -x "$root/bin/meshtastic-mcp-launch" ] || { echo "T1: stable launcher missing or not executable"; exit 1; }
+grep -qF "export MESHTASTIC_WORKSPACE=\"$root\"" "$root/bin/meshtastic-mcp-launch" \
+  || { echo "T1: launcher lacks the workspace root"; exit 1; }
+grep -qF '"$@"' "$root/bin/meshtastic-mcp-launch" \
+  || { echo "T1: launcher lost its argument passthrough"; exit 1; }
+# No ~/.claude.json in the sandbox, so sync must print the one-time hint.
+expect 'claude mcp add --scope user meshtastic'
 
 echo "--- T2: behind is reported, and --pull fast-forwards"
 (cd "$root/kzstd" && echo more >> tracked.txt && git commit -aqm more && git push -q && git reset -q --hard HEAD~1)

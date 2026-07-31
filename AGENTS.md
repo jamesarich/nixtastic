@@ -263,6 +263,12 @@ Two ordering constraints, both silent when violated:
    `$(dirname "$PWD")` is correct and survives relocation. Worktrees sit three
    levels down, so `.#worktree` hardcodes the root instead.
 
+**The hook only fires in interactive shells.** Scripts, CI steps and agent
+subshells get none of this environment — Gradle then runs with unpinned JDKs,
+the exact failure the `.envrc` exists to prevent, silently. From any
+non-interactive context, run repo commands as
+`direnv exec <repo-or-worktree> <cmd>`.
+
 ### `.mcp.json` is generated too
 
 Same rule, same reason: regenerate it, never hand-edit it. `.#sync` writes one
@@ -270,10 +276,25 @@ at the workspace root and `.#worktree` writes one per worktree, both from
 `write_mcp_json` in [`scripts/lib.sh`](./scripts/lib.sh), registering the
 `meshtastic-mcp` server for whatever MCP client runs in that directory.
 
-`claude mcp add` would instead put it in `~/.claude.json`, which is what makes
-this worth generating: that file is outside the workspace, so it is the one
-piece `.#sync` could not rebuild on a fresh machine, and it binds the server to
-a single directory — leaving every worktree silently without the tools.
+A bare `claude mcp add` would instead put **store paths** in `~/.claude.json`
+— outside the workspace, where `.#sync` cannot rebuild them, going stale on
+every flake update — and its default (local) scope binds the server to a
+single directory, leaving every worktree silently without the tools.
+
+**User scope is different, and sanctioned.** `.#sync` also writes
+`bin/meshtastic-mcp-launch` — a *stable path* whose contents (the moving
+store paths) sync rewrites every run. Registering **that** once,
+
+```bash
+claude mcp add --scope user meshtastic -- "$MESHTASTIC_WORKSPACE/bin/meshtastic-mcp-launch"
+```
+
+puts the meshtastic tools in **every** directory on the machine — including
+the repos and worktrees project scope can never reach (below) — and survives
+`nix flake update`, because the registration names the launcher, not the
+store. Where a project `.mcp.json` defines the same server name, project
+scope wins, so behaviour at the workspace root is unchanged. `doctor` checks
+the registration; `sync` prints the command when it is missing.
 
 Three consequences worth knowing:
 
@@ -293,8 +314,8 @@ exists, because overwriting would dirty the tree and stomp the team's
 registrations. (`.#worktree` used to do exactly that, unconditionally — the
 same failure class the `.envrc` sidecar exists to avoid, one file over.) The
 consequence: in an `android` or `firmware` worktree the meshtastic-mcp tools
-are not project-registered — run the client from the workspace root when you
-need them.
+are never *project*-registered — the user-scope launcher registration above
+is what carries them there.
 
 The bundled agent skills are *not* installed from here — on a fresh machine that
 would trigger a full `uv sync` inside a git tool. `.#sync` prints the command
@@ -336,9 +357,11 @@ nearest ancestor, evaluated with cwd at the repo, so it gets the right shell
 *and* the right `MESHTASTIC_WORKSPACE`. What a bare worktree still lacks, all
 silent:
 
-- **`.mcp.json`** — it is per directory, so the MCP tools are simply absent.
-  (Unless upstream tracks its own, as `android` and `firmware` do — theirs
-  wins, ours is never written beside it; see the `.mcp.json` section above.)
+- **`.mcp.json`** — it is per directory, so without a user-scope
+  registration the MCP tools are simply absent. (Where upstream tracks its
+  own, as `android` and `firmware` do, theirs wins and ours is never written
+  beside it — the user-scope launcher registration is the only route in;
+  see the `.mcp.json` section above.)
 - **The `.envrc-workspace` sidecar** where the repo tracks its own `.envrc`.
   A bare `firmware` worktree runs upstream's `use nix` → bwrap-broken
   platformio. (`.#worktree` writes the sidecar rather than overwriting the
