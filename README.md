@@ -52,7 +52,10 @@ git clone https://github.com/jamesarich/nixtastic.git "$WORKSPACE"
 cd "$WORKSPACE"
 
 # 3. Auto-activate on cd — do this, everything below assumes it
-nix profile install nixpkgs#nix-direnv
+#    Both packages: direnv is the binary, nix-direnv only the bash library
+#    it sources — installing nix-direnv alone leaves no `direnv` on PATH.
+#    Then hook it into your shell (once): https://direnv.net/docs/hook.html
+nix profile install nixpkgs#direnv nixpkgs#nix-direnv
 mkdir -p ~/.config/direnv
 echo "source \"$WORKSPACE/direnvrc\"" > ~/.config/direnv/direnvrc
 direnv allow
@@ -277,11 +280,17 @@ names the other. The flake does not choose for you, on purpose:
 
 ### Flake outputs
 
-`devShells` and `apps` per system, plus `formatter` (nixfmt, wrapped so bare
-`nix fmt` works) and a non-standard `workspace` attribute — the repo list the
-apps are generated from. `nix flake check --all-systems` evaluates every shell
-for all three systems, and CI runs it on push and PR. It only **evaluates**;
-passing does not mean any repo builds.
+`devShells`, `packages` (the tool scripts) and `apps` (thin wrappers over
+them) per system, plus `formatter` (nixfmt, wrapped so bare `nix fmt` works),
+`checks` (the tools again, so they actually get built) and a non-standard
+`workspace` attribute — the repo list the tools are generated from.
+
+The check is two commands, run by CI on push and PR:
+`nix flake check --all-systems --no-build` evaluates every output for all
+three systems, and plain `nix flake check` **builds** this system's `checks`
+— which is when writeShellApplication runs ShellCheck, so the scripts are
+gated for real. Shells are only ever **evaluated**; passing does not mean any
+repo builds.
 
 ### Commands
 

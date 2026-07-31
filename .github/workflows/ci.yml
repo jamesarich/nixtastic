@@ -28,14 +28,26 @@ permissions:
 
 jobs:
   flake-check:
-    name: nix flake check --all-systems
+    name: nix flake check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: DeterminateSystems/nix-installer-action@v22
-      # writeShellApplication runs ShellCheck and fails the build on warnings,
-      # so this also gates the sync / worktree / brief / bootstrap-sdk scripts.
-      - run: nix flake check --all-systems --print-build-logs
+      # Two invocations because they answer different questions.
+      #
+      # The first EVALUATES every output for all three systems — that is the
+      # check that caught `stdenv.cc.cc.lib` possibly not existing on darwin.
+      # --no-build is required: without it, check tries to BUILD the darwin
+      # and aarch64 `checks` on this x86_64 runner and dies on "platform
+      # mismatch" (verified).
+      - run: nix flake check --all-systems --no-build
+      # The second BUILDS this system's `checks` — the tool scripts plus the
+      # formatter. writeShellApplication runs ShellCheck at build time only,
+      # and flake check builds nothing but `checks` (verified: an app with a
+      # guaranteed SC2086 failure passed as apps/devShells), so this step is
+      # the one that actually gates the sync / worktree / brief / doctor /
+      # bootstrap-sdk scripts.
+      - run: nix flake check --print-build-logs
 
   format:
     name: nix fmt

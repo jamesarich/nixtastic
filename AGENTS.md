@@ -366,7 +366,7 @@ Confirmed on x86_64-linux, by running them:
 
 | Repo | Verified |
 | --- | --- |
-| — | `nix flake check --all-systems` |
+| — | `nix flake check --all-systems --no-build` + `nix flake check` (builds the tools, ShellCheck gates them) |
 | `meshtastic-sdk` | `./gradlew :core:build` — JVM + Android + iOS klibs, tests, Kover, ABI check |
 | `android` | `./gradlew :androidApp:assembleFdroidDebug` — 3 APKs |
 | `firmware` | `pio run -e heltec-v3` — flashable factory image, 7m40s |
@@ -415,7 +415,17 @@ launches the server outside that shell.
 ## Conventions for changing this repo
 
 - New file → whitelist it in `.gitignore`, which denies by default.
-- Changed `flake.nix` → `nix flake check --all-systems` before committing. It
-  only **evaluates** shells; passing eval does not mean a repo builds.
-- `writeShellApplication` runs ShellCheck and fails the build on warnings.
+- Changed `flake.nix` → two checks before committing, because they answer
+  different questions:
+  `nix flake check --all-systems --no-build` (evaluates every output for all
+  three systems) and `nix flake check` (builds this system's `checks` — the
+  tool scripts). `--all-systems` without `--no-build` does not work: it tries
+  to build the darwin/aarch64 checks on your machine and dies on "platform
+  mismatch". Eval only **evaluates** shells; passing does not mean a repo
+  builds.
+- `writeShellApplication` runs ShellCheck and fails the build on warnings —
+  **at build time**. `nix flake check` builds only the `checks` output;
+  devShells and apps are merely evaluated (verified by feeding it an app with
+  a guaranteed SC2086 failure, which passed). That is why every tool script is
+  listed in `checks` — remove one and ShellCheck silently stops gating it.
 - Prefer verifying over asserting. Every claim above has a command behind it.

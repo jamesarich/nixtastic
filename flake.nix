@@ -704,11 +704,16 @@
       );
 
       #############################################################
+      # The workspace tools, as buildable packages. `apps` below wraps
+      # them for `nix run`, and `checks` lists them so `nix flake
+      # check` BUILDS them — which is when writeShellApplication runs
+      # ShellCheck. Keeping them only in `apps` meant CI never did.
+      #
       # nix run .#sync — clone any missing workspace repo, then
       # report the state of each one. Safe to re-run; it never
       # touches a repo that already exists beyond reading its status.
       #############################################################
-      apps = forAllSystems (
+      packages = forAllSystems (
         { pkgs, ... }:
         let
           #########################################################
@@ -895,7 +900,13 @@
               while IFS=$'\t' read -r dir repo shell; do
                 if [ ! -d "$root/$dir/.git" ]; then
                   echo "  clone     $dir  <- $repo"
-                  git clone --quiet "https://github.com/$repo.git" "$root/$dir"
+                  # --recurse-submodules: firmware ships two (protobufs,
+                  # meshtestic), and a plain clone leaves them as empty
+                  # directories — pio then fails on missing proto sources.
+                  # The only other path that initializes them is the
+                  # post-fast-forward re-sync, which never fires for a
+                  # fresh, up-to-date clone.
+                  git clone --quiet --recurse-submodules "https://github.com/$repo.git" "$root/$dir"
                   # A fresh clone may already carry a tracked .envrc of its
                   # own (firmware does), so route through the same check.
                   if [ ! -e "$root/$dir/.envrc" ]; then
@@ -1481,8 +1492,11 @@
 
               # --- direnv ---------------------------------------------
               if ! command -v direnv >/dev/null 2>&1; then
+                # Both packages: nix-direnv is only the bash library direnv
+                # sources; it ships no bin/ and installing it alone would
+                # leave this exact failure in place.
                 bad "direnv" "not on PATH"
-                fix "nix profile install nixpkgs#nix-direnv"
+                fix "nix profile install nixpkgs#direnv nixpkgs#nix-direnv"
               else
                 ok "direnv" "$(command -v direnv)"
               fi
@@ -1601,30 +1615,45 @@
           };
         in
         {
-          sync = {
-            type = "app";
-            program = "${sync}/bin/meshtastic-sync";
-          };
-          default = {
-            type = "app";
-            program = "${sync}/bin/meshtastic-sync";
-          };
-          bootstrap-sdk = {
-            type = "app";
-            program = "${bootstrapSdk}/bin/meshtastic-bootstrap-sdk";
-          };
-          brief = {
-            type = "app";
-            program = "${brief}/bin/meshtastic-brief";
-          };
-          worktree = {
-            type = "app";
-            program = "${worktree}/bin/meshtastic-worktree";
-          };
-          doctor = {
-            type = "app";
-            program = "${doctor}/bin/meshtastic-doctor";
-          };
+          inherit
+            sync
+            brief
+            worktree
+            doctor
+            ;
+          bootstrap-sdk = bootstrapSdk;
+          default = sync;
+        }
+      );
+
+      # Wrappers over `packages`, one per tool. writeShellApplication
+      # sets meta.mainProgram, so getExe resolves each binary name.
+      apps = forAllSystems (
+        { system, ... }:
+        nixpkgs.lib.mapAttrs (_: drv: {
+          type = "app";
+          program = nixpkgs.lib.getExe drv;
+        }) self.packages.${system}
+      );
+
+      # What `nix flake check` actually BUILDS. devShells and apps are
+      # only evaluated — verified by feeding check an app with a
+      # guaranteed SC2086 failure, which passed — so without this
+      # output ShellCheck never gated the scripts in CI. The dev
+      # shells stay out on purpose: building a mkShell realizes every
+      # input, i.e. CI downloading six JDKs and Inkscape.
+      #
+      # Run it as TWO commands, locally and in CI:
+      #     nix flake check --all-systems --no-build   eval every system
+      #     nix flake check                            build yours
+      # A bare `--all-systems` (without --no-build) tries to BUILD the
+      # darwin and aarch64 checks on this machine too, and dies on
+      # "platform mismatch" — verified, not assumed.
+      checks = forAllSystems (
+        { system, ... }:
+        self.packages.${system}
+        // {
+          formatter = self.formatter.${system};
         }
       );
 
