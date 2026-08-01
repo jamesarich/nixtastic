@@ -26,6 +26,13 @@ origins="$PWD/origins"
 mkdir -p "$root" "$origins"
 export MESHTASTIC_WORKSPACE="$root"
 
+# The real workspace is itself a git repo, and that is not incidental: nix
+# stops walking up for flake.nix at a git-repo boundary, which is the whole
+# reason `.#` resolves from the root and dies inside an org repo. A fixture
+# root that is a plain directory cannot exercise that split.
+git init -q -b main "$root"
+(cd "$root" && : > flake.nix && git add flake.nix && git commit -qm workspace)
+
 # The repo table is baked into the tools (NIXTASTIC_REPOS_TSV), so the
 # fixture directories must carry the REAL names. firmware tracks .envrc
 # upstream and android tracks .mcp.json — mirror both, they are exactly
@@ -56,6 +63,10 @@ res=""
 run() { res="$("$@" 2>&1)" || { echo "COMMAND FAILED: $*"; printf '%s\n' "$res"; exit 1; }; }
 expect() { printf '%s\n' "$res" | grep -qE -- "$1" || { echo "EXPECT FAILED: $1"; printf '%s\n' "$res"; exit 1; }; }
 refuse() { printf '%s\n' "$res" | grep -qE -- "$1" && { echo "REFUSE FAILED (matched): $1"; printf '%s\n' "$res"; exit 1; } || true; }
+# `run` assigns res in the CALLER's shell, so `(cd … && run …)` would leave
+# res holding the previous test's output and assert against that — silently
+# green or bafflingly red. cd in this shell and change back.
+run_in() { d="$1"; shift; prev="$PWD"; cd "$d"; run "$@"; cd "$prev"; }
 
 echo "--- T1: first run — all current, envrc written per repo, sidecar for firmware"
 run "$sync"
@@ -163,6 +174,37 @@ expect 'kzstd:'
 rm -rf "$root/kzstd/.claude/worktrees/stray"
 run "$worktree" --prune kzstd
 expect 'kzstd: pruned'
+
+echo "--- T11: brief describes the checkout you are standing in, not just the primary"
+git -C "$root/kzstd" worktree add -q .claude/worktrees/brief-wt -b feat/brief-wt
+# From the workspace root: the primary checkout, and the short flake ref.
+run_in "$root" "$brief" kzstd
+expect '  branch +main'
+refuse 'checkout +worktree'
+expect 'nix run \.#worktree --list kzstd'
+expect 'nix develop \.#kotlin'
+# From inside the worktree: its own branch, named as a worktree. Reporting
+# main here was the original bug — silent, and precisely backwards for a
+# tool the protocol says to trust over the table.
+run_in "$root/kzstd/.claude/worktrees/brief-wt" "$brief" kzstd
+expect 'checkout +worktree brief-wt'
+expect '  branch +feat/brief-wt'
+# `.#` cannot cross a git-repo boundary, so every command brief prints from
+# in here must carry the absolute flake ref or it dies on "not part of a flake".
+expect "nix run $root#worktree --list kzstd"
+expect "nix develop $root#kotlin"
+refuse 'nix run \.#'
+refuse 'nix develop \.#'
+# A worktree of ANOTHER repo must not hijack the answer.
+run_in "$root/kzstd/.claude/worktrees/brief-wt" "$brief" android
+refuse 'checkout +worktree'
+# And the tool's own next-step suggestion has to survive the cd it tells you
+# to make — this is the line that was broken. Asserted by shape, not by
+# running it: `nix` is not in the build sandbox, and the behaviour it would
+# have exercised is already covered directly above.
+run "$worktree" kzstd feat/suggest
+expect "nix run $root#brief -- kzstd"
+refuse 'nix run \.#brief'
 
 echo "all tests passed"
 touch "$out"

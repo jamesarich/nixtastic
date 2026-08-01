@@ -18,8 +18,16 @@ pull:
     nix run .#sync -- --pull
 
 # Orient before touching a repo: branch, shell, docs to read, PRs.
+#
+# [no-cd] because just otherwise runs recipes from the justfile's directory,
+# and brief answers about the checkout you are STANDING in — cd'ing to the
+# root would make `just brief` report the primary checkout while you sit in a
+# worktree, which is the exact failure the tool exists to prevent. Keeping the
+# caller's cwd then costs the short `.#` ref (it cannot cross a git-repo
+# boundary), so name the flake by its absolute path.
+[no-cd]
 brief repo:
-    nix run .#brief -- {{ repo }}
+    nix run {{ justfile_directory() }}#brief -- {{ repo }}
 
 # Worktrees: `just worktree android fix/thing`, `--list`, `--remove`, `--prune`.
 worktree *ARGS:

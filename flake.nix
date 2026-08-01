@@ -834,9 +834,16 @@
           # be loaded.
           brief = pkgs.writeShellApplication {
             name = "meshtastic-brief";
+            # findutils and gnused are as load-bearing as git here (the spec
+            # listing, .claude inventory and PR-title trim all shell out).
+            # Undeclared they resolve off the ambient PATH, which works on a
+            # normal machine and vanishes in the build sandbox — so leaving
+            # them out silently made brief untestable by checks.tools-tests.
             runtimeInputs = [
               pkgs.git
               pkgs.coreutils
+              pkgs.findutils
+              pkgs.gnused
               pkgs.gh
             ];
             runtimeEnv = {
@@ -949,6 +956,7 @@
             ];
             sync = "${self.packages.${system}.sync}/bin/meshtastic-sync";
             worktree = "${self.packages.${system}.worktree}/bin/meshtastic-worktree";
+            brief = "${self.packages.${system}.brief}/bin/meshtastic-brief";
           } (builtins.readFile ./scripts/tools-tests.sh);
 
           # statix + deadnix over this repo's own tracked files. ${self}

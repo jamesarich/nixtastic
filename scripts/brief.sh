@@ -21,14 +21,35 @@ while IFS=$'\t' read -r d _ s; do
 done < "$NIXTASTIC_REPOS_TSV"
 
 [ -n "$shell" ] || { echo "unknown repo: $dir"; exit 1; }
-p="$root/$dir"
-[ -d "$p/.git" ] || { echo "$dir not cloned — run: nix run .#sync"; exit 1; }
+primary="$root/$dir"
+[ -d "$primary/.git" ] || { echo "$dir not cloned — run: nix run .#sync"; exit 1; }
+
+# A worktree is a full checkout on its own branch, so answering from the
+# primary checkout while the caller stands in a worktree is worse than
+# saying nothing: the protocol makes this tool the thing you trust over
+# the table, and it would name a different branch, drift and commit style
+# than the files about to be edited. Match on --git-common-dir rather than
+# a path prefix so worktrees parked outside the repo tree count too.
+p="$primary"
+if common=$(git rev-parse --git-common-dir 2>/dev/null); then
+  if [ "$(cd "$common" 2>/dev/null && pwd)" = "$primary/.git" ]; then
+    p=$(git rev-parse --show-toplevel)
+  fi
+fi
 g="git -C $p"
+
+# `nix run .#…` resolves the flake from the caller's cwd and will not cross
+# a git-repo boundary, so the short form only works from the workspace repo
+# itself — inside any org repo or worktree it dies with "is not part of a
+# flake". Print the form that will actually run from where the caller is.
+ref=".#"
+[ "$(git rev-parse --show-toplevel 2>/dev/null || echo "")" = "$root" ] || ref="$root#"
 
 echo ""
 echo "  $dir"
 echo "  ────────────────────────────────────────────────────"
-printf '  shell        nix develop .#%s\n' "$shell"
+printf '  shell        nix develop %s%s\n' "$ref" "$shell"
+[ "$p" != "$primary" ] && printf '  checkout     worktree %s\n' "${p##*/}"
 
 branch=$($g rev-parse --abbrev-ref HEAD)
 def=""
@@ -95,8 +116,10 @@ if command -v gh >/dev/null; then
 fi
 
 echo ""
-if [ -d "$p/.claude/worktrees" ]; then
-  n=$(find "$p/.claude/worktrees" -maxdepth 1 -mindepth 1 -type d | wc -l)
-  [ "$n" -gt 0 ] && printf '  %s active worktree(s) — nix run .#worktree --list %s\n\n' "$n" "$dir"
+# Worktrees live under the primary checkout, so count them there — a
+# worktree has no .claude/worktrees of its own.
+if [ -d "$primary/.claude/worktrees" ]; then
+  n=$(find "$primary/.claude/worktrees" -maxdepth 1 -mindepth 1 -type d | wc -l)
+  [ "$n" -gt 0 ] && printf '  %s active worktree(s) — nix run %sworktree --list %s\n\n' "$n" "$ref" "$dir"
 fi
 

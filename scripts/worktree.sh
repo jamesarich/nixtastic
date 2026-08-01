@@ -159,5 +159,9 @@ echo "  branch   $branch"
 echo "  shell    .#$shell"
 echo ""
 echo "  cd $wt && direnv allow"
-echo "  nix run .#brief -- $dir"
+# Absolute flake ref on purpose: the line above tells you to cd INTO the
+# worktree, and `.#` resolves against cwd without crossing a git-repo
+# boundary — so the short form errors with "is not part of a flake" from
+# exactly the directory this is telling you to stand in.
+echo "  nix run $root#brief -- $dir"
 
