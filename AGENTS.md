@@ -355,6 +355,39 @@ a full re-run.
 fronts `doctor` as well as `sync` for this reason: one definition of where a
 copy belongs, or the two drift and doctor blesses files sync would not write.
 
+### Per-repo skills need `bin/claude-ws`, and it names one repo at a time
+
+Skills could not take the same route. A skill is a *directory* whose name is
+its identity, so copying `android`'s four and `apple`'s ten to the root would
+fork fourteen living directories against their upstreams. Symlinks are
+documented to work for skills — but the only mechanism that loads a skill
+*and* keeps it where it lives is `--add-dir`, and there is no `settings.json`
+equivalent: it must be passed at launch.
+
+`.#sync` writes `bin/claude-ws` (stable path, regenerated each run so a repo
+added to the table is picked up):
+
+```bash
+bin/claude-ws android          # android's skills + subagents, from the root
+bin/claude-ws android apple -p "…"   # several repos, then claude's own args
+bin/claude-ws                  # no repo named — exactly plain claude
+```
+
+Leading arguments matching a repo become `--add-dir`; the first non-repo
+argument stops the scan and everything after it reaches `claude` untouched.
+
+**Repos are named, never all-added by default, and that is the design.**
+`--add-dir` also loads that directory's `CLAUDE.md`, and the root `CLAUDE.md`
+is a deliberately small router *precisely because* the per-repo agent docs are
+too large to all be loaded. Blanket-adding ten repos would defeat the thing
+this workspace is built around. `claude-ws android` pays for android and
+nothing else — the same "load only what this task needs" rule `.#brief`
+exists to enforce.
+
+Note the asymmetry that follows: **subagents work from a bare `claude`**
+(they are copied to the root), **skills need the launcher**. That is not a
+preference, it is what each mechanism supports.
+
 ### `firmware` tracks its own `.envrc`, and it points at upstream
 
 `firmware/.envrc` is **upstream-tracked** and contains direnv's legacy

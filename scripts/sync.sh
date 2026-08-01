@@ -365,6 +365,23 @@ fi
 # in the other direction.
 [ "$agents_dropped" -gt 0 ] && printf '  .claude/agents  %s dropped (source gone)\n' "$agents_dropped"
 
+# Skills cannot be aggregated the way subagents were — a skill is a
+# directory whose name IS its identity, and --add-dir is the only supported
+# way to load one from elsewhere. Rationale with write_claude_launcher.
+write_claude_launcher "$root"
+skill_repos=""
+while IFS=$'\t' read -r d _ _; do
+  if [ -d "$root/$d/.claude/skills" ]; then
+    skill_repos="$skill_repos $d"
+  fi
+done < "$NIXTASTIC_REPOS_TSV"
+if [ -n "$skill_repos" ]; then
+  first=${skill_repos#" "}; first=${first%% *}
+  printf '  bin/claude-ws   --add-dir launcher; repos shipping skills:%s\n' "$skill_repos"
+  printf '      %s/bin/claude-ws %s   (that repo only — --add-dir loads its CLAUDE.md too)\n' \
+    "$root" "$first"
+fi
+
 if write_mcp_json "$root" "$root"; then
   echo "  .mcp.json written — meshtastic-mcp server for this workspace"
   # A project-scope server is approved once per machine, the

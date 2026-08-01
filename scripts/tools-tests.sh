@@ -249,5 +249,32 @@ run "$sync"
 expect '1 dropped \(source gone\)'
 [ ! -e "$root/.claude/agents/android--gradle-runner.md" ] || { echo "T12: last orphan copy kept"; exit 1; }
 
+echo "--- T13: claude-ws turns repo names into --add-dir and passes everything else through"
+mkdir -p "$root/apple/.claude/skills/speckit-plan"
+run "$sync"
+expect 'bin/claude-ws .*repos shipping skills:.* apple'
+[ -x "$root/bin/claude-ws" ] || { echo "T13: launcher missing or not executable"; exit 1; }
+# Drive it against a stub claude: the point is the argv it builds, and the
+# real binary is the user's install, deliberately resolved from PATH.
+mkdir -p "$PWD/fakebin"
+printf '#!/bin/sh\necho "ARGV: $*"\n' > "$PWD/fakebin/claude"
+chmod +x "$PWD/fakebin/claude"
+oldpath="$PATH"; PATH="$PWD/fakebin:$PATH"; export PATH
+run "$root/bin/claude-ws" apple --model opus
+expect "ARGV: --add-dir $root/apple --model opus"
+# Two repos, and a flag that is not a repo stops the scan.
+run "$root/bin/claude-ws" android apple -p hello
+expect "ARGV: --add-dir $root/android --add-dir $root/apple -p hello"
+# No repo named must be plain claude — the default has to stay cheap,
+# because --add-dir also drags in that repo's CLAUDE.md.
+run "$root/bin/claude-ws" --version
+expect '^ARGV: --version$'
+# A non-repo leading word is claude's problem, not ours: passed through, not
+# silently swallowed or turned into a bogus --add-dir.
+run "$root/bin/claude-ws" notarepo
+expect '^ARGV: notarepo$'
+PATH="$oldpath"; export PATH
+rm -rf "$root/apple/.claude/skills"
+
 echo "all tests passed"
 touch "$out"

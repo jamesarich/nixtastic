@@ -129,6 +129,15 @@ finds — run it before diagnosing by hand.
   subagent" works verbatim from here. `doctor` reports missing or stale
   copies; two repos sharing a name resolve by filesystem order, so `sync`
   warns rather than picking silently.
+- **Per-repo *skills* are not aggregated — launch with `bin/claude-ws
+  <repo>`.** A skill is a directory whose name is its identity, so it cannot
+  be copied without forking it; `--add-dir` is the only supported way to load
+  one in place, and it has no `settings.json` equivalent. `sync` generates the
+  launcher: leading repo names become `--add-dir`, everything after the first
+  non-repo argument goes to `claude` untouched. Name only the repo you need —
+  `--add-dir` also loads that repo's `CLAUDE.md`, which is exactly what the
+  router design above avoids. So: subagents work from a bare `claude`, skills
+  need the launcher.
 - **The direnv hook fires only in interactive shells** — scripts and agent
   subshells get no repo environment, so Gradle silently runs unpinned. From
   non-interactive contexts use `direnv exec <repo-or-worktree> <cmd>`.
