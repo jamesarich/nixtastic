@@ -244,6 +244,33 @@ else
   fix "(cd $root/meshtastic-mcp && uv run meshtastic-mcp skills install --dest $root/.claude/skills)"
 fi
 
+# Repo subagents are copied to the root because a root-rooted session cannot
+# see them where they live (rationale with agent_pairs in lib.sh). A stale or
+# missing copy fails the way this whole file exists to catch: the Agent tool
+# just says "not found", or worse answers from an outdated definition.
+agent_exp=$(mktemp)
+trap 'rm -f "$agent_exp"' EXIT
+while IFS=$'\t' read -r dir _ _; do
+  agent_pairs "$dir" "$root" >> "$agent_exp"
+done < "$NIXTASTIC_REPOS_TSV"
+if [ -s "$agent_exp" ]; then
+  a_missing=0; a_stale=0; a_total=0
+  while IFS=$'\t' read -r src dest; do
+    a_total=$((a_total + 1))
+    if [ ! -f "$root/.claude/agents/$dest" ]; then
+      a_missing=$((a_missing + 1))
+    elif ! cmp -s "$src" "$root/.claude/agents/$dest"; then
+      a_stale=$((a_stale + 1))
+    fi
+  done < "$agent_exp"
+  if [ "$a_missing" -gt 0 ] || [ "$a_stale" -gt 0 ]; then
+    warn "repo subagents" "$a_missing missing, $a_stale stale of $a_total"
+    fix "nix run .#sync"
+  else
+    ok "repo subagents" "$a_total aggregated to .claude/agents"
+  fi
+fi
+
 echo ""
 if [ "$fails" -gt 0 ]; then
   printf '  %s failure(s), %s warning(s)\n\n' "$fails" "$warns"

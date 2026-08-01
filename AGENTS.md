@@ -321,6 +321,40 @@ The bundled agent skills are *not* installed from here — on a fresh machine th
 would trigger a full `uv sync` inside a git tool. `.#sync` prints the command
 when `.claude/skills/` is missing.
 
+### Per-repo subagents are copied to the root, and why copies
+
+Claude Code resolves project subagents by walking `.claude/agents/` from the
+cwd up to the enclosing repo root. The org repos are **not** ancestors of the
+workspace root, so a session rooted here cannot see them: `.#brief -- android`
+would list `gradle-runner` while the Agent tool answered "not found" —
+advertised and unusable. That gap sent a Gradle baseline to a generic
+subagent on 2026-08-01, which returned a report with no verdict in it and cost
+a full re-run.
+
+`.#sync` therefore copies every `<repo>/.claude/agents/*.md` to
+`.claude/agents/<repo>--<agent>.md`, from `agent_pairs` in
+[`scripts/lib.sh`](./scripts/lib.sh). Four decisions worth the words:
+
+- **Copies, not symlinks.** Skills document symlink support; subagents do
+  not. An agent that silently fails to load is the exact failure class this
+  workspace refuses to ship, and byte-identical copies also put staleness one
+  `cmp` away — which is how `doctor` checks them.
+- **The frontmatter `name:` is kept verbatim.** That, not the filename, is
+  what the Agent tool resolves, so `android/CLAUDE.md`'s "dispatch the
+  `gradle-runner` subagent" keeps working from the root. The `<repo>--`
+  filename prefix is for humans and to stop two repos overwriting each other.
+- **Duplicate names are warned about, never resolved.** Two repos shipping
+  one `name:` resolve by filesystem read order — undefined. `sync` says so;
+  prefixed filenames cannot fix it.
+- **Deletions propagate.** A copy whose source is gone is removed, because an
+  orphan that keeps answering is worse than one that is absent. The drop pass
+  runs even when *no* repo has agents left — nesting it under "any agents
+  exist" was a real bug, caught by `T12`.
+
+`doctor` reports missing or stale copies with `.#sync` as the fix. `lib.sh`
+fronts `doctor` as well as `sync` for this reason: one definition of where a
+copy belongs, or the two drift and doctor blesses files sync would not write.
+
 ### `firmware` tracks its own `.envrc`, and it points at upstream
 
 `firmware/.envrc` is **upstream-tracked** and contains direnv's legacy

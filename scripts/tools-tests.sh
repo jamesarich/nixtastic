@@ -206,5 +206,48 @@ run "$worktree" kzstd feat/suggest
 expect "nix run $root#brief -- kzstd"
 refuse 'nix run \.#brief'
 
+echo "--- T12: per-repo subagents are aggregated to the root, kept fresh, and dropped when gone"
+mkdir -p "$root/android/.claude/agents"
+printf -- '---\nname: gradle-runner\n---\nbody v1\n' > "$root/android/.claude/agents/gradle-runner.md"
+run "$sync"
+expect '\.claude/agents  1 subagent\(s\) from android'
+[ -f "$root/.claude/agents/android--gradle-runner.md" ] || { echo "T12: copy missing"; exit 1; }
+cmp -s "$root/android/.claude/agents/gradle-runner.md" "$root/.claude/agents/android--gradle-runner.md" \
+  || { echo "T12: copy is not byte-identical"; exit 1; }
+# The frontmatter name is what the Agent tool resolves, so it must survive
+# verbatim — renaming it would break android's own "dispatch the
+# gradle-runner subagent" instruction from a root session.
+grep -qx 'name: gradle-runner' "$root/.claude/agents/android--gradle-runner.md" \
+  || { echo "T12: frontmatter name was rewritten"; exit 1; }
+# An unchanged source must not be recopied — mtime churn would make
+# staleness unanswerable by inspection.
+run "$sync"
+refuse 'copied \(source changed\)'
+# A changed source must be picked up.
+printf -- '---\nname: gradle-runner\n---\nbody v2\n' > "$root/android/.claude/agents/gradle-runner.md"
+run "$sync"
+expect '1 copied \(source changed\)'
+grep -q 'body v2' "$root/.claude/agents/android--gradle-runner.md" || { echo "T12: stale copy kept"; exit 1; }
+# Two repos claiming one name resolves by filesystem order — undefined, so
+# it has to be said out loud rather than silently picked.
+mkdir -p "$root/apple/.claude/agents"
+printf -- '---\nname: gradle-runner\n---\nimpostor\n' > "$root/apple/.claude/agents/gradle-runner.md"
+run "$sync"
+expect 'duplicate subagent name\(s\)'
+expect '        gradle-runner'
+# Deleted upstream means gone here: an orphan copy would keep answering.
+rm -rf "$root/apple/.claude/agents"
+run "$sync"
+expect '1 dropped \(source gone\)'
+refuse 'duplicate subagent name'
+[ ! -e "$root/.claude/agents/apple--gradle-runner.md" ] || { echo "T12: orphan copy kept"; exit 1; }
+# Removing the LAST agent anywhere leaves nothing to iterate, so a drop pass
+# nested under "any agents exist" would never run and the copy would answer
+# forever. Exactly that bug shipped in the first draft.
+rm -f "$root/android/.claude/agents/gradle-runner.md"
+run "$sync"
+expect '1 dropped \(source gone\)'
+[ ! -e "$root/.claude/agents/android--gradle-runner.md" ] || { echo "T12: last orphan copy kept"; exit 1; }
+
 echo "all tests passed"
 touch "$out"

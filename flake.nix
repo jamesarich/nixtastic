@@ -805,6 +805,10 @@
               pkgs.git
               pkgs.coreutils
               pkgs.jq
+              # cmp lives in diffutils, not coreutils — the subagent
+              # aggregation compares copies against their sources.
+              pkgs.diffutils
+              pkgs.gnused
             ];
             runtimeEnv = toolEnv;
             text = builtins.readFile ./scripts/lib.sh + builtins.readFile ./scripts/sync.sh;
@@ -894,11 +898,17 @@
               pkgs.git
               pkgs.coreutils
               pkgs.jq
+              pkgs.diffutils
+              pkgs.gnused
             ];
             runtimeEnv = {
               NIXTASTIC_REPOS_TSV = reposTsv;
             };
-            text = builtins.readFile ./scripts/doctor.sh;
+            # lib.sh fronts doctor as well as sync: sync writes the
+            # aggregated subagent copies and doctor verifies them, so both
+            # need agent_pairs. One definition of where a copy belongs, or
+            # the two drift and doctor blesses files sync would not write.
+            text = builtins.readFile ./scripts/lib.sh + builtins.readFile ./scripts/doctor.sh;
           };
         in
         {

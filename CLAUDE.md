@@ -119,6 +119,16 @@ finds — run it before diagnosing by hand.
   at the stable `bin/meshtastic-mcp-launch`**, which `sync` rewrites — that
   one reaches `android/`, `firmware/` and every worktree, and never goes
   stale.
+- **Per-repo subagents only exist at the root because `.#sync` copies them
+  there.** Claude Code scans `.claude/agents/` from the cwd up to the
+  enclosing repo root, and the org repos are not ancestors of the workspace —
+  so `android`'s `gradle-runner` is unusable from a root session until sync
+  aggregates it into `.claude/agents/<repo>--<agent>.md`. The copies keep
+  upstream's frontmatter `name:` (that, not the filename, is what the Agent
+  tool resolves), so `android/CLAUDE.md`'s "dispatch the `gradle-runner`
+  subagent" works verbatim from here. `doctor` reports missing or stale
+  copies; two repos sharing a name resolve by filesystem order, so `sync`
+  warns rather than picking silently.
 - **The direnv hook fires only in interactive shells** — scripts and agent
   subshells get no repo environment, so Gradle silently runs unpinned. From
   non-interactive contexts use `direnv exec <repo-or-worktree> <cmd>`.

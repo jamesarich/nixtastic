@@ -303,6 +303,68 @@ while IFS=$'\t' read -r dir repo shell; do
 done < "$NIXTASTIC_REPOS_TSV"
 
 echo ""
+
+# --- aggregate per-repo subagents into the workspace root -------------
+# Rationale (and why copies, not symlinks) lives with agent_pairs in lib.sh.
+agents_dir="$root/.claude/agents"
+expected=$(mktemp)
+want=$(mktemp)
+trap 'rm -f "$pending" "$expected" "$want"' EXIT
+while IFS=$'\t' read -r dir _ _; do
+  agent_pairs "$dir" "$root" >> "$expected"
+done < "$NIXTASTIC_REPOS_TSV"
+
+agents_written=0
+agents_dropped=0
+cut -f2 "$expected" > "$want"
+
+if [ -s "$expected" ]; then
+  mkdir -p "$agents_dir"
+  while IFS=$'\t' read -r src dest; do
+    # cmp so an unchanged agent is not rewritten every sync — the mtime
+    # churn would make "is this stale?" unanswerable by inspection.
+    if ! cmp -s "$src" "$agents_dir/$dest"; then
+      cp "$src" "$agents_dir/$dest"
+      agents_written=$((agents_written + 1))
+    fi
+  done < "$expected"
+fi
+
+# Deliberately OUTSIDE the guard above: when the last agent upstream is
+# deleted, $expected is empty, and a drop pass nested in that guard would
+# never run — the orphan copy would answer forever. Worse than absent,
+# and invisible.
+if [ -d "$agents_dir" ]; then
+  for f in "$agents_dir"/*.md; do
+    [ -f "$f" ] || continue
+    if ! grep -qxF "${f##*/}" "$want"; then
+      rm -f "$f"
+      agents_dropped=$((agents_dropped + 1))
+    fi
+  done
+fi
+
+if [ -s "$expected" ]; then
+  n=$(wc -l < "$expected")
+  printf '  .claude/agents  %s subagent(s) from %s — usable from the root\n' \
+    "$n" "$(cut -f2 "$expected" | sed 's/--.*//' | sort -u | tr '\n' ' ' | sed 's/ $//')"
+  [ "$agents_written" -gt 0 ] && printf '      %s copied (source changed)\n' "$agents_written"
+
+  # Two repos shipping the same frontmatter name would resolve by
+  # filesystem read order — undefined, and silently the wrong agent. The
+  # prefixed filenames cannot prevent this; only saying so can.
+  dupes=$(while IFS=$'\t' read -r src _; do agent_name_of "$src"; done < "$expected" | sort | uniq -d)
+  if [ -n "$dupes" ]; then
+    echo "  WARN  duplicate subagent name(s) across repos — resolution is undefined:"
+    printf '        %s\n' "$dupes"
+  fi
+fi
+
+# Reported outside the block above so the last agent's removal is still
+# announced — a copy vanishing silently is the same invisibility problem
+# in the other direction.
+[ "$agents_dropped" -gt 0 ] && printf '  .claude/agents  %s dropped (source gone)\n' "$agents_dropped"
+
 if write_mcp_json "$root" "$root"; then
   echo "  .mcp.json written — meshtastic-mcp server for this workspace"
   # A project-scope server is approved once per machine, the

@@ -117,3 +117,33 @@ write_worktree_envrc() {
     printf 'use flake "%s#%s"\n' "$root" "$2"
   } > "$1"
 }
+
+# Per-repo subagents are invisible to a session rooted at the workspace:
+# Claude Code scans `.claude/agents/` from the cwd up to the enclosing repo
+# root, and the org repos are not ancestors of the workspace root. So
+# `brief` would list android's gradle-runner while the Agent tool rejected
+# it — advertised and unusable, which is how a bad build report reached the
+# main context on 2026-08-01.
+#
+# Copies rather than symlinks. Skills document symlink support; subagents
+# do NOT, and an agent that silently fails to load is precisely the class
+# of failure this workspace refuses to ship. Byte-identical copies also put
+# staleness one `cmp` away, which is how doctor checks them.
+#
+# The Agent tool resolves the frontmatter `name:`, never the filename, so
+# the copies keep upstream's name verbatim — android's own CLAUDE.md says
+# "dispatch the `gradle-runner` subagent" and that has to keep working from
+# here. The repo prefix on the filename is for humans reading the directory
+# and to keep two repos' files from overwriting each other.
+#
+# $1 = repo dir name, $2 = workspace root. Emits "<src>\t<destfilename>".
+agent_pairs() {
+  [ -d "$2/$1/.claude/agents" ] || return 0
+  for f in "$2/$1/.claude/agents"/*.md; do
+    [ -f "$f" ] || continue
+    printf '%s\t%s--%s\n' "$f" "$1" "${f##*/}"
+  done
+}
+
+# The name the Agent tool will actually resolve this file by.
+agent_name_of() { sed -n 's/^name:[[:space:]]*//p' "$1" | head -1; }
