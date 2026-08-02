@@ -330,4 +330,10 @@ Deliverable: a tracking issue on `meshtastic/python` recording
 
 No file in `meshtastic/python` changes until that issue is answered.
 
+**Filed 2026-08-02:** <https://github.com/meshtastic/python/issues/966>. The repo is
+otherwise a clean fit — Poetry + pytest, with a CI job that already runs exactly the
+toolchain the agent instruments. The blocking question is whether Gradle can enable
+Python for project `meshtastic` on the community instance; the supply-chain call on an
+off-PyPI beta wheel in `poetry.lock` is the maintainers'.
+
 [Develocity Python Agent manual]: https://docs.develocity.ai/python-agent/
