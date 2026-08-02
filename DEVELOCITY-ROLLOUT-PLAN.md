@@ -17,6 +17,7 @@
 - Secret name `DEVELOCITY_ACCESS_KEY`; its value **must** carry the host prefix `community.develocity.cloud=` or the key is silently ignored.
 - **One repo per PR. Never mix commits across repos.** Each of these is an independent upstream repo; this workspace is its own repo too.
 - Before touching any repo, run `nix run .#brief -- <repo>` from the workspace root and read that repo's own docs in precedence order (`.specify/memory/constitution.md` → `AGENTS.md` → `CLAUDE.md` → `CONTRIBUTING.md`). Match **that repo's** commit and review conventions.
+- **Rebase onto the freshly-fetched default branch immediately before pushing**, not just when branching. Renovate is active on all of these repos and bumps the pinned `gradle/actions/setup-gradle@<sha>` lines this plan edits — a near-guaranteed conflict. This bit the kzstd pilot: Renovate merged a v6.3.0 bump minutes after branching, the PR went `DIRTY`, and **GitHub silently ran no workflows at all**, because a conflicted PR has no merge ref for `pull_request` to check out. There is no error message for this — diagnose it with `gh pr view <n> --json mergeStateStatus`. Resolve by keeping the *new* action SHA plus the `develocity-access-key` block.
 - `kzstd` and `meshtastic-sdk` require DCO sign-off — commit with `git commit -s`.
 - Do **not** delete the `GRADLE_CACHE_URL` / `GRADLE_CACHE_USERNAME` / `GRADLE_CACHE_PASSWORD` repository secrets during this rollout. Removing their use from workflows is enough; the secrets are the rollback path.
 - Every CI input stays optional. A build with no access key must publish nothing and still succeed.
@@ -25,6 +26,17 @@
 ---
 
 ### Task 0: Confirm access-key coverage before writing any config
+
+> **Answered 2026-08-02 by the kzstd pilot — Tasks 2–6 need none of this.**
+> Access keys are scoped to the *server*, not to a project or repo. The key already
+> provisioned for android authenticated kzstd scans with no per-repo setup, and the
+> first CI run reported `isPushEnabled: true` against
+> `https://community.develocity.cloud/cache` with 9.4s of upload overhead — so the CI
+> service account may both publish scans and **write to the cache** from a repo other
+> than android. `projectId` is metadata the build declares, not a permission the server
+> grants. The only genuinely per-repo step is setting the `DEVELOCITY_ACCESS_KEY`
+> secret. Steps 1–2 below are the verification that produced this; Step 3 is now only
+> needed for the Python question in Task 7.
 
 **Files:** none — this is a prerequisite check whose output changes nothing but the sequencing.
 
