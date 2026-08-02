@@ -289,6 +289,15 @@ In CI, after the secret is set:
 - **The service account may not cover these repos.** Then scans and cache writes are
   silently absent. Mitigated by confirming before the pilot merges, and by the config
   degrading to no-publish rather than failing.
+
+  **2026-08-02, partly answered by the pilot:** access keys are scoped to the
+  *server*, not to a project or repo. The key already provisioned for android
+  (`$GRADLE_USER_HOME/develocity/keys.properties`, which is workspace-local here and so
+  shared by every repo) authenticated `kzstd` scans with no per-repo setup —
+  <https://community.develocity.cloud/s/ahh6y3k7esze2>. `projectId` is metadata the
+  build declares, not a permission the server grants. So the remaining question is
+  narrower than assumed: only whether the CI service account may *write* to the build
+  cache from a repo other than android.
 - **Losing the self-hosted cache.** If the community instance is unreachable, local
   builds fall back to the local cache and CI (where local cache is off) simply misses.
   Acceptable; it is what android already runs on.
