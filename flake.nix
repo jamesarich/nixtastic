@@ -75,6 +75,14 @@
           shell = "kotlin";
           repo = "meshtastic/kzstd";
         };
+        # CoT <-> TAKPacketV2 conversion for ATAK, in five languages. Only the
+        # `kotlin/` binding is a Gradle build, so it shares the kotlin shell;
+        # the swift/python/typescript/csharp bindings bring their own tooling.
+        # kzstd was extracted from here, so the two move together.
+        TAKPacket-SDK = {
+          shell = "kotlin";
+          repo = "meshtastic/TAKPacket-SDK";
+        };
         gradle-flatpak-sources = {
           shell = "kotlin";
           repo = "meshtastic/gradle-flatpak-sources";
@@ -664,6 +672,11 @@
               ]);
             shellHook =
               jvmHook
+              # packages/kmp targets Android, so `cd packages/kmp && ./gradlew
+              # build` — the command this shell's own banner prints — dies with
+              # "SDK location not found" without ANDROID_HOME. Every other shell
+              # whose repo has an Android target already carries this hook.
+              + androidHook
               + (banner "protobufs" "shared .proto definitions — buf · deno · gradle · cargo")
               + ''
                 echo "  buf lint && buf generate     (generate needs network: remote plugin)"

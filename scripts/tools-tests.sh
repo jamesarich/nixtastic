@@ -37,7 +37,7 @@ git init -q -b main "$root"
 # fixture directories must carry the REAL names. firmware tracks .envrc
 # upstream and android tracks .mcp.json — mirror both, they are exactly
 # the cases the tools special-case.
-repos="MQTTastic-Client-KMP android apple design firmware gradle-flatpak-sources kzstd meshtastic-mcp meshtastic-sdk protobufs"
+repos="MQTTastic-Client-KMP TAKPacket-SDK android apple design firmware gradle-flatpak-sources kzstd meshtastic-mcp meshtastic-sdk protobufs"
 for r in $repos; do
   git init -q --bare -b main "$origins/$r.git"
   git init -q -b main "$root/$r"
@@ -71,7 +71,10 @@ run_in() { d="$1"; shift; prev="$PWD"; cd "$d"; run "$@"; cd "$prev"; }
 echo "--- T1: first run — all current, envrc written per repo, sidecar for firmware"
 run "$sync"
 # Anchored: the footer's own help text also says "current".
-[ "$(printf '%s\n' "$res" | grep -cE '^  current ')" = 10 ] || { echo "T1: expected 10 current rows"; printf '%s\n' "$res"; exit 1; }
+# Derived from $repos, not hardcoded: adding a repo to the table in flake.nix
+# should not require editing a magic number here.
+repo_count=$(printf '%s\n' $repos | grep -c .)
+[ "$(printf '%s\n' "$res" | grep -cE '^  current ')" = "$repo_count" ] || { echo "T1: expected $repo_count current rows"; printf '%s\n' "$res"; exit 1; }
 expect 'envrc written'
 expect 'envrc-workspace written \(upstream tracks \.envrc\)'
 [ -f "$root/kzstd/.envrc" ] || { echo "T1: kzstd/.envrc missing"; exit 1; }
