@@ -216,9 +216,10 @@ public `scans.gradle.com` service and are rejected once a `server` is set), repl
 `publishing.onlyIf { isCi }` with the authenticated check so local builds publish too,
 bump CCUD 2.7.0 → 2.8.0, and delete `gradle/build-cache.settings.gradle` plus both
 `apply(from:)` lines for it. `termsOfUse*` apply only to the public `scans.gradle.com`
-service; confirm during this repo's change whether the plugin merely ignores them
-alongside a configured `server` or fails outright. Both settings files already declare
-the two plugins.
+service. **Tested 2026-08-02: the plugin does not reject them alongside a configured
+`server`** — the build configures fine and still publishes to the configured server, so
+removing them is cleanliness rather than a requirement. Both settings files already
+declare the two plugins.
 This repo has `GOVERNANCE.md`, `CODEOWNERS` and Spec Kit — read them before opening the
 PR; the change may need to flow through the spec lifecycle rather than land as an
 ad-hoc PR.
