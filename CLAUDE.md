@@ -41,6 +41,7 @@ been skipped in practice, which is why `.#brief` exists.
 | `meshtastic-sdk` | KMP client SDK | Kotlin MP | `.#kotlin` | `main` | Conventional | `AGENTS.md`, `GOVERNANCE.md`, `CODEOWNERS`, Spec Kit |
 | `MQTTastic-Client-KMP` | MQTT 5 client lib | Kotlin MP | `.#kotlin` | `main` | Conventional | `AGENTS.md` |
 | `kzstd` | zstd codec lib | Kotlin MP | `.#kotlin` | `main` | Conventional | `AGENTS.md` |
+| `TAKPacket-SDK` | CoT ↔ TAKPacketV2, 5 languages | Kotlin MP (+ swift/py/ts/c#) | `.#kotlin` | `main` | imperative, detailed body | `CLAUDE.md` (24 KB) |
 | `gradle-flatpak-sources` | Flathub manifest plugin | Kotlin / Gradle | `.#kotlin` | `main` | Conventional | → [`notes/gradle-flatpak-sources.md`](./notes/gradle-flatpak-sources.md) |
 | `meshtastic-mcp` | MCP server + agent skills | Python / uv | `.#mcp` | `master` | Conventional | `AGENTS.md`, `CONVENTIONS.md`, `llms.txt`, cursor + windsurf rules |
 | `protobufs` | shared `.proto` definitions | buf · deno · gradle · cargo | `.#protobufs` | `master` | mixed | → [`notes/protobufs.md`](./notes/protobufs.md) |
@@ -149,6 +150,22 @@ finds — run it before diagnosing by hand.
   any one breaks a specific repo.
 - **Toolchain config belongs in `gradle.properties`, never `GRADLE_OPTS`** —
   the daemon never sees the launcher's environment.
+- **Develocity is per-repo, not org-wide** — every Gradle repo carries its own
+  `gradle/develocity.settings.gradle` (android's lives in
+  `build-logic/settings-plugin`) and its own `DEVELOCITY_ACCESS_KEY` secret,
+  whose value **must** start `community.develocity.cloud=` or the key is
+  silently ignored. A repo missing the secret still builds — it just publishes
+  no scan and never writes the cache. Access keys are scoped to the *server*,
+  so the one in `$GRADLE_USER_HOME/develocity/keys.properties` (workspace-local
+  here) already covers every repo; `projectId` is metadata the build declares,
+  not a permission. Cache **writes** are gated on `GITHUB_EVENT_NAME` being
+  `push` or `merge_group`: same-repository PRs *do* receive secrets, so an
+  access-key check alone would let unmerged code poison the shared cache. The
+  old `GRADLE_CACHE_URL` / `_USERNAME` / `_PASSWORD` secrets are unused but
+  deliberately retained as the rollback path — don't confuse them with
+  `GRADLE_CACHE_READ_ONLY`, which is still live and governs the Actions-side
+  Gradle home cache, not this one. `protobufs` is the last repo not yet
+  onboarded (PR #1027).
 - **Default branches are not all `main`** — see the table.
 - **`.gitignore` here denies by default** — a new file is untracked until
   whitelisted.
