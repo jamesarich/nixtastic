@@ -41,7 +41,8 @@
 
 # Workspace-local orientation notes for repos that publish no agent docs
 # of their own (apple, protobufs, gradle-flatpak-sources, design,
-# meshtastic-python).
+# meshtastic-python), plus the cross-repo material that belongs to no single
+# repo (cross-repo-contracts.md).
 !/notes/
 !/notes/*.md
 # The KMP org audit, migrated from the pre-nixtastic workspace (2026-08):

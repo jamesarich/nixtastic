@@ -61,7 +61,9 @@ SDK).
 - `protobufs` is vendored as a submodule at `firmware/protobufs` **and** at
   `meshtastic-python/protobufs`. Edit in `protobufs`, bump the pointer in
   each. Wire compatibility affects firmware, both apps and the SDK
-  **simultaneously**.
+  **simultaneously**. `android` is not a submodule consumer — it takes the
+  published `org.meshtastic:protobufs` artifact pinned in
+  `gradle/libs.versions.toml`, so a bump there is a version bump.
 - `meshtastic-sdk` is consumed by `apple` and `android` — an ABI change breaks
   them without touching their repos.
 - `gradle-flatpak-sources` packages `android`'s `:desktopApp` for Flathub.
@@ -71,6 +73,10 @@ SDK).
   the shared-contact URL (`meshtastic.org/v/#…`) it prints as a QR.
 - `design` defines standards that `android`, `apple` and `web` implement;
   tracked on <https://github.com/orgs/meshtastic/projects/16>, not in the repo.
+
+The wire-level contracts these couplings rest on — the phone↔device handshake,
+proto change rules, MQTT topics and the release order — are in
+[`notes/cross-repo-contracts.md`](./notes/cross-repo-contracts.md).
 
 ## Spec Kit
 
