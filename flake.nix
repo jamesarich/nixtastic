@@ -182,13 +182,64 @@
           # :desktopApp (Compose Desktop) asks for JetBrains 25 at
           # desktopApp/build.gradle.kts:129 — its daemon runs happily on
           # plain JDK 25, but that module will not compile without JBR.
+          #
+          # On Darwin, nixpkgs marks every jetbrains JDK broken (the
+          # from-source build fails there; still true on nixos-unstable
+          # as of 2026-08), so we package JetBrains' official signed
+          # osx-aarch64 binaries instead. Intel macOS is already out of
+          # scope (see README), hence the hardcoded arch. Versions track
+          # what nixpkgs pins so Linux and macOS resolve the same
+          # toolchain; when a flake update bumps pkgs.jetbrains.jdk*,
+          # bump version/build/hash here to match. The plain jbrsdk
+          # variant, not jbrsdk_jcef: Gradle only needs a JDK that
+          # reports vendor JetBrains — nothing here embeds Chromium.
+          jbrsdkDarwin =
+            {
+              version,
+              build,
+              hash,
+            }:
+            pkgs.stdenvNoCC.mkDerivation (finalAttrs: {
+              pname = "jetbrains-jbrsdk";
+              inherit version;
+              src = pkgs.fetchurl {
+                url = "https://cache-redirector.jetbrains.com/intellij-jbr/jbrsdk-${version}-osx-aarch64-${build}.tar.gz";
+                inherit hash;
+              };
+              # Keep the signed bundle intact — Gradle wants the macOS
+              # Contents/Home layout, exposed via .home like nixpkgs'
+              # own JDKs (toolchainPaths below reads it).
+              installPhase = ''
+                mkdir -p "$out"
+                cp -R Contents "$out"/
+              '';
+              passthru.home = "${finalAttrs.finalPackage}/Contents/Home";
+            });
+          jetbrainsJdk21 =
+            if isLinux then
+              pkgs.jetbrains.jdk-21
+            else
+              jbrsdkDarwin {
+                version = "21.0.10";
+                build = "b1163.110";
+                hash = "sha256-wc7uOs+IkWS50PMSgE3UdGwJIS7lnEn9N/A+QzVfX2k=";
+              };
+          jetbrainsJdk25 =
+            if isLinux then
+              pkgs.jetbrains.jdk
+            else
+              jbrsdkDarwin {
+                version = "25.0.3";
+                build = "b508.4";
+                hash = "sha256-XuyLAUyeBQOrS5xg94kPE2dS/nZTdQQqGJ3YHCl+5+4=";
+              };
           jdks = [
             pkgs.jdk21
             pkgs.jdk17
             pkgs.temurin-bin-11
-            pkgs.jetbrains.jdk-21 # meshtastic-sdk daemon (vendor=JETBRAINS)
+            jetbrainsJdk21 # meshtastic-sdk daemon (vendor=JETBRAINS)
             pkgs.jdk25 # Meshtastic-Android daemon
-            pkgs.jetbrains.jdk # JBR 25 — :desktopApp toolchain
+            jetbrainsJdk25 # JBR 25 — :desktopApp toolchain
           ];
           primaryJdk = pkgs.jdk21;
           # .home where it exists — on Darwin it differs from the
