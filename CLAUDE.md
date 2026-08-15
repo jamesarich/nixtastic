@@ -43,7 +43,9 @@ been skipped in practice, which is why `.#brief` exists.
 | `kzstd` | zstd codec lib | Kotlin MP | `.#kotlin` | `main` | Conventional | `AGENTS.md` |
 | `TAKPacket-SDK` | CoT ↔ TAKPacketV2, 5 languages | Kotlin MP (+ swift/py/ts/c#) | `.#kotlin` | `main` | imperative, detailed body | `CLAUDE.md` (24 KB) |
 | `gradle-flatpak-sources` | Flathub manifest plugin | Kotlin / Gradle | `.#kotlin` | `main` | Conventional | → [`notes/gradle-flatpak-sources.md`](./notes/gradle-flatpak-sources.md) |
-| `meshtastic-mcp` | MCP server + agent skills | Python / uv | `.#mcp` | `master` | Conventional | `AGENTS.md`, `CONVENTIONS.md`, `llms.txt`, cursor + windsurf rules |
+| `meshtastic-mcp` | MCP server + agent skills | Python / uv | `.#python` | `master` | Conventional | `AGENTS.md`, `CONVENTIONS.md`, `llms.txt`, cursor + windsurf rules |
+| `labeltastic` | contact-QR nametag kiosk (Niimbot printer) | Python / uv | `.#python` | `main` | Conventional | `AGENTS.md`, `CONTRIBUTING.md`, `llms.txt` |
+| `meshtastic-python` | Python CLI + API (`meshtastic` on PyPI) | Python / **Poetry** | `.#python` | `master` | sentence-style, merged via PR | → [`notes/meshtastic-python.md`](./notes/meshtastic-python.md) |
 | `protobufs` | shared `.proto` definitions | buf · deno · gradle · cargo | `.#protobufs` | `master` | mixed | → [`notes/protobufs.md`](./notes/protobufs.md) |
 | `design` | design standards, tokens, assets | node · inkscape | `.#design` | `master` | Conventional | → [`notes/design.md`](./notes/design.md) |
 
@@ -56,12 +58,17 @@ SDK).
 
 ## Cross-repo coupling
 
-- `protobufs` is vendored as a submodule at `firmware/protobufs`. Edit in
-  `protobufs`, bump the pointer in `firmware`. Wire compatibility affects
-  firmware, both apps and the SDK **simultaneously**.
+- `protobufs` is vendored as a submodule at `firmware/protobufs` **and** at
+  `meshtastic-python/protobufs`. Edit in `protobufs`, bump the pointer in
+  each. Wire compatibility affects firmware, both apps and the SDK
+  **simultaneously**.
 - `meshtastic-sdk` is consumed by `apple` and `android` — an ABI change breaks
   them without touching their repos.
 - `gradle-flatpak-sources` packages `android`'s `:desktopApp` for Flathub.
+- `meshtastic-python` is what `labeltastic` and `meshtastic-mcp` both import to
+  reach a radio, so it sits under every Python-side device test in this
+  workspace. `labeltastic` pins `meshtastic>=2.6` — the release that shipped
+  the shared-contact URL (`meshtastic.org/v/#…`) it prints as a QR.
 - `design` defines standards that `android`, `apple` and `web` implement;
   tracked on <https://github.com/orgs/meshtastic/projects/16>, not in the repo.
 
@@ -142,7 +149,7 @@ finds — run it before diagnosing by hand.
 - **The direnv hook fires only in interactive shells** — scripts and agent
   subshells get no repo environment, so Gradle silently runs unpinned. From
   non-interactive contexts use `direnv exec <repo-or-worktree> <cmd>`.
-- **`.#mcp` needs `LD_LIBRARY_PATH`** — `UV_PYTHON` pins the venv to the Nix
+- **`.#python` needs `LD_LIBRARY_PATH`** — `UV_PYTHON` pins the venv to the Nix
   interpreter, whose loader cannot see the system `libstdc++`/`libz` that
   manylinux wheels link. numpy, opencv and torch install fine and then fail to
   import, blaming neither library.

@@ -3,9 +3,11 @@
 #
 # Fixture tests for the git-state logic in sync and worktree — the
 # highest-consequence code in the workspace, exercised here against a fake
-# workspace of ten tiny repos with local bare "origins". Runs inside the
-# Nix build sandbox: no network, which is the point — every behaviour
-# tested is pure git state.
+# workspace of tiny repos with local bare "origins", one per entry in the
+# real repo table. Runs inside the Nix build sandbox: no network, which is
+# the point — every behaviour tested is pure git state. (Deliberately not
+# stating a repo count: the list below is the count, and a number in prose
+# goes stale the moment a repo is registered.)
 #
 # Built as checks.<system>.tools-tests. The builder exports:
 #   $sync      path to the built meshtastic-sync
@@ -37,7 +39,7 @@ git init -q -b main "$root"
 # fixture directories must carry the REAL names. firmware tracks .envrc
 # upstream and android tracks .mcp.json — mirror both, they are exactly
 # the cases the tools special-case.
-repos="MQTTastic-Client-KMP TAKPacket-SDK android apple design firmware gradle-flatpak-sources kzstd meshtastic-mcp meshtastic-sdk protobufs"
+repos="MQTTastic-Client-KMP TAKPacket-SDK android apple design firmware gradle-flatpak-sources kzstd labeltastic meshtastic-mcp meshtastic-python meshtastic-sdk protobufs"
 for r in $repos; do
   git init -q --bare -b main "$origins/$r.git"
   git init -q -b main "$root/$r"

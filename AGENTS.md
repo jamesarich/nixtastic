@@ -67,7 +67,7 @@ invisible and every Compose UI test in a `jvmTest` run dies with
 `:feature:settings`), the real cause buried in the last `Caused by:` line. The
 JVM shells therefore put `libglvnd` on `LD_LIBRARY_PATH` on Linux — verified
 sufficient for headless raster tests. Same failure class as the manylinux
-wheels in `.#mcp`.
+wheels in `.#python`.
 
 ---
 
@@ -217,6 +217,51 @@ Read the `[diagnostic_name]` lines, not the total.
 `[cpp]`, and trunk fetches its own `clang-format`. The `clang-format` on PATH
 from `clang-tools` is incidental — do not wire an editor to it and end up
 fighting trunk over the same files.
+
+---
+
+## Python
+
+### One shell serves every Python repo, and it is named for the stack
+
+`meshtastic-mcp`, `labeltastic` and `meshtastic-python` want the same things:
+CPython 3.13, the serial/USB tools, and the `LD_LIBRARY_PATH` that keeps
+manylinux wheels loadable (numpy and opencv in the first, Pillow in the
+second — same failure, same fix). Separate shells would have meant
+maintaining that list three times, and the divergence would only show up as a
+wheel that imports in one repo and not the others.
+
+So the shell is `.#python`, not `.#mcp`. It was renamed when `labeltastic`
+was registered: a shell named after one of the repos it serves invites the
+assumption that the others are misconfigured. `.#kotlin` — five repos, no
+repo of that name — was already the precedent. `reposFor` derives the banner
+from the workspace table so it cannot drift as repos are added.
+
+What a given repo does not need — `nodejs_22`, `androidHook` — it gets
+anyway, and that is deliberate: both are already paid for by `meshtastic-mcp`
+and neither costs the others anything at runtime. `nodeTools` is not in that
+category; **all three** need it. Each talks to a USB serial radio, and
+`labeltastic` drives a Niimbot printer on a second port, which is also why
+`serialHook`'s dialout-group warning matters here.
+
+### Both uv and Poetry, on purpose
+
+`meshtastic-mcp` and `labeltastic` are uv projects (`uv.lock`).
+`meshtastic-python` is Poetry — `poetry.lock`, `[tool.poetry]` tables, and
+`poetry install --all-extras --with dev,powermon` in its CI. uv cannot
+install from a `poetry.lock`, so shipping only `uv` would leave that repo
+unbuildable in a shell that looked correctly configured — the silent-failure
+class this workspace exists to eliminate. The shell prints the rule rather
+than the repo names, so it cannot go stale: **the lock file tells you which
+manager to use.**
+
+### The `python` attribute is not the `python` shell
+
+The devShells attrset now has a `python` attribute while the let block above
+it binds `python = pkgs.python313`. They do not collide, because that attrset
+is not `rec` — `${python}` inside the shell still resolves to the
+interpreter. Adding `rec` would silently rebind it to the shell derivation.
+Verified by `nix flake check`; the comment in `flake.nix` says so at the site.
 
 ---
 
@@ -529,8 +574,9 @@ installed — empty store, no `~/.gradle`, no Android SDK, no `~/.platformio`:
 - `nix flake check --all-systems` — clean (a historical record: that single
   command predates the `checks` output and now fails on purpose — see
   Conventions below for the two-command form that replaced it)
-- all seven Linux shells (`kotlin`, `android`, `firmware`, `protobufs`, `mcp`,
-  `design`, `nodes`) entered successfully, built cold
+- all seven Linux shells (`kotlin`, `android`, `firmware`, `protobufs`,
+  `python` — then named `mcp` — `design`, `nodes`) entered successfully,
+  built cold
 - **path-agnostic** — ran from `~/meshtastic-workspace`, not `~/meshtastic`.
   Nothing may hardcode the directory name; derive from
   `MESHTASTIC_WORKSPACE` or `$(dirname "$PWD")`.
@@ -543,7 +589,7 @@ credentials before step 2; `nix` is absent from `PATH` in non-interactive
 shells even under `bash -lc`; and the per-repo `.envrc` examples hardcoded
 `~/meshtastic`.
 
-Still open: `.#mcp` under `mkShellNoCC` is unproven — both test machines have
+Still open: `.#python` under `mkShellNoCC` is unproven — both test machines have
 `/usr/bin/cc`, so `uv sync` never had to build a wheel from source. Settling it
 needs a container without `build-essential`. `uv sync --all-extras` (5.1 GB,
 torch and scipy included) does **not** settle it: those all ship prebuilt
@@ -554,9 +600,10 @@ prebuilt wheels fail to **load** under the Nix interpreter `UV_PYTHON` pins:
 they link `libstdc++`/`libz`, Nix's loader cannot see either, and numpy, opencv,
 torch and easyocr end up installed but not importable. The failure names neither
 library — it reads `Importing the numpy C-extensions failed`, with the real
-cause only on the traceback's last line. Hence `LD_LIBRARY_PATH` in the `.#mcp`
-shellHook, and again in the generated `.mcp.json` because the MCP client
-launches the server outside that shell.
+cause only on the traceback's last line. Hence `LD_LIBRARY_PATH` in the
+`.#python` shellHook, and again in the generated `.mcp.json` because the MCP
+client launches the server outside that shell. It covers `labeltastic` for
+free — Pillow ships manylinux wheels on the same terms.
 
 ---
 
@@ -584,7 +631,8 @@ launches the server outside that shell.
   `.gitignore` **and** at least `git add`ed, or pure eval cannot see them.
 - The git-state logic in `sync` and `worktree` has fixture tests —
   [`scripts/tools-tests.sh`](./scripts/tools-tests.sh), built as
-  `checks.<system>.tools-tests` against a fake ten-repo workspace with local
+  `checks.<system>.tools-tests` against a fake workspace, one tiny repo per
+  entry in the real table, with local
   bare origins (offline by construction, so the build sandbox is a feature).
   Changing drift/pull/adoption behaviour means extending them; `nix flake
   check` runs them.

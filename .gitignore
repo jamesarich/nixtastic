@@ -40,7 +40,8 @@
 !/*.md
 
 # Workspace-local orientation notes for repos that publish no agent docs
-# of their own (apple, protobufs, gradle-flatpak-sources, design).
+# of their own (apple, protobufs, gradle-flatpak-sources, design,
+# meshtastic-python).
 !/notes/
 !/notes/*.md
 

@@ -77,11 +77,12 @@ while IFS=$'\t' read -r dir repo shell; do
   if [ ! -d "$root/$dir/.git" ]; then
     echo "  clone     $dir  <- $repo"
     # --recurse-submodules: firmware ships two (protobufs,
-    # meshtestic), and a plain clone leaves them as empty
+    # meshtestic) and meshtastic-python vendors protobufs the
+    # same way, and a plain clone leaves them as empty
     # directories — pio then fails on missing proto sources.
-    # The only other path that initializes them is the
-    # post-fast-forward re-sync, which never fires for a
-    # fresh, up-to-date clone.
+    # Generic, not a firmware special case. The only other path
+    # that initializes them is the post-fast-forward re-sync,
+    # which never fires for a fresh, up-to-date clone.
     git clone --quiet --recurse-submodules "https://github.com/$repo.git" "$root/$dir"
     # A fresh clone may already carry a tracked .envrc of its
     # own (firmware does), so route through the same check.

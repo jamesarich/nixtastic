@@ -1,8 +1,10 @@
 # protobufs — meshtastic/protobufs
 
 Workspace-local note. This repo has **no agent docs of any kind** — no
-`AGENTS.md`, no `CLAUDE.md`, no Spec Kit, no `CONTRIBUTING.md`. It is the only
-workspace repo in that position, so orientation has to come from the code.
+`AGENTS.md`, no `CLAUDE.md`, no Spec Kit, no `CONTRIBUTING.md` — so
+orientation has to come from the code. (`meshtastic-python` is the other repo
+in that position; the rest of the `notes/` entries cover repos that publish
+*some* docs, just not agent-facing ones.)
 
 - **Role:** the shared `.proto` definitions every other Meshtastic project
   builds against. Changes here ripple everywhere.

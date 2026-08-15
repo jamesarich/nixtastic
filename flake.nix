@@ -88,8 +88,31 @@
           repo = "meshtastic/gradle-flatpak-sources";
         };
         meshtastic-mcp = {
-          shell = "mcp";
+          shell = "python";
           repo = "meshtastic/meshtastic-mcp";
+        };
+        # Contact-QR nametag kiosk: a mesh DM prints a Niimbot badge. Shares
+        # the python shell with meshtastic-mcp — same interpreter, uv and
+        # ruff (whose formatter behaviour that repo treats as load-bearing),
+        # the same serial hardware, and it needs that shell's LD_LIBRARY_PATH
+        # for the same reason: Pillow ships manylinux wheels too.
+        labeltastic = {
+          shell = "python";
+          repo = "meshtastic/labeltastic";
+        };
+        # The `meshtastic` CLI and API on PyPI — what labeltastic and
+        # meshtastic-mcp both import to talk to a radio.
+        #
+        # Checked out as meshtastic-python, not `python`: the directory would
+        # otherwise sit next to a shell of the same name, and `cd python` /
+        # `nix develop .#python` are not the same thing. Renaming on checkout
+        # is already how android and apple are handled.
+        #
+        # Poetry, not uv — see the python shell. It also vendors protobufs as
+        # a submodule, exactly as firmware does.
+        meshtastic-python = {
+          shell = "python";
+          repo = "meshtastic/python";
         };
         # Shared .proto definitions. Also vendored as a submodule inside
         # firmware/protobufs — edit here, bump the pointer there.
@@ -207,7 +230,7 @@
               # naming libGL; the real cause is the last Caused-by line. libglvnd
               # (the GL dispatch library) satisfies the link; verified sufficient
               # for the headless raster tests. Same failure class as the manylinux
-              # wheels in .#mcp.
+              # wheels in .#python.
               export LD_LIBRARY_PATH="${
                 pkgs.lib.makeLibraryPath [ pkgs.libglvnd ]
               }''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
@@ -264,7 +287,7 @@
           # written out in full.
 
           #########################################################
-          # Python (meshtastic-mcp, firmware build scripts, node CLI)
+          # Python (meshtastic-mcp, labeltastic, firmware build scripts, node CLI)
           #########################################################
           python = pkgs.python313;
 
@@ -442,7 +465,7 @@
                 echo "  .#kotlin    ${reposFor "kotlin"}"
                 echo "  .#android   Meshtastic-Android"
                 echo "  .#firmware  firmware (PlatformIO)"
-                echo "  .#mcp       meshtastic-mcp"
+                echo "  .#python    ${reposFor "python"}"
                 echo "  .#apple     Meshtastic-Apple (macOS)"
                 echo "  .#nodes     serial/BLE tools only"
                 echo ""
@@ -569,20 +592,40 @@
           };
 
           #########################################################
-          # mcp — Python server + Node web-ui
+          # python — every Python repo: meshtastic-mcp (server + Node
+          # web-ui), labeltastic (Niimbot nametag kiosk) and
+          # meshtastic-python (the CLI and API on PyPI as `meshtastic`).
+          #
+          # Named for the stack rather than any one repo, the way .#kotlin
+          # is. NB: this attribute and the interpreter bound in the let
+          # above share the name `python` and do NOT collide — this attrset
+          # is not `rec`, so `${python}` below is still pkgs.python313.
+          # Making it rec would silently rebind it to this shell.
+          #
+          # BOTH package managers ship here, and that is not indecision:
+          # meshtastic-mcp and labeltastic are uv projects (uv.lock), while
+          # meshtastic-python is Poetry (poetry.lock, [tool.poetry], and
+          # `poetry install --with dev` in its CI). uv cannot install from a
+          # poetry.lock, so a uv-only shell would leave that repo unbuildable
+          # while looking correctly configured.
           #########################################################
-          mcp = pkgs.mkShellNoCC {
-            name = "meshtastic-mcp";
+          python = pkgs.mkShellNoCC {
+            name = "meshtastic-python";
             # The android CLI comes from $ANDROID_HOME/cmdline-tools
-            # (androidHook puts it on PATH) — this repo's hardware-free
+            # (androidHook puts it on PATH) — meshtastic-mcp's hardware-free
             # e2e drives an emulator via `android emulator` / `android
             # layout` rather than hand-rolled avdmanager/adb calls.
+            # The other two need none of that, but it costs nothing here and
+            # all three want nodeTools: every one of them talks to a USB
+            # serial radio, and labeltastic drives a Niimbot printer over a
+            # second port.
             packages =
               common
               ++ nodeTools
               ++ [
                 python
                 pkgs.uv
+                pkgs.poetry # meshtastic-python — see the header
                 pkgs.nodejs_22
                 pkgs.ruff
               ];
@@ -590,7 +633,7 @@
               serialHook
               + androidHook
               + pythonHook
-              + (banner "mcp" "meshtastic-mcp — Python >=3.11, uv.lock")
+              + (banner "python" (reposFor "python"))
               + ''
                 # Let uv build venvs against the Nix interpreter rather than
                 # downloading its own CPython.
@@ -608,7 +651,9 @@
                     pkgs.zlib
                   ]
                 }''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-                echo "  uv sync && uv run pytest"
+                echo "  CPython ${python.version}, pinned — which manager a repo uses is its lock file:"
+                echo "    uv.lock      uv sync && uv run pytest"
+                echo "    poetry.lock  poetry install --with dev && poetry run pytest"
                 echo ""
               '';
           };
@@ -798,7 +843,7 @@
           # MESHTASTIC_PIO_BIN is deliberately absent — doctor finds
           # ~/.platformio unaided, verified before dropping it.
           #########################################################
-          mcpPython = pkgs.python313; # must match the .#mcp shell
+          mcpPython = pkgs.python313; # must match the .#python shell
           reposTsv = pkgs.writeText "nixtastic-repos.tsv" (nixpkgs.lib.concatStringsSep "\n" entries + "\n");
           toolEnv = {
             NIXTASTIC_REPOS_TSV = reposTsv;

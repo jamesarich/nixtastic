@@ -8,7 +8,7 @@
 # The flake exports the values Nix must supply, via runtimeEnv:
 #   NIXTASTIC_REPOS_TSV   the workspace table: <dir>\t<org/repo>\t<shell>
 #   NIXTASTIC_UV          store path of uv           (write_mcp_json)
-#   NIXTASTIC_PY          store path of python3      (must match .#mcp)
+#   NIXTASTIC_PY          store path of python3      (must match .#python)
 #   NIXTASTIC_LIB         loader path for manylinux wheels (see AGENTS.md)
 #
 # write_mcp_json — the meshtastic-mcp registration, generated for the same
@@ -19,7 +19,7 @@
 # lookups: the MCP client launches this without direnv. They go stale on
 # `nix flake update`; re-run .#sync. Wrapping the command in `nix develop`
 # instead was measured at 4.6s per server start. LD_LIBRARY_PATH restates
-# the .#mcp shellHook because the server runs outside that shell.
+# the .#python shellHook because the server runs outside that shell.
 # A TRACKED .mcp.json always wins over ours — see the callers.
 #
 # $1 = directory to write into, $2 = workspace root.
