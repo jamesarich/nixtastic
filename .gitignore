@@ -44,13 +44,10 @@
 # meshtastic-python).
 !/notes/
 !/notes/*.md
-# Migrated corpora from the pre-nixtastic workspaces (2026-08): the KMP org
-# audit (~/meshtastic/kmp-audit) and the Android transport-audit prompt pack
-# (~/StudioProjects/tempfiles). Local-only prose with no other backing store.
+# The KMP org audit, migrated from the pre-nixtastic workspace (2026-08):
+# local-only prose with no other backing store.
 !/notes/kmp-audit/
 !/notes/kmp-audit/**
-!/notes/transport-audit-prompts/
-!/notes/transport-audit-prompts/**
 
 # --- explicitly excluded --------------------------------------------------
 # Listed for the reader's benefit; /* already covers them.

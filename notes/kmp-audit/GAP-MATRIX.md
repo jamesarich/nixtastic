@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-21 · Measured against [MESHTASTIC-KMP-STANDARD.md](./MESHTASTIC-KMP-STANDARD.md). Full per-repo evidence in `repo-*.md`.
 
-> **Status (updated 2026-07-21):** the table below is the original audit **baseline**. Execution progress — what merged, what's in open PRs, what remains — is tracked in [REMEDIATION-PLAN.md § Execution status](./REMEDIATION-PLAN.md#execution-status--updated-2026-07-21). In brief: the **foundation** (license/branches/merge-queues/shared cache/publishing) is **merged**; **API-stability (#5/#13/#14)**, **security-scanning (#27)**, and **docs (#10/#28)** are in **open PRs** across the 5 mergeable repos; **test-depth (#15–#17)** is not started; all **protobufs** work is review-blocked. Caveat: CodeQL currently scans `actions` only — its CLI (2.26.1) can't analyze Kotlin 2.4.10 yet.
+> **Status (2026-08-15): historical baseline — do not act on the cells.** The remediation executed to completion by 2026-07-22 and roughly a third of the ❌/🟡 cells below have since flipped to ✅ (spot-verified). What genuinely remains open lives in [REMEDIATION-PLAN.md](./REMEDIATION-PLAN.md) (now a closeout): protobufs `packages/kmp` gaps, the CodeQL java-kotlin ceiling, the SKIE-imposed Kotlin 2.4.0 pin in meshtastic-sdk. This file is kept as the dated record of where the repos stood before remediation.
 
 Legend: ✅ meets · 🟡 partial · ❌ absent/fails · — N/A. Columns: **sdk**=meshtastic-sdk · **mqtt**=mqttastic-client-kmp · **kz**=kzstd · **tak**=takpacket-sdk · **flat**=gradle-flatpak-sources (Gradle plugin) · **pb**=protobufs (`packages/kmp`, generated).
 

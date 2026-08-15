@@ -8,7 +8,7 @@
 
 **Tiers:** **[R]** Required (table-stakes; non-compliance is a gap) · **[S]** Strongly recommended · **[E]** Emerging (adopt deliberately).
 
-**Verified reference versions (2026-07-21).** Kotlin `2.4.10` · Gradle `9.6.1` · AGP `9.3.0` · Dokka `2.2.0` (id stays `org.jetbrains.dokka`) · Kover `0.9.9` · BCV `0.18.1` (or Kotlin built-in ABI validation, KGP 2.2+) · vanniktech maven-publish `0.37.0` · Spotless `8.8.0` + ktlint `1.8.0` · detekt `1.23.8` · Kotest `6.2.3` · `gradle/actions/setup-gradle@v6.2.0` · `actions/checkout@v7.0.1` · `actions/setup-java@v5.6.0` · `codecov/codecov-action@v7.0.0`.
+**Verified reference versions (refreshed 2026-08-15).** Kotlin `2.4.10` (⚠️ meshtastic-sdk held at `2.4.0`: SKIE 0.10.13 rejects 2.4.10 — un-pin when SKIE catches up) · Gradle `9.7.0` (kzstd/mqtt/flatpak; tak+pb still 9.6.1, pb bump open as Renovate #1029) · AGP `9.3.1` · Dokka `2.2.0` (id stays `org.jetbrains.dokka`) · Kover `0.9.9` · BCV `0.18.1` (or Kotlin built-in ABI validation, KGP 2.2+) · vanniktech maven-publish `0.37.0` · Spotless `8.8.0` + ktlint `1.8.0` · detekt `1.23.8` · Kotest `6.2.3` · `gradle/actions/setup-gradle@v6.2.0` · `actions/checkout@v7.0.1` · `actions/setup-java@v5.6.0` · `codecov/codecov-action@v7.0.0`.
 
 ---
 
