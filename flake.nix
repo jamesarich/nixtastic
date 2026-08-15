@@ -353,9 +353,14 @@
             fi
           '';
 
+          # The header names the SHELL you type, not an org/repo path. It used
+          # to read "meshtastic/<name>", which was harmless while every name
+          # was a stack or an app — and became actively misleading the moment
+          # a shell was called `python`, because meshtastic/python is a real
+          # repo this shell serves alongside two others.
           banner = name: repos: ''
             echo ""
-            echo "  meshtastic/${name}"
+            echo "  .#${name}"
             echo "  ${repos}"
             echo ""
           '';
@@ -460,7 +465,7 @@
               jvmHook
               + androidHook
               + serialHook
-              + (banner "workspace" "all toolchains — use a focused shell for real work")
+              + (banner "default" "all toolchains — use a focused shell for real work")
               + ''
                 echo "  .#kotlin    ${reposFor "kotlin"}"
                 echo "  .#android   Meshtastic-Android"
