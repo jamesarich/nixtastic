@@ -102,6 +102,7 @@ write_mcp_launcher() {
 # $1 = path to a repo's main checkout.
 ensure_excludes() {
   ex="$(git -C "$1" rev-parse --path-format=absolute --git-common-dir)/info/exclude"
+  mkdir -p "${ex%/exclude}" # git >= 2.55 no longer creates info/ on clone
   for pat in '.claude/worktrees/' '.envrc' '.envrc-workspace' '.direnv/' '.mcp.json'; do
     grep -qxF "$pat" "$ex" 2>/dev/null || echo "$pat" >> "$ex"
   done
