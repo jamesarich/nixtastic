@@ -29,5 +29,12 @@ packaging. Its output is consumed by the Flathub submission for
 - Output correctness is only really provable by running a Flatpak build
   offline. A manifest that looks right can still fail in Flathub's sandbox
   because a dependency was resolved from a cache locally.
+- **Vendor the same Gradle distribution the wrapper verifies.** `android`'s
+  wrapper sets `distributionSha256Sum` with `validateDistributionUrl=true`, so
+  the checksum is of the `-bin` zip. An offline manifest that vendored
+  `gradle-9.6.1-all.zip` and only rewrote `distributionUrl` failed verification
+  against its own bundled file. Vendoring the identical `-bin` artifact instead
+  fixed it and shed ~70 MB (`android` `97d081dea`, PR #6625). Whenever the
+  wrapper version moves, the vendored artifact and the checksum move together.
 - Small repo, low commit volume — check whether history is recent before
   assuming current conventions.

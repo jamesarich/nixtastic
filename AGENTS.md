@@ -69,6 +69,22 @@ JVM shells therefore put `libglvnd` on `LD_LIBRARY_PATH` on Linux — verified
 sufficient for headless raster tests. Same failure class as the manylinux
 wheels in `.#python`.
 
+### A comma in a backtick test name breaks Kotlin/Native, not the JVM
+
+Kotlin/Native rejects `,` inside a backtick-quoted identifier. JVM and Android
+accept it, so a `commonTest` function named ``fun `parses lat, lon`()`` compiles
+and passes locally and on every Android check, then fails the iOS compile in
+CI — the one target most likely to be running last, or on someone else's PR.
+
+It has bitten this workspace twice in Meshtastic-Android alone (`435173767`,
+then `b3ca2e940` "no comma in a common-test name — illegal in Kotlin/Native",
+with `a821039e0` repairing the fallout). Every KMP repo here shares the
+exposure: `meshtastic-sdk`, `MQTTastic-Client-KMP`, `kzstd`, `TAKPacket-SDK`
+and `android` all publish an Apple target from `commonTest`.
+
+Semicolons and parentheses are fine. Reach for a dash or "and" instead, and
+treat "the iOS job failed but nothing else did" as this until proven otherwise.
+
 ---
 
 ## Android
@@ -138,6 +154,21 @@ workspace `direnvrc` overrides upstream's tracked `use nix`.
 
 Also: do not add `gcc-arm-embedded`. PlatformIO fetches its own cross-toolchains
 into `PLATFORMIO_CORE_DIR`, and two on PATH produces baffling link errors.
+
+### `ccache` did nothing here — PlatformIO's own object cache replaced it
+
+`ccache` sat in this shell's packages for a while and never once served a hit.
+PlatformIO drives the compilers through SCons and never invokes it, and
+firmware's `platformio.ini` sets no `build_cache_dir` either, so both halves of
+the mechanism were absent — a package that looks like a build accelerator and
+is inert costs more than it saves, because it stops anyone asking why the
+rebuild is still slow.
+
+The supported mechanism is PlatformIO's own object cache, and the environment
+override is honoured — verified with `pio project config`, which reports the
+value back. The shell exports `PLATFORMIO_BUILD_CACHE_DIR` into `.cache/`
+beside the Gradle home, since that directory is already documented as
+disposable. Do not re-add `ccache` on the assumption it was an oversight.
 
 ### `yaml-cpp` is in the shell for the native target
 
@@ -318,6 +349,20 @@ bumps the pointer. `--pull` re-syncs submodules automatically and reports
 
 A submodule checked out at a different commit than recorded is **not** stashable
 content — `git stash` returns "No local changes to save" and the state persists.
+
+### A CRLF blob in the index makes a clean worktree read dirty
+
+`.#worktree --remove` refuses on uncommitted changes, which is correct — except
+when the change is not one you made. A file committed with CRLF while
+`.gitattributes` (or `core.autocrlf`) says LF re-reads as modified the instant
+it is checked out, in every fresh clone and every new worktree, with nothing to
+stage away. The worktree cannot be removed and the diff looks empty.
+
+Found on `kzstd`'s `gradlew.bat`, fixed by renormalizing the blob
+(`87fe98c`, PR #33), after which `--remove` worked. A sweep of the other repos
+found no second instance, so this is a "recognise it, don't hunt for it" entry:
+if `git status` insists a file you have never opened is modified, check the
+blob's line endings before believing the worktree is dirty.
 
 ### Per-repo `.envrc` files are generated, never hand-written
 
