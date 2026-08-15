@@ -25,7 +25,7 @@ $MESHTASTIC_WORKSPACE/         (any path, any name)
 ├── direnvrc               sourced by ~/.config/direnv/direnvrc
 ├── CLAUDE.md              agent router — repo index + protocol
 ├── AGENTS.md              why the constraints exist
-├── notes/                 orientation for repos with no agent docs
+├── notes/                 repo orientation, cross-repo contracts, audits
 ├── firmware/  android/  apple/  meshtastic-sdk/  …   ← the repos
 └── .cache/                workspace-local Gradle home + PlatformIO cache
 ```
