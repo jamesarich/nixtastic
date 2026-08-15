@@ -255,6 +255,35 @@ class this workspace exists to eliminate. The shell prints the rule rather
 than the repo names, so it cannot go stale: **the lock file tells you which
 manager to use.**
 
+### Poetry does not inherit the pinned interpreter — pin it per repo
+
+`UV_PYTHON`/`UV_PYTHON_DOWNLOADS` bind **uv only**. Poetry ignores them, and
+Poetry 2.4 has no config key to say otherwise — `poetry config
+virtualenvs.python` answers *"There is no virtualenvs.python setting"*. What
+it does instead is scan for interpreters and take the **newest** one
+satisfying the project's `requires-python`.
+
+That turns two facts already recorded elsewhere in this file into a silent
+wrong answer. `esptool` propagates its own CPython 3.14 onto `PATH` (the
+reason `pythonHook` prepends ours at all), and `meshtastic-python` declares
+`^3.9,<3.15` — so 3.14 is *allowed and newer*. Observed on a fresh clone:
+bare `python3` and `uv` were the pinned 3.13.14 while `poetry install`
+quietly built `…/virtualenvs/meshtastic-AkUHFRTl-py3.14`. Nothing errors; the
+CLI runs; the repo is simply not being built against the interpreter Nix
+pinned. `pythonHook`'s prepend cannot fix this, because Poetry enumerates
+versions rather than taking the first `python3` on `PATH`.
+
+The fix is explicit, and one-time per repo:
+
+```bash
+poetry env use "$UV_PYTHON"     # verified: yields 3.13.14
+```
+
+The `.#python` shellHook checks this on entry — when the directory has a
+`poetry.lock` and the active env is off the pin, it prints that exact
+command. A warning rather than an automatic `poetry env use`, matching
+`androidHook` and `serialHook`: entering a shell should not mutate a venv.
+
 ### The `python` attribute is not the `python` shell
 
 The devShells attrset now has a `python` attribute while the let block above

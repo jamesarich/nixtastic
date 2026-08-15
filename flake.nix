@@ -660,6 +660,26 @@
                 echo "    uv.lock      uv sync && uv run pytest"
                 echo "    poetry.lock  poetry install --with dev && poetry run pytest"
                 echo ""
+                # UV_PYTHON binds uv only. Poetry ignores it and has no config
+                # key to pin an interpreter (`poetry config virtualenvs.python`
+                # answers "There is no virtualenvs.python setting"); it takes
+                # the NEWEST python satisfying requires-python. esptool puts a
+                # 3.14 on PATH here and meshtastic-python allows <3.15, so a
+                # fresh `poetry install` silently builds a 3.14 env while uv and
+                # bare python3 are pinned. Nothing errors — hence this check.
+                # Warn rather than run `poetry env use`: entering a shell must
+                # not mutate a venv (same rule as androidHook and serialHook).
+                if [ -f "$PWD/poetry.lock" ]; then
+                  _pyexe="$(poetry env info --executable 2>/dev/null || true)"
+                  _have=""
+                  [ -n "$_pyexe" ] && _have="$("$_pyexe" -c 'import platform; print(platform.python_version())' 2>/dev/null || true)"
+                  if [ -n "$_have" ] && [ "$_have" != "${python.version}" ]; then
+                    echo "  !  poetry env is Python $_have, not the pinned ${python.version}"
+                    echo '     poetry env use "$UV_PYTHON"'
+                    echo ""
+                  fi
+                  unset _pyexe _have
+                fi
               '';
           };
 
