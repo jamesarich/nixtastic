@@ -115,6 +115,14 @@ models, pinned in `gradle/libs.versions.toml` (currently a
 and its `.gitmodules` is empty; a bump there is a version bump, not a
 `git submodule update`.
 
+**Tags are forever.** The meshtastic org enforces an org-level ruleset that
+blocks tag deletion (`GH013` on `push :refs/tags/x`), and releases are
+immutable — a tag once used by a release can never get a new release. Verify
+the version is right *before* pushing the tag; a botched one can only be
+removed by an org admin in the web UI (found 2026-07-17 cleaning up a bad
+v0.1.3 in gradle-flatpak-sources). `gh` tokens without `admin:org` cannot
+even view the ruleset.
+
 ## Dropped from the original drafts
 
 - **The feature-parity matrix.** Ten rows of ✅/⚠️/❌ across five clients,
