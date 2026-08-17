@@ -76,7 +76,10 @@ SDK).
 
 The wire-level contracts these couplings rest on — the phone↔device handshake,
 proto change rules, MQTT topics and the release order — are in
-[`notes/cross-repo-contracts.md`](./notes/cross-repo-contracts.md).
+[`notes/cross-repo-contracts.md`](./notes/cross-repo-contracts.md). The org's
+repo-shape conventions — community-health files, branch naming, coordinates,
+and the invariants a KMP library here must hold — are in
+[`AGENTS.md`](./AGENTS.md) → Org conventions.
 
 ## Spec Kit
 
@@ -179,6 +182,10 @@ finds — run it before diagnosing by hand.
   `GRADLE_CACHE_READ_ONLY`, which is still live and governs the Actions-side
   Gradle home cache, not this one. `protobufs` is the last repo not yet
   onboarded (PR #1027).
+- **`meshtastic/.github` provides no community-health defaults** — it holds
+  only `LICENSE`, `README.md` and `profile/`, so a repo with no
+  `SECURITY.md`/`CODE_OF_CONDUCT.md`/`CONTRIBUTING.md` inherits nothing and
+  simply has none. `AGENTS.md` → Org conventions.
 - **Default branches are not all `main`** — see the table.
 - **`.gitignore` here denies by default** — a new file is untracked until
   whitelisted.

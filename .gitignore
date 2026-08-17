@@ -45,10 +45,6 @@
 # repo (cross-repo-contracts.md).
 !/notes/
 !/notes/*.md
-# The KMP org audit, migrated from the pre-nixtastic workspace (2026-08):
-# local-only prose with no other backing store.
-!/notes/kmp-audit/
-!/notes/kmp-audit/**
 
 # --- explicitly excluded --------------------------------------------------
 # Listed for the reader's benefit; /* already covers them.
