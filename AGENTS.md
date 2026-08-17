@@ -405,8 +405,8 @@ into the javadoc jar or ship a lie.
 
 ### Kover measures JVM/Android bytecode only
 
-Whatever the number says, it is not multiplatform coverage — the native and JS
-targets contribute nothing to it. Do not advertise it as such.
+Whatever the number says, it is not multiplatform coverage — it is measured
+off JVM/Android bytecode. Do not advertise it as such.
 
 The org's coverage gate is a **Codecov project-status regression gate**
 (`target: auto`, `threshold: 1%`), chosen over a fixed `koverVerify` floor
