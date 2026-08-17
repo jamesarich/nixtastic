@@ -325,126 +325,100 @@ Verified by `nix flake check`; the comment in `flake.nix` says so at the site.
 
 ---
 
-## Org conventions, and what a KMP library here must hold
+## Org conventions
 
-Distilled 2026-08-17 from the 2026-07-21 KMP org audit (six repo scorecards,
-a 155-repo census, an ecosystem-research pass and a gap matrix) after
-re-verifying it against the live repos. The corpus itself is gone — it was
-point-in-time evidence whose findings shipped and whose version pins Renovate
-already owns. Recover it from `b936d8c:notes/kmp-audit/`, which also holds
-`reports/RUBRIC.md`, the reusable audit prompt, if the audit is ever re-run.
-
-Only claims that survived re-verification are below. Three did not, and are
-listed at the end as a warning about how fast the rest would have rotted.
+Repo shape across the org, and the invariants a KMP library here must hold.
+Distilled 2026-08-17 from the 2026-07-21 KMP audit and re-verified against the
+live repos; the corpus was point-in-time evidence and is gone. It and its
+reusable audit prompt are at `b936d8c:notes/kmp-audit/`.
 
 ### `meshtastic/.github` supplies no community-health defaults
 
-The org's community-health repo contains **only** `LICENSE`, `README.md` and
-`profile/` — none of the filenames GitHub actually inherits org-wide
-(`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `ISSUE_TEMPLATE/`,
-`PULL_REQUEST_TEMPLATE.md`, `FUNDING.yml`, `SUPPORT.md`). Re-confirmed
-2026-08-17 via `gh api repos/meshtastic/.github/contents`.
+It holds only `LICENSE`, `README.md` and `profile/` — none of the filenames
+GitHub inherits org-wide (`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`,
+`SECURITY.md`, `ISSUE_TEMPLATE/`, `PULL_REQUEST_TEMPLATE.md`, `FUNDING.yml`,
+`SUPPORT.md`). Confirmed 2026-08-17 via
+`gh api repos/meshtastic/.github/contents`.
 
-So there is no safety net: a repo without a `SECURITY.md` simply has none, and
-the census found only ~10 of 155 repos that do. Every repo ships its own.
-`CODE_OF_CONDUCT.md` points at `meshtastic.org/docs/legal/conduct/` rather
-than restating one.
+There is no safety net: a repo without a `SECURITY.md` has none, and only ~10
+of 155 repos do. Every repo ships its own. `CODE_OF_CONDUCT.md` points at
+`meshtastic.org/docs/legal/conduct/` rather than restating one.
+`.github/FUNDING.yml` names the **org** (`github: meshtastic`,
+`open_collective: meshtastic`), never an individual — `apple`'s names a
+person, which is the drift.
 
-`.github/FUNDING.yml` names the **org** — `github: meshtastic`,
-`open_collective: meshtastic` — never an individual maintainer. `apple`'s
-points at a person; that is the drift, not the pattern.
+### `main` is the convention; the `master` plurality is vendored code
 
-### `main` is the convention, even though `master` is the plurality
-
-100 of 155 org repos are on `master`, which reads like a house style and is
-not one: almost all of them are vendored third-party embedded libraries
-(`Adafruit_nRF52_Arduino`, `TinyGPSPlus`, `GxEPD2`, …) that inherited the
-branch name from upstream. Among repos Meshtastic actually authors, `main`
-wins, and `develop` is firmware's git-flow alone.
-
-`kzstd` and `TAKPacket-SDK` have since renamed; `protobufs` is the last
-first-party holdout. Do not generalise from a raw branch count.
+100 of 155 repos are on `master`, almost all vendored third-party embedded
+libraries (`Adafruit_nRF52_Arduino`, `TinyGPSPlus`, `GxEPD2`, …) that
+inherited the name upstream. Among repos Meshtastic authors, `main` wins;
+`develop` is firmware's git-flow alone. `kzstd` and `TAKPacket-SDK` have since
+renamed, leaving `protobufs` the last first-party holdout.
 
 ### `org.meshtastic` is the coordinate root; `com.geeksville.mesh` is not
 
-Every published artifact and every Kotlin package root in the org is
-`org.meshtastic` — unanimous across `meshtastic-sdk`, `MQTTastic-Client-KMP`,
-`kzstd`, `TAKPacket-SDK` and android's own modules.
-
-The shipped Android app's `applicationId` is still `com.geeksville.mesh`, and
-that is **legacy-locked Play Store identity**, not a convention: changing it
+Every published artifact and Kotlin package root in the org is
+`org.meshtastic`. The Android app's `applicationId` is still
+`com.geeksville.mesh` — legacy-locked Play Store identity, since changing it
 loses the listing. Never copy it into anything new.
 
-Dependency automation is **Renovate**, not Dependabot, in every Kotlin repo
-here. Tags are `v`-prefixed semver — and immutable; see
+Dependency automation is **Renovate**, not Dependabot, in every Kotlin repo.
+Tags are `v`-prefixed semver, and immutable — see
 [`notes/cross-repo-contracts.md`](./notes/cross-repo-contracts.md).
 
-### A JVM-only ABI dump passes while the native ABI breaks
+### Three ways KMP CI reports green over an unguarded surface
 
-Binary-compatibility validation that covers only the JVM `.api` file is a
-green check over an unguarded surface: the klib (common/native) ABI can change
-freely underneath it. Coverage must include the klib dump, and `explicitApi()`
-strict mode is the prerequisite for either being meaningful — a Konsist
-allowlist is a supplement, never a substitute.
-
-Two adjacent ways CI lies about the same thing:
-
+- **A JVM-only ABI dump.** The klib (common/native) ABI changes freely
+  underneath it. Validation must cover the klib dump, with `explicitApi()`
+  strict mode as the prerequisite; a Konsist allowlist supplements it, never
+  substitutes.
 - **Cross-compiling a target is not testing it.** A matrix that builds Apple
-  and native targets but only executes `jvmTest` reports success for targets
-  that never ran a single assertion.
-- **A tag→publish workflow that has never fired is not a passing check.** Both
-  `protobufs` and `kzstd` had one while every release had in fact been
-  manual. Exercise the trigger before believing it.
+  and native targets but executes only `jvmTest` reports success for targets
+  that ran no assertion.
+- **A tag→publish workflow that has never fired.** `protobufs` and `kzstd`
+  both had one while every release was in fact manual.
 
-Publishing runs on a **macOS runner** — Apple targets can be produced nowhere
-else — and vanniktech's maven-publish plugin is configuration-cache
-incompatible, so publish tasks need `--no-configuration-cache`.
-
-Central accepts a 261-byte empty javadoc stub without complaint. Wire Dokka
-into the javadoc jar or ship a lie.
+Publishing runs on a **macOS runner** — Apple targets build nowhere else — and
+vanniktech's maven-publish plugin is configuration-cache incompatible, so
+publish tasks need `--no-configuration-cache`. Central accepts a 261-byte
+empty javadoc stub without complaint; wire Dokka into the javadoc jar.
 
 ### Kover measures JVM/Android bytecode only
 
-Whatever the number says, it is not multiplatform coverage — it is measured
-off JVM/Android bytecode. Do not advertise it as such.
+It is not multiplatform coverage; do not advertise it as such.
 
-The org's coverage gate is a **Codecov project-status regression gate**
+The coverage gate is a **Codecov project-status regression gate**
 (`target: auto`, `threshold: 1%`), chosen over a fixed `koverVerify` floor
-because it self-calibrates against each PR's base commit and so has no
-per-repo threshold to pick, argue about, or maintain. A local `koverVerify`
-floor is optional belt-and-braces. The gate is still `informational` and was
-never flipped to blocking.
+because it self-calibrates against each PR's base commit — no per-repo
+threshold to pick or maintain. It is still `informational`, never flipped to
+blocking.
 
 ### CodeQL cannot scan current Kotlin
 
-CodeQL CLI 2.26.1 rejects Kotlin 2.4.10 as "too recent" and the `java-kotlin`
+CLI 2.26.1 rejects Kotlin 2.4.10 as "too recent" and the `java-kotlin`
 autobuild fails. Every `codeql.yml` in the org's Kotlin repos therefore scans
-the `actions` language only, with `java-kotlin` committed-but-commented and a
-re-enable note — verified still the case in all five on 2026-08-17. Upstream
-merged a 2.4.20 ceiling; re-enable when a CLI carrying it ships.
+`actions` only, with `java-kotlin` committed-but-commented — still the case in
+all five on 2026-08-17. Upstream merged a 2.4.20 ceiling; re-enable when a CLI
+carrying it ships.
 
-Related, and only relevant on the rollback path CLAUDE.md keeps: the old
-shared HTTP build cache's `GRADLE_CACHE_URL` **must include the `/cache/`
-path**. A bare host URL 401s on read and Gradle silently disables the remote
-cache, reporting only "remote build cache was disabled during the build due to
-errors".
+On the rollback path CLAUDE.md keeps: the old shared HTTP build cache's
+`GRADLE_CACHE_URL` **must include the `/cache/` path**. A bare host URL 401s on
+read and Gradle silently disables the remote cache, reporting only "remote
+build cache was disabled during the build due to errors".
 
-### Three claims from that audit that had already rotted
+### What had already rotted, and why nothing was promoted verbatim
 
-Kept as evidence for why the rest of it was not promoted verbatim:
-
-- **"meshtastic-sdk is pinned to Kotlin 2.4.0 because SKIE 0.10.13 rejects
-  2.4.10."** SKIE 0.10.14 added support and the SDK bumped in PR #95; the
-  catalog reads `2.4.10`.
+- **"meshtastic-sdk is pinned to Kotlin 2.4.0; SKIE 0.10.13 rejects 2.4.10."**
+  SKIE 0.10.14 added support; the SDK bumped in PR #95.
 - **The decided per-repo `jvmToolchain` table**, including
   "`MQTTastic-Client-KMP` = 11, deliberately, for consumer reach". No
-  `jvmToolchain(11)` survives in that repo. The durable rule is only *pin it
-  and be deliberate*; the values live in the build scripts.
+  `jvmToolchain(11)` survives there. The durable rule is only *pin it and be
+  deliberate*; values live in the build scripts.
 - **"`kzstd` and `TAKPacket-SDK` are on `master`."** Both renamed.
 
-Version numbers in general were the rot: Renovate owns them and
-`gradle/libs.versions.toml` is the source of truth. A pinned version written
-into prose is a claim that expires the next Tuesday.
+Version numbers were the rot. Renovate owns them and
+`gradle/libs.versions.toml` is the source of truth; a version in prose is a
+claim with an expiry date.
 
 ---
 
