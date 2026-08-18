@@ -48,14 +48,24 @@ duplicates.
    verifies, so the vendored artifact and its checksum move with the wrapper —
    see [`gradle-flatpak-sources.md`](./gradle-flatpak-sources.md).
 4. **spotless 8.9.0 → 8.10.0** in `TAKPacket-SDK`.
-5. **Configuration cache and Isolated Projects** — the sweep grouped these, but
-   module count splits them. `MQTTastic-Client-KMP` has six modules, so
-   `org.gradle.isolated-projects` (incubating as of Gradle 9.7.0) is a genuine
-   configuration-time win there. `kzstd` has **zero** subprojects and
-   `gradle-flatpak-sources` exactly one (`:plugin`) — per-project isolation has
-   nothing to isolate in either, so enabling it would be cargo cult. What those
-   two actually lack is `org.gradle.configuration-cache`, which is the real win
-   for them. Verified by an actual build, not just a properties edit.
+5. **Configuration cache and Isolated Projects — the sweep's "cheapest win" does
+   not survive contact.** Module count splits the three repos, and then KGP
+   blocks the one that was left. Verified by building each:
+   - `kzstd` has **zero** subprojects and `gradle-flatpak-sources` exactly one
+     (`:plugin`) — per-project isolation has nothing to isolate in either, so
+     enabling it would be cargo cult. What those two genuinely lack is
+     `org.gradle.configuration-cache`; that is the real win for them.
+   - `MQTTastic-Client-KMP` has six modules, so IP *should* pay. Enabling it
+     surfaced two failures. The first was ours: `allprojects { version = … }` in
+     the root build script, which IP forbids. Moving the assignment to
+     `gradle.lifecycle.beforeProject` in `settings.gradle.kts` fixes it (taking
+     care to copy the value into a local first — a top-level `val` in a settings
+     script is a field of the script object, and closing over it makes the
+     configuration cache try to serialise the script). The second is **not**
+     ours and is not fixable here: KGP's `WasmNpmResolverPlugin` reaches from
+     `:sample` into the root project. So IP stays off in MQTTastic, the build's
+     own side is left IP-ready, and the flip is a one-liner once JetBrains
+     isolates the Wasm/npm plugins.
 6. **kotlinx-binary-compatibility-validator 0.18.1 → KGP built-in
    `abiValidation`** in `kzstd` and `TAKPacket-SDK`. `meshtastic-sdk` already
    made this move and its `PublishingConventionPlugin` documents the built-in as
