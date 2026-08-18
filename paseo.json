@@ -1,0 +1,11 @@
+{
+  "worktree": {
+    "setup": "direnv allow"
+  },
+  "scripts": {
+    "check": { "command": "just check" },
+    "doctor": { "command": "just doctor" },
+    "fmt": { "command": "just fmt" },
+    "sync": { "command": "just sync" }
+  }
+}

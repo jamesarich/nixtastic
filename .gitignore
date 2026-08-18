@@ -32,6 +32,10 @@
 # Thin `just` aliases over the flake apps.
 !/justfile
 
+# Paseo worktree config: setup command + on-demand scripts. Paseo reads this
+# from the committed version of the base branch, so it must be tracked.
+!/paseo.json
+
 # --- documentation --------------------------------------------------------
 # Policy, not a list: any markdown at the workspace root is workspace
 # documentation and gets tracked. Covers README/AGENTS/CLAUDE plus the
