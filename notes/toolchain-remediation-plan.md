@@ -25,13 +25,18 @@ duplicates.
 
 ## A. Do now — reversible and self-verifiable
 
-1. **`android` — trace the manual TCP connect path for `ACCESS_LOCAL_NETWORK`.**
-   The sweep's own open question, and the only item where "verified correct"
-   might be wrong. `ScannerViewModel`, `TransportSelector`, `DeviceList` and
-   `TcpDiscoveryHelpers` carry no reference to the permission; coverage is
-   inferred from `ConnectionsScreen` being their parent. On targetSdk 37 an
-   uncovered path means a user typing a radio's LAN IP gets a silent connection
-   failure. Read-only investigation; fix only if the gap is real.
+1. **`android` — ACCESS_LOCAL_NETWORK on the connect paths. DONE (traced), fix
+   in progress.** The gap is real: discovery is gated, connecting is not. Full
+   trace in [`local-network-permission-gap.md`](./local-network-permission-gap.md).
+   Two sub-items:
+   - **1a.** Manual-IP entry and recent-address reconnect — one PR in
+     `feature/connections/commonMain`, gating the entry point rather than the
+     connect. **In progress.**
+   - **1b.** The service's startup auto-reconnect. A service has no Activity, so
+     it cannot `.request()`; this needs `checkSelfPermission` plus a fail-fast
+     error routing the user to Connections instead of a socket timeout. Worst
+     affected user — existing install, persisted TCP radio, no prompt, no error.
+     **Not started; own PR.**
 2. **`meshtastic-sdk` — catalog hygiene.** Delete the dead `gradle = "9.5.1"`
    entry (no build script references it; wrapper is 9.6.1). Correct the `kable`
    comment, which still justifies its ceiling by "our 2.3.21 pin (SKIE 0.10.12
