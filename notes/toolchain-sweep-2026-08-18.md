@@ -91,10 +91,13 @@ Filtered against the open-PR lists from today's briefs — `meshtastic-sdk` #102
   `UnnecessaryAnnotationUseSiteTarget` removed, `RuleSet.Id`→`RuleSetId`,
   `Detektion` now immutable. Note 2.0 is still alpha — this is a "decide
   deliberately" item, not an automatic bump.
-- **Gradle wrapper skew: 9.6.1 vs 9.7.0.** `android`, `meshtastic-sdk` and
-  `TAKPacket-SDK` are on 9.6.1; the other three are on 9.7.0.
-  `meshtastic-sdk` #102 covers the SDK. `android` and `TAKPacket-SDK` have no
-  PR filed.
+- **Gradle wrapper skew: 9.6.1 vs 9.7.0 — and `android`'s is deliberate.**
+  `android`, `meshtastic-sdk` and `TAKPacket-SDK` are on 9.6.1; the other three
+  are on 9.7.0. `meshtastic-sdk` #102 covers the SDK. **Correction (traced
+  2026-08-18):** `android` is not drifting — its `gradle-wrapper.properties`
+  comments record a revert, because Gradle 9.7.0's `ExecOperations.exec` spec
+  defaults `standardOutput` to null and CMP's `proguardReleaseJars` reads it
+  back. Only `TAKPacket-SDK` is a real gap.
 - **spotless skew: `meshtastic-sdk` 8.8.0, `TAKPacket-SDK` 8.9.0** vs 8.10.0
   elsewhere. SDK is covered by #101; TAK is not.
 - **CMP skew across the ABI boundary.** `android` is on `1.12.0-rc01`;

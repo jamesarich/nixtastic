@@ -41,12 +41,30 @@ duplicates.
    entry (no build script references it; wrapper is 9.6.1). Correct the `kable`
    comment, which still justifies its ceiling by "our 2.3.21 pin (SKIE 0.10.12
    ceiling)" — the repo is on Kotlin 2.4.10 / SKIE 0.10.14. Pure text.
-3. **Gradle wrapper 9.6.1 → 9.7.0** in `android` and `TAKPacket-SDK`. Both pin
-   `distributionSha256Sum`, so use `./gradlew wrapper --gradle-version 9.7.0`
-   (twice) rather than hand-editing the URL. Downstream note for `android`:
-   `gradle-flatpak-sources` vendors the exact `-bin` distribution the wrapper
-   verifies, so the vendored artifact and its checksum move with the wrapper —
-   see [`gradle-flatpak-sources.md`](./gradle-flatpak-sources.md).
+3. **Gradle wrapper 9.6.1 → 9.7.0 — `android` is OFF THE TABLE, `TAKPacket-SDK`
+   only.** The sweep read `android`'s 9.6.1 as drift. It is not: the wrapper
+   properties carry a comment saying so in as many words —
+
+   > Pinned back to 9.6.1: Gradle 9.7.0's `ExecOperations.exec` spec defaults
+   > `standardOutput` to null, which crashes CMP's `proguardReleaseJars`
+   > (`ExternalToolRunner` reads it back).
+
+   Somebody already tried 9.7.0 there and reverted it. Revisit only when
+   Compose Multiplatform stops reading back a null `standardOutput`, or Gradle
+   restores the old default. Two traps this exposed, both worth remembering:
+   `./gradlew wrapper` **strips the comments** from `gradle-wrapper.properties`
+   (that is how the pin's own rationale nearly got deleted), and it also resets
+   `networkTimeout`/`retries` to defaults, silently undoing `android`'s
+   30s/3-retry hardening. Diff the file, never trust the task's output blind.
+
+   `TAKPacket-SDK` has no Compose anywhere, so the CMP failure mode does not
+   apply; it also pins `distributionSha256Sum`, so use
+   `./gradlew wrapper --gradle-version 9.7.0 --distribution-type bin
+   --gradle-distribution-sha256-sum …` and check the diff. Downstream note:
+   `gradle-flatpak-sources` vendors the exact `-bin` distribution `android`'s
+   wrapper verifies, so if `android` ever does move, the vendored artifact and
+   its checksum move with it — see
+   [`gradle-flatpak-sources.md`](./gradle-flatpak-sources.md).
 4. **spotless 8.9.0 → 8.10.0** in `TAKPacket-SDK`.
 5. **Configuration cache and Isolated Projects — the sweep's "cheapest win" does
    not survive contact.** Module count splits the three repos, and then KGP
