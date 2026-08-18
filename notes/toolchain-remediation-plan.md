@@ -84,13 +84,27 @@ duplicates.
      `:sample` into the root project. So IP stays off in MQTTastic, the build's
      own side is left IP-ready, and the flip is a one-liner once JetBrains
      isolates the Wasm/npm plugins.
-6. **kotlinx-binary-compatibility-validator 0.18.1 → KGP built-in
-   `abiValidation`** in `kzstd` and `TAKPacket-SDK`. `meshtastic-sdk` already
-   made this move and its `PublishingConventionPlugin` documents the built-in as
-   the JetBrains-supported successor — in-repo precedent, drops a third-party
-   plugin from two builds.
-
 ## B. Decide deliberately — James's call, written up not executed
+
+- **kotlinx-binary-compatibility-validator 0.18.1 → KGP built-in
+  `abiValidation`** in `kzstd` and `TAKPacket-SDK`. The sweep filed this as
+  mechanical because `meshtastic-sdk` already made the move. Two reasons it is
+  not:
+  1. KGP's `abiValidation { }` is `@ExperimentalAbiValidation`. Trading a stable
+     third-party plugin for an experimental API, in two *published* libraries
+     whose ABI gate is the entire point, for tidiness — that is the same shape
+     as the detekt-2.0-alpha decision below.
+  2. **It cannot be verified on this machine.** `kzstd` runs
+     `apiValidation { klib { enabled = true } }` across 12 non-JVM targets, and
+     its own comment says targets a host cannot build are skipped and trusted
+     from the committed dump. This box cannot build the tvOS simulator (proven
+     while verifying the configuration-cache change). Regenerating the baseline
+     here would commit a silently *narrowed* ABI dump — disarming the gate
+     rather than moving it. Any attempt needs a host that can build every
+     target, or a CI job that regenerates the dump.
+  Also carries CI-workflow and doc churn: the task names change from
+  `apiDump`/`apiCheck` to `updateKotlinAbi`/`checkKotlinAbi`, which both repos'
+  agent docs and workflows reference by name.
 
 - **detekt 1.23.8 → 2.0.0-alpha.x** in `MQTTastic-Client-KMP`, `kzstd`,
   `TAKPacket-SDK`, `gradle-flatpak-sources`. Four repos stranded on a plugin
