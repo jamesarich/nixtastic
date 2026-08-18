@@ -32,11 +32,21 @@ duplicates.
    - **1a.** Manual-IP entry and recent-address reconnect — one PR in
      `feature/connections/commonMain`, gating the entry point rather than the
      connect. **In progress.**
-   - **1b.** The service's startup auto-reconnect. A service has no Activity, so
-     it cannot `.request()`; this needs `checkSelfPermission` plus a fail-fast
-     error routing the user to Connections instead of a socket timeout. Worst
-     affected user — existing install, persisted TCP radio, no prompt, no error.
-     **Not started; own PR.**
+   - **1b.** The service's startup auto-reconnect. **Done.** A service has no
+     Activity, so it cannot `.request()` — the contract is decline-and-explain.
+     A `LocalNetworkAccess` seam (`core/service`, Android + desktop impls) gates
+     the cold-start connect in `MeshServiceOrchestrator`, which already has
+     `ServiceStateWriter` injected; `errorMessage` is a `StateFlow` driving a
+     modal alert, so the explanation is still waiting when the user next opens
+     the app. **Discarded approach worth not re-deriving:** gating admission via
+     `RadioTransportFactory.isAddressValid` looks natural (USB already checks a
+     permission there) but does not work — `BaseRadioTransportFactory`
+     short-circuits `InterfaceId.TCP.id` to `true` before `isPlatformAddressValid`
+     runs, so the Android TCP branch is dead for admission. Reaching it means
+     editing the common contract, adding a TCP branch to
+     `DesktopRadioTransportFactory`, and rewriting `MockTransportAddressAdmissionTest`'s
+     explicit "TCP must stay valid" assertion — and the failure would still be
+     silent.
 2. **`meshtastic-sdk` — catalog hygiene.** Delete the dead `gradle = "9.5.1"`
    entry (no build script references it; wrapper is 9.6.1). Correct the `kable`
    comment, which still justifies its ceiling by "our 2.3.21 pin (SKIE 0.10.12
