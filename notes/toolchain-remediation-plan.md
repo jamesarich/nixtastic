@@ -25,6 +25,14 @@ duplicates.
 
 ## A. Do now — reversible and self-verifiable
 
+**Section A is fully landed as of 2026-08-18** — seven PRs, all merged through
+their repos' merge queues after CodeRabbit + adversarial review: android #6766
++ #6767 (the two local-network fixes, both reworked to warn-and-proceed after
+review), meshtastic-sdk #104, MQTTastic-Client-KMP #128 (+ version-resolution
+hardening), gradle-flatpak-sources #38, TAKPacket-SDK #137, kzstd #62. What
+remains in this file is section B (James's decisions) and section C (feature
+adoption).
+
 1. **`android` — ACCESS_LOCAL_NETWORK on the connect paths. DONE (traced), fix
    in progress.** The gap is real: discovery is gated, connecting is not. Full
    trace in [`local-network-permission-gap.md`](./local-network-permission-gap.md).
