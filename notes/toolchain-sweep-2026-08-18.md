@@ -32,7 +32,7 @@ Compose **1.12** stable, BOM `2026.08.00`, **1.13.0-alpha01** already out
 - **Google Play target-API deadline 2026-08-31 (13 days out): satisfied.** New
   apps and updates must target API 36+; `android` is on 37. Existing-app floor
   is 35. No action, no extension needed.
-- **Android 17 (API 37) local-network protection: already handled.** targetSdk
+- **Android 17 (API 37) local-network protection: PARTLY handled — a real gap.** targetSdk
   37 blocks local-network access by default — this would have broken TCP/IP
   radio connections, NSD/mDNS discovery on the Connections screen, and the
   built-in TAK server's loopback bind. `androidApp/src/main/AndroidManifest.xml`
@@ -40,17 +40,15 @@ Compose **1.12** stable, BOM `2026.08.00`, **1.13.0-alpha01** already out
   it is runtime-requested via `rememberLocalNetworkPermissionState`
   (`core/ui/.../PlatformUtils.kt`), with a denial path covered by
   `TAKConfigPermissionDeniedTest`.
-  **Partially verified — one gap left open.** What I confirmed: the permission
-  is declared, gated on API ≥ 37 with a pre-37 implicit-grant fallback, and
-  prompted from `ConnectionsScreen` (NSD/mDNS discovery) and `TakPermissionUtil`
-  (TAK server loopback). What I did *not* verify: the **manual TCP connect path**
-  — where a user types a radio's LAN IP directly rather than going through
-  discovery. `ScannerViewModel`, `TransportSelector`, `DeviceList` and
-  `TcpDiscoveryHelpers` contain no reference to `ACCESS_LOCAL_NETWORK`. It is
-  plausibly covered because `ConnectionsScreen` is their parent and prompts on
-  entry, but that is inference, not verification. Given this is the
-  highest-consequence platform change in the sweep, trace that path explicitly
-  before treating it as an all-clear.
+  **Traced 2026-08-18 — the gap is real. See
+  [`local-network-permission-gap.md`](./local-network-permission-gap.md).**
+  Discovery is covered; *connecting* is not. `ConnectionsScreen` only ever
+  requests the permission from the network-scan toggle, so the manual-IP path,
+  the recent-address path and the service's startup reconnect all reach a
+  socket without it. Per Google's own doc a blocked TCP connect "will typically
+  result in a timeout error" — no fast failure, no diagnostic, just a hang. And
+  the legacy implicit grant is keyed on **targetSdk, not install history**, so
+  shipping targetSdk 37 breaks existing TCP users on app update.
 - **`usesCleartextTraffic` deprecated at targetSdk 37: already handled.** The
   app ships `network_security_config.xml` with `cleartextTrafficPermitted=false`
   in `base-config` and a `domain-config` exception for `127.0.0.1`/`localhost`
