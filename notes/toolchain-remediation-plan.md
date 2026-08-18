@@ -41,14 +41,21 @@ duplicates.
    entry (no build script references it; wrapper is 9.6.1). Correct the `kable`
    comment, which still justifies its ceiling by "our 2.3.21 pin (SKIE 0.10.12
    ceiling)" — the repo is on Kotlin 2.4.10 / SKIE 0.10.14. Pure text.
-3. **Gradle wrapper 9.6.1 → 9.7.0** in `android` and `TAKPacket-SDK`.
+3. **Gradle wrapper 9.6.1 → 9.7.0** in `android` and `TAKPacket-SDK`. Both pin
+   `distributionSha256Sum`, so use `./gradlew wrapper --gradle-version 9.7.0`
+   (twice) rather than hand-editing the URL. Downstream note for `android`:
+   `gradle-flatpak-sources` vendors the exact `-bin` distribution the wrapper
+   verifies, so the vendored artifact and its checksum move with the wrapper —
+   see [`gradle-flatpak-sources.md`](./gradle-flatpak-sources.md).
 4. **spotless 8.9.0 → 8.10.0** in `TAKPacket-SDK`.
-5. **Isolated Projects** in `MQTTastic-Client-KMP`, `kzstd` and
-   `gradle-flatpak-sources` — all three already run Gradle 9.7.0, where the
-   feature is incubating rather than experimental. `kzstd` and
-   `gradle-flatpak-sources` don't set `configuration-cache` either. The sweep
-   calls this the cheapest configuration-time win available. Must be verified
-   by an actual build, not just a properties edit.
+5. **Configuration cache and Isolated Projects** — the sweep grouped these, but
+   module count splits them. `MQTTastic-Client-KMP` has six modules, so
+   `org.gradle.isolated-projects` (incubating as of Gradle 9.7.0) is a genuine
+   configuration-time win there. `kzstd` has **zero** subprojects and
+   `gradle-flatpak-sources` exactly one (`:plugin`) — per-project isolation has
+   nothing to isolate in either, so enabling it would be cargo cult. What those
+   two actually lack is `org.gradle.configuration-cache`, which is the real win
+   for them. Verified by an actual build, not just a properties edit.
 6. **kotlinx-binary-compatibility-validator 0.18.1 → KGP built-in
    `abiValidation`** in `kzstd` and `TAKPacket-SDK`. `meshtastic-sdk` already
    made this move and its `PublishingConventionPlugin` documents the built-in as
