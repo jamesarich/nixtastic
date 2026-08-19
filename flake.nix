@@ -798,8 +798,9 @@
                 echo ""
                 echo "  tools/build_all.py   # builds every board, prints pass/fail + size"
                 echo ""
-                echo "  !  CMakeLists.txt only has a board.cmake for 2 of 14 boards"
-                echo "     (heltec_t114, thinknode_m1) — use make, not cmake."
+                echo "  !  CMakeLists.txt only has a board.cmake for 4 of 17 boards"
+                echo "     (heltec_t096, heltec_t1, heltec_t114, thinknode_m1) —"
+                echo "     use make, not cmake."
                 echo ""
               '';
           };
