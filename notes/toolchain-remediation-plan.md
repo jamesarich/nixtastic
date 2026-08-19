@@ -136,10 +136,11 @@ adoption).
 - **CMP skew across the consumer boundary.** `android` on 1.12.0-rc01 vs
   `meshtastic-sdk`/`MQTTastic-Client-KMP` on 1.11.1 stable. Either hold
   `android` at stable until 1.12.0 ships, or move the SDK up with it.
-- **Apple deployment floor.** Kotlin 2.4 raised the minimum to iOS 15 / macOS 12
-  / watchOS 8, and no repo sets an explicit target, so all three KMP libs
-  inherit it silently on their next Apple build. Confirm `apple` and any
-  podspec/SPM consumer expect ≥ iOS 15 **before** the next SDK release.
+- **Apple deployment floor — RESOLVED 2026-08-18.** Kotlin 2.4 raised the
+  minimum to iOS 15 / macOS 12 / watchOS 8, inherited silently on the next
+  Apple build. James: the SDK has **no consumers at all yet** (iOS or
+  otherwise), so the floor inheritance breaks nobody and the next
+  `meshtastic-sdk` release is unblocked.
 - **Swift export vs SKIE.** Not a migration — an ADR in `meshtastic-sdk`
   recording that we stay on SKIE and what would trigger revisiting.
 
