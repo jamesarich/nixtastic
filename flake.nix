@@ -127,6 +127,15 @@
           shell = "design";
           repo = "meshtastic/design";
         };
+        # Project website and docs (meshtastic.org) — Docusaurus 3,
+        # TypeScript/MDX, pnpm. Vendors design as a submodule at
+        # static/design, same direction as firmware/meshtastic-python
+        # vendoring protobufs. Has its own .specify/ like android, apple
+        # and meshtastic-sdk.
+        meshtastic = {
+          shell = "docs";
+          repo = "meshtastic/meshtastic";
+        };
         # Meshtastic's fork (rebranded, org-owned as of 2026-08) of oltaco's
         # OTAFIX nRF52 bootloader. Bare Makefile/CMake + ARM GCC, not
         # PlatformIO, so it does not fit the firmware shell — see the
@@ -894,6 +903,43 @@
               echo ""
               echo "  standards/meshtastic_design_standards_latest.md is the"
               echo "  authoritative spec — versioned copies sit beside it."
+              echo ""
+            '';
+          };
+
+          #########################################################
+          # docs — meshtastic/meshtastic (meshtastic.org)
+          #
+          # Docusaurus 3 site: pnpm-managed TypeScript/MDX, oxlint/oxfmt,
+          # Playwright e2e. .nvmrc pins Node 24; packageManager pins
+          # pnpm@11.19.0, which happens to match nixpkgs' pnpm as of
+          # 2026-08-19 — verified with `pnpm --version` in this shell. Not
+          # pinned to that exact nixpkgs version here, so a flake update can
+          # drift it, the same way the python shell's poetry/uv can drift
+          # from a repo's lock.
+          #
+          # playwright-driver.browsers ships prebuilt browsers so `npx
+          # playwright install` isn't needed (and would fail: no network
+          # write access to its own cache dir is not guaranteed, and the
+          # downloaded binaries wouldn't be patched for NixOS's dynamic
+          # linker anyway). PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD stops
+          # `pnpm install`'s postinstall from trying anyway.
+          #########################################################
+          docs = pkgs.mkShellNoCC {
+            name = "meshtastic-docs";
+            packages = common ++ [
+              pkgs.nodejs_24
+              pkgs.pnpm
+              pkgs.playwright-driver.browsers
+            ];
+            shellHook = (banner "docs" (reposFor "docs")) + ''
+              export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+              export PLAYWRIGHT_BROWSERS_PATH="${pkgs.playwright-driver.browsers}"
+              echo "  pnpm install"
+              echo "  pnpm start          # docusaurus dev server"
+              echo "  pnpm build"
+              echo "  pnpm lint && pnpm lint:mdx"
+              echo "  pnpm test:e2e       # playwright, browsers pre-fetched by nix"
               echo ""
             '';
           };

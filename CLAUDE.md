@@ -48,6 +48,7 @@ been skipped in practice, which is why `.#brief` exists.
 | `meshtastic-python` | Python CLI + API (`meshtastic` on PyPI) | Python / **Poetry** | `.#python` | `master` | sentence-style, merged via PR | → [`notes/meshtastic-python.md`](./notes/meshtastic-python.md) |
 | `protobufs` | shared `.proto` definitions | buf · deno · gradle · cargo | `.#protobufs` | `master` | mixed | → [`notes/protobufs.md`](./notes/protobufs.md) |
 | `design` | design standards, tokens, assets | node · inkscape | `.#design` | `master` | Conventional | → [`notes/design.md`](./notes/design.md) |
+| `meshtastic` | project website + docs (meshtastic.org) | Docusaurus 3 / TypeScript / MDX / pnpm | `.#docs` | `master` | Conventional, merged via PR | Spec Kit |
 | `Adafruit_nRF52_Bootloader_OTAFIX` | nRF52 OTAFIX bootloader (org fork of oltaco's) | C / Make | `.#otafix` | `master` | Conventional (since the fork) | `AGENTS.md` (PR #8) |
 
 The table is orientation; `nix run .#brief -- <repo>` is truth — it reads the
@@ -74,6 +75,8 @@ SDK).
   the shared-contact URL (`meshtastic.org/v/#…`) it prints as a QR.
 - `design` defines standards that `android`, `apple` and `web` implement;
   tracked on <https://github.com/orgs/meshtastic/projects/16>, not in the repo.
+- `design` is also vendored as a submodule inside `meshtastic` at
+  `static/design`, the same pattern as the `protobufs` submodules above.
 
 The wire-level contracts these couplings rest on — the phone↔device handshake,
 proto change rules, MQTT topics and the release order — are in
@@ -84,7 +87,7 @@ and the invariants a KMP library here must hold — are in
 
 ## Spec Kit
 
-`android`, `apple` and `meshtastic-sdk` use it. Their
+`android`, `apple`, `meshtastic-sdk` and `meshtastic` use it. Their
 `.specify/memory/constitution.md` (8–12 KB) **outranks** other agent docs, and
 work is expected to flow through the spec lifecycle rather than ad-hoc edits.
 
