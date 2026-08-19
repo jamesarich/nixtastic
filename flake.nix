@@ -127,6 +127,15 @@
           shell = "design";
           repo = "meshtastic/design";
         };
+        # Meshtastic's fork (rebranded, org-owned as of 2026-08) of oltaco's
+        # OTAFIX nRF52 bootloader. Bare Makefile/CMake + ARM GCC, not
+        # PlatformIO, so it does not fit the firmware shell — see the
+        # otafix devShell. See AGENTS.md ("OTAFIX bootloader — no longer
+        # third-party") for how this differs from before 2026-08-18.
+        Adafruit_nRF52_Bootloader_OTAFIX = {
+          shell = "otafix";
+          repo = "meshtastic/Adafruit_nRF52_Bootloader_OTAFIX";
+        };
       };
 
       devShells = forAllSystems (
@@ -731,6 +740,58 @@
                   fi
                   unset _pyexe _have
                 fi
+              '';
+          };
+
+          #########################################################
+          # otafix — Adafruit_nRF52_Bootloader_OTAFIX
+          #
+          # A bare Makefile/CMake nRF52 bootloader build, not PlatformIO —
+          # the firmware shell's toolchain is entirely PIO-managed (no bare
+          # arm-none-eabi-gcc on PATH), so this gets its own shell rather
+          # than overloading that one.
+          #
+          # gcc-arm-embedded-13, not the default (15.2.rel1): verified by
+          # actually building wiscore_rak4631_board — 13.3.rel1 compiles
+          # clean, 15.2.rel1 does not (a newer -Werror=array-bounds false
+          # positive in lib/sdk11/.../bootloader_settings.c reading a fixed
+          # MBR address). CI itself pins ARM GCC 12.3.Rel1 exactly
+          # (.github/workflows/githubci.yml); nixpkgs doesn't carry that
+          # exact point release, and 13.x is the closest available match
+          # that's actually been verified to work.
+          #
+          # No lock file in this repo (plain `pip3 install` in CI), so uv
+          # manages an ad-hoc venv rather than a project sync.
+          #########################################################
+          otafix = pkgs.mkShellNoCC {
+            name = "meshtastic-otafix";
+            packages = common ++ [
+              pkgs.gcc-arm-embedded-13
+              pkgs.gnumake
+              python
+              pkgs.uv
+            ];
+            shellHook =
+              pythonHook
+              + (banner "otafix" (reposFor "otafix"))
+              + ''
+                # No lock file here (plain pip3 install in CI), so — unlike
+                # the python shell — UV_PYTHON is deliberately NOT pinned.
+                # Verified the hard way: uv pip install honours UV_PYTHON
+                # over an active VIRTUAL_ENV, so pinning it here made every
+                # install target the read-only Nix store interpreter instead
+                # of .venv and fail with "externally managed".
+                echo "  git submodule update --init --recursive   # first time only"
+                echo "  uv venv .venv && source .venv/bin/activate"
+                echo "  uv pip install adafruit-nrfutil uritemplate requests intelhex setuptools"
+                echo "  make BOARD=wiscore_rak4631_board all"
+                echo "  make BOARD=wiscore_rak4631_board copy-artifact   # -> _bin/<board>/"
+                echo ""
+                echo "  tools/build_all.py   # builds every board, prints pass/fail + size"
+                echo ""
+                echo "  !  CMakeLists.txt only has a board.cmake for 2 of 14 boards"
+                echo "     (heltec_t114, thinknode_m1) — use make, not cmake."
+                echo ""
               '';
           };
 

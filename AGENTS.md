@@ -699,25 +699,23 @@ verified one.
 
 ---
 
-## Third-party firmware artifacts
+## OTAFIX bootloader — no longer third-party (2026-08-18)
 
-Fetched on demand, never vendored.
+Until 2026-08-18 this section documented `oltaco/Adafruit_nRF52_Bootloader_OTAFIX`
+as a third-party artifact fetched via `gh release download`, kept out of the
+workspace because no shell provided ARM GCC. That has changed: Meshtastic now
+maintains its own org fork,
+[`meshtastic/Adafruit_nRF52_Bootloader_OTAFIX`](https://github.com/meshtastic/Adafruit_nRF52_Bootloader_OTAFIX)
+(rebranded, MeshCore/Ripple content stripped, org-convention files added),
+and it is a workspace entry with a dedicated `.#otafix` shell (`gcc-arm-embedded-13`,
+not the nixpkgs default — see the shell's own comment for why). `git submodule
+update --init --recursive` is required before the first build.
 
-**RAK4631 OTAFIX bootloader** — from
-[`oltaco/Adafruit_nRF52_Bootloader_OTAFIX`](https://github.com/oltaco/Adafruit_nRF52_Bootloader_OTAFIX)
-(Huw Duddy's fork of `adafruit/Adafruit_nRF52_Bootloader`). Meshtastic's own
-`Adafruit_nRF52_Bootloader` fork is a **different lineage without** the OTAFIX
-patches.
+Meshtastic's separate `Adafruit_nRF52_Bootloader` fork remains a **different
+lineage without** the OTAFIX patches — the two are not interchangeable.
 
-```bash
-gh release download 0.9.2-OTAFIX2.2-BP1.3 \
-  -R oltaco/Adafruit_nRF52_Bootloader_OTAFIX \
-  -p 'wiscore_rak4631_board_bootloader-*_s140_6.1.1.zip'
-# sha256 c002d103370651cf955333409e6e713c069df2540f5786c70fdfe4901ca3c7dc
-```
-
-Not a workspace entry: third-party rather than org, and building it needs ARM
-GCC plus the nRF SDK — a toolchain no shell here provides.
+No release has been cut on the new fork yet, so there is no prebuilt UF2 to
+`gh release download` — build from source via `.#otafix` until one exists.
 
 ---
 
