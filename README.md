@@ -272,7 +272,9 @@ cd design && cd tokens && npm ci && npm run build
 | `.#python` | `meshtastic-mcp`, `labeltastic` (uv), `meshtastic-python` (Poetry) |
 | `.#protobufs` | `protobufs` |
 | `.#design` | `design` |
+| `.#api` | `api` (meshtastic.org backend — Node/pnpm/Prisma) |
 | `.#docs` | `meshtastic` (meshtastic.org — Docusaurus/pnpm/Playwright) |
+| `.#webflasher` | `web-flasher` (flasher.meshtastic.org — Nuxt/Vue/pnpm) |
 | `.#apple` | `apple` (macOS only) |
 | `.#nodes` | serial/BLE/flashing, no build toolchain |
 | `.#default` | everything light, for roaming |

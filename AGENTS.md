@@ -426,9 +426,9 @@ claim with an expiry date.
 
 ### Default branches differ
 
-`main`, `master` (`meshtastic-mcp`, `protobufs`, `design`, `meshtastic`) and
-`develop` (`firmware`) are all in use. Resolve `origin/HEAD` per repo — never
-hardcode.
+`main`, `master` (`meshtastic-mcp`, `protobufs`, `design`, `meshtastic`, `api`)
+and `develop` (`firmware`) are all in use. Resolve `origin/HEAD` per repo —
+never hardcode.
 
 ### Single-branch clones hide drift
 

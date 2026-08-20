@@ -127,6 +127,22 @@
           shell = "design";
           repo = "meshtastic/design";
         };
+        # Backend API for meshtastic.org and associated tools: device
+        # hardware/firmware resource endpoints, MQTT gateway data, signed
+        # event-firmware OTA, the community mesh registry. TypeScript/Node,
+        # pnpm, Prisma against Postgres, Redis cache; consumes published
+        # buf.build protobuf/Connect packages rather than vendoring
+        # protobufs as a submodule. No AGENTS.md/CLAUDE.md/Spec Kit yet.
+        #
+        # thebentern proposed moving android's bundled
+        # androidApp/src/main/assets/device_bootloader_ota_quirks.json here
+        # (2026-08-20) so both apps can fetch it instead of shipping a
+        # stale copy — not done yet, just the reason this repo joined the
+        # workspace. See CLAUDE.md → Cross-repo coupling.
+        api = {
+          shell = "api";
+          repo = "meshtastic/api";
+        };
         # Project website and docs (meshtastic.org) — Docusaurus 3,
         # TypeScript/MDX, pnpm. Vendors design as a submodule at
         # static/design, same direction as firmware/meshtastic-python
@@ -144,6 +160,16 @@
         Adafruit_nRF52_Bootloader_OTAFIX = {
           shell = "otafix";
           repo = "meshtastic/Adafruit_nRF52_Bootloader_OTAFIX";
+        };
+        # Official web-based flasher (flasher.meshtastic.org) — Nuxt 3 / Vue,
+        # pnpm, no engines/packageManager pin. Already calls api.meshtastic.org
+        # for resource/deviceHardware and resource/eventFirmware, so it is a
+        # natural second consumer (alongside apple) of the api repo's
+        # bootloaderOtaQuirks endpoint — not wired up yet, just named as the
+        # reason this repo joined the workspace on 2026-08-20.
+        web-flasher = {
+          shell = "webflasher";
+          repo = "meshtastic/web-flasher";
         };
       };
 
@@ -909,6 +935,38 @@
           };
 
           #########################################################
+          # api — meshtastic/api (backend for meshtastic.org)
+          #
+          # TypeScript/Node, pnpm-managed, tinyhttp server, Prisma ORM
+          # against Postgres, Redis cache. .nvmrc pins Node 22 — one major
+          # behind docs' Node 24, so this does NOT share that shell.
+          # buf-generated Connect/protobuf clients are consumed as
+          # published @buf/meshtastic_* packages from buf.build's
+          # registry, not vendored as a submodule (confirmed: no
+          # .gitmodules; protobufs/ here is an ordinary source dir).
+          #
+          # Postgres and Redis themselves are NOT provided by this shell —
+          # local dev points at a docker-compose/hosted instance per the
+          # repo's own README; Nix supplies only the JS toolchain and
+          # Prisma CLI, the same boundary the python shell draws around
+          # a real radio.
+          #########################################################
+          api = pkgs.mkShellNoCC {
+            name = "meshtastic-api";
+            packages = common ++ [
+              pkgs.nodejs_22
+              pkgs.pnpm
+            ];
+            shellHook = (banner "api" (reposFor "api")) + ''
+              echo "  pnpm install"
+              echo "  pnpm dev            # tinyhttp server"
+              echo "  pnpm build"
+              echo "  pnpm biome lint / format / check"
+              echo ""
+            '';
+          };
+
+          #########################################################
           # docs — meshtastic/meshtastic (meshtastic.org)
           #
           # Docusaurus 3 site: pnpm-managed TypeScript/MDX, oxlint/oxfmt,
@@ -941,6 +999,33 @@
               echo "  pnpm build"
               echo "  pnpm lint && pnpm lint:mdx"
               echo "  pnpm test:e2e       # playwright, browsers pre-fetched by nix"
+              echo ""
+            '';
+          };
+
+          #########################################################
+          # webflasher — meshtastic/web-flasher (flasher.meshtastic.org)
+          #
+          # Nuxt 3 / Vue 3, pnpm-managed, ESLint (not Biome — unlike api).
+          # No engines/packageManager pin in package.json, so nodejs_22
+          # (matching the rest of the org's unpinned Node repos) is a
+          # choice, not a requirement. esptool-js drives ESP32 flashing
+          # over WebSerial in-browser; nRF52/RP2040 go through a
+          # drag-and-drop UF2 flow — no server-side flashing toolchain
+          # for this shell to provide.
+          #########################################################
+          webflasher = pkgs.mkShellNoCC {
+            name = "meshtastic-webflasher";
+            packages = common ++ [
+              pkgs.nodejs_22
+              pkgs.pnpm
+            ];
+            shellHook = (banner "webflasher" (reposFor "webflasher")) + ''
+              echo "  pnpm install"
+              echo "  pnpm dev"
+              echo "  pnpm build"
+              echo "  pnpm lint"
+              echo "  pnpm test"
               echo ""
             '';
           };

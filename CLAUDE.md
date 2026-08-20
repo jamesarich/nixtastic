@@ -48,8 +48,10 @@ been skipped in practice, which is why `.#brief` exists.
 | `meshtastic-python` | Python CLI + API (`meshtastic` on PyPI) | Python / **Poetry** | `.#python` | `master` | sentence-style, merged via PR | → [`notes/meshtastic-python.md`](./notes/meshtastic-python.md) |
 | `protobufs` | shared `.proto` definitions | buf · deno · gradle · cargo | `.#protobufs` | `master` | mixed | → [`notes/protobufs.md`](./notes/protobufs.md) |
 | `design` | design standards, tokens, assets | node · inkscape | `.#design` | `master` | Conventional | → [`notes/design.md`](./notes/design.md) |
+| `api` | backend API for meshtastic.org | TypeScript / Node / pnpm / Prisma | `.#api` | `master` | mixed | none yet |
 | `meshtastic` | project website + docs (meshtastic.org) | Docusaurus 3 / TypeScript / MDX / pnpm | `.#docs` | `master` | Conventional, merged via PR | Spec Kit |
 | `Adafruit_nRF52_Bootloader_OTAFIX` | nRF52 OTAFIX bootloader (org fork of oltaco's) | C / Make | `.#otafix` | `master` | Conventional (since the fork) | `AGENTS.md` (PR #8) |
+| `web-flasher` | web-based device flasher (flasher.meshtastic.org) | Nuxt 3 / Vue / TypeScript / pnpm | `.#webflasher` | `main` | Conventional | `.github/copilot-instructions.md` |
 
 The table is orientation; `nix run .#brief -- <repo>` is truth — it reads the
 live branch, drift, and doc inventory (with sizes) every time.
@@ -77,6 +79,24 @@ SDK).
   tracked on <https://github.com/orgs/meshtastic/projects/16>, not in the repo.
 - `design` is also vendored as a submodule inside `meshtastic` at
   `static/design`, the same pattern as the `protobufs` submodules above.
+- `api` backs meshtastic.org and already serves other small JSON resources
+  (`data/deviceLinks.json`, `data/eventFirmware.json`), now joined by
+  `data/bootloaderOtaQuirks.json` at `resource/bootloaderOtaQuirks`
+  (2026-08-20, thebentern's proposal) — moved verbatim from `android`'s
+  bundled `androidApp/src/main/assets/device_bootloader_ota_quirks.json`.
+  `android`'s `DeviceHardwareRepositoryImpl` is the only real consumer so
+  far and still reads the bundled asset — switching it to fetch this
+  endpoint (with what offline fallback, given the `softDeviceVariants`
+  table gates a destructive flash and must fail closed) is still open.
+  `apple`'s OTAFIX bootloader-upgrade flow (PRs #2338/#2339) currently
+  hand-mirrors its own board map from `android`'s `MaintenanceUf2.kt` and
+  could take the advisory `devices` list instead; `web-flasher`'s
+  drag-and-drop UF2 flow has no such nudge at all today. Neither consumes
+  it yet.
+- `web-flasher` already calls `api.meshtastic.org` for
+  `resource/deviceHardware` and `resource/eventFirmware` (mirroring its own
+  cached copy of the hardware list, refreshed by a scheduled GitHub Action —
+  the same "committed sync copy" shape as `api`'s own `deviceLinks.ts`).
 
 The wire-level contracts these couplings rest on — the phone↔device handshake,
 proto change rules, MQTT topics and the release order — are in
