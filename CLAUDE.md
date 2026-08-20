@@ -97,6 +97,20 @@ SDK).
   `resource/deviceHardware` and `resource/eventFirmware` (mirroring its own
   cached copy of the hardware list, refreshed by a scheduled GitHub Action —
   the same "committed sync copy" shape as `api`'s own `deviceLinks.ts`).
+- `android`'s `feature/firmware/.../MaintenanceUf2.kt` pins the nRF52
+  factory-erase and OTAFIX bootloader-upgrade UF2 images by URL + SHA-256.
+  The erase images are hosted via a commit-pinned
+  `raw.githubusercontent.com` URL into **`web-flasher`'s own
+  `public/uf2/`** — so `android` already depends on that repo's static
+  assets, one direction earlier than the `api`-mediated couplings above.
+  The OTAFIX images are pinned to a `Adafruit_nRF52_Bootloader_OTAFIX`
+  release tag. `apple` hand-copies this whole board-ID → image/hash map
+  (confirmed duplicated, not just the advisory piece noted above); every
+  new OTAFIX release currently means editing both by hand. Migrating it to
+  `api` (proposed 2026-08-20) is under evaluation — unlike the advisory
+  data above, this table gates the write itself, so serving it over the
+  network is a real trust-model change from today's compile-time-pinned
+  constants, not just a caching question.
 
 The wire-level contracts these couplings rest on — the phone↔device handshake,
 proto change rules, MQTT topics and the release order — are in
@@ -186,6 +200,22 @@ finds — run it before diagnosing by hand.
   interpreter, whose loader cannot see the system `libstdc++`/`libz` that
   manylinux wheels link. numpy, opencv and torch install fine and then fail to
   import, blaming neither library.
+- **Any active Nix shell breaks `apple`'s real Xcode builds** — not just
+  `.#apple`; nixpkgs' Darwin stdenv exports `DEVELOPER_DIR`/`SDKROOT` pointing
+  at a bare Nix `apple-sdk` stub, and `CC=clang`/`CXX=clang++` resolve through
+  the polluted `PATH` to Nix's own `clang` and an ancient `xcbuild`-package
+  `xcrun` — none of which is `/Applications/Xcode.app`. None of the resulting
+  errors name Nix: a linker rejecting `-objc_abi_version`, `xcrun`/`simctl`
+  reporting `unable to find sdk: 'macosx'` (the *versioned* SDK still resolves,
+  only the bare alias breaks), and `clang` rejecting `-index-store-path` as
+  `unknown argument` all look like Xcode or project bugs. `xcode-select -p`
+  itself is unaffected — only the env vars and `PATH` lookup are. Fix per
+  invocation, don't touch the persistent selection:
+  `env -u DEVELOPER_DIR -u SDKROOT -u CC -u CXX -u LD -u AR -u NM -u RANLIB
+  -u STRIP -u NIX_CC PATH="/usr/bin:/bin:/usr/sbin:/sbin" xcodebuild …`
+  (same for bare `xcrun`/`simctl` calls). Verified 2026-08-20 against Xcode
+  26.6 — a full `build-for-testing` + test run only succeeded once every one
+  of these was stripped.
 - **Six JDKs required**, satisfying three separate Gradle mechanisms. Removing
   any one breaks a specific repo.
 - **Toolchain config belongs in `gradle.properties`, never `GRADLE_OPTS`** —
