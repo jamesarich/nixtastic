@@ -12,6 +12,8 @@
 # Built as checks.<system>.tools-tests. The builder exports:
 #   $sync      path to the built meshtastic-sync
 #   $worktree  path to the built meshtastic-worktree
+#   $brief     path to the built meshtastic-brief
+#   $doctor    path to the built meshtastic-doctor
 # (runCommand turns its attrs into env vars.)
 
 set -euo pipefail
@@ -69,6 +71,10 @@ refuse() { printf '%s\n' "$res" | grep -qE -- "$1" && { echo "REFUSE FAILED (mat
 # res holding the previous test's output and assert against that — silently
 # green or bafflingly red. cd in this shell and change back.
 run_in() { d="$1"; shift; prev="$PWD"; cd "$d"; run "$@"; cd "$prev"; }
+# doctor exits 1 whenever anything FAILs, and in the sandbox (no direnv,
+# no direnvrc) something always does — capture regardless and assert on
+# the lines.
+run_lax() { res="$("$@" 2>&1)" || true; }
 
 echo "--- T1: first run — all current, envrc written per repo, sidecar for firmware"
 run "$sync"
@@ -280,6 +286,57 @@ run "$root/bin/claude-ws" notarepo
 expect '^ARGV: notarepo$'
 PATH="$oldpath"; export PATH
 rm -rf "$root/apple/.claude/skills"
+
+echo "--- T14: a generated .envrc whose shell was renamed is repaired, not kept"
+# Exactly the meshtastic-mcp case: the file sync wrote named `mcp`, the
+# table now says `python`, and never-clobber kept the stale file through
+# every sync while nix-direnv fell back to a cached environment.
+sed -i 's/#python"/#mcp"/' "$root/meshtastic-mcp/.envrc"
+grep -q '#mcp"' "$root/meshtastic-mcp/.envrc" || { echo "T14: fixture setup failed"; exit 1; }
+run_lax "$doctor"
+expect 'FAIL  envrc shells +stale generated file\(s\): meshtastic-mcp/\.envrc\(mcp: no such devShell, want python\)'
+run "$sync"
+expect 'meshtastic-mcp .*envrc updated \(shell mcp → python\)'
+grep -q 'use flake "\$MESHTASTIC_WORKSPACE#python"' "$root/meshtastic-mcp/.envrc" || { echo "T14: stale envrc kept"; exit 1; }
+# Editing revokes direnv's approval, so the footer must ask for it again.
+expect "direnv allow $root/meshtastic-mcp"
+run "$sync"
+refuse 'envrc updated'
+run_lax "$doctor"
+refuse 'envrc shells +stale'
+expect 'ok    envrc shells'
+# The sidecar is ours too, by the same rule.
+sed -i 's/#firmware"/#firmwar"/' "$root/firmware/.envrc-workspace"
+run "$sync"
+expect 'firmware .*envrc updated \(shell firmwar → firmware\)'
+grep -q '#firmware"' "$root/firmware/.envrc-workspace" || { echo "T14: stale sidecar kept"; exit 1; }
+
+echo "--- T15: a hand-written .envrc is warned about, never touched"
+printf 'use flake "$MESHTASTIC_WORKSPACE#kotlin"\n' > "$root/labeltastic/.envrc"
+before=$(cat "$root/labeltastic/.envrc")
+run "$sync"
+expect 'WARN +labeltastic: \.envrc selects kotlin, table says python — not ours, left alone'
+refuse 'labeltastic .*envrc updated'
+[ "$(cat "$root/labeltastic/.envrc")" = "$before" ] || { echo "T15: hand-written envrc was clobbered"; exit 1; }
+run_lax "$doctor"
+expect 'WARN  envrc shells +hand-written, wrong shell: labeltastic/\.envrc\(kotlin→python\)'
+refuse 'FAIL  envrc shells'
+rm "$root/labeltastic/.envrc"
+run "$sync"
+expect 'labeltastic .*envrc written'
+
+echo "--- T16: a TRACKED .envrc is never touched, whatever it says"
+# firmware's `use nix` selects no flake shell at all; make it name a wrong
+# one outright and confirm both tools still keep their hands off.
+(cd "$root/firmware" && printf 'use flake "$MESHTASTIC_WORKSPACE#kotlin"\n' > .envrc && git commit -qam "track a wrong shell" && git push -q)
+run "$sync"
+refuse 'firmware.*envrc updated'
+refuse 'WARN +firmware'
+[ -z "$(git -C "$root/firmware" status --porcelain --untracked-files=no)" ] \
+  || { echo "T16: tracked envrc was modified"; exit 1; }
+run_lax "$doctor"
+refuse 'firmware/\.envrc\('
+(cd "$root/firmware" && git checkout -q HEAD~1 -- .envrc && git commit -qam "restore use nix" && git push -q)
 
 echo "all tests passed"
 touch "$out"

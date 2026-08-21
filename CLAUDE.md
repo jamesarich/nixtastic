@@ -163,7 +163,11 @@ finds — run it before diagnosing by hand.
 - **`MESHTASTIC_WORKSPACE` unset** → JDK pinning inert, Gradle auto-provisions
   its own JDKs. `direnv` sets it. In a per-repo `.envrc` it must be exported
   **before** `use flake`, or the shellHook runs too early to see it.
-- **Never hand-write a repo `.envrc`** — `nix run .#sync` generates them.
+- **Never hand-write a repo `.envrc`** — `nix run .#sync` generates them,
+  and since 2026-08-21 also repairs a generated one whose shell `flake.nix`
+  has renamed (a stale `#mcp` survived every sync and nix-direnv silently
+  fell back to an unpinned environment); `doctor` reports it as `envrc
+  shells`. Hand-written files are warned about, never touched.
   `firmware` is special: it tracks its own (`use nix`, pointing at upstream's
   flake), so it gets an untracked `.envrc-workspace` sidecar instead. Never
   edit a tracked `.envrc`.

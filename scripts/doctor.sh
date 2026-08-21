@@ -119,6 +119,62 @@ if [ -d "$root/firmware/.git" ] && [ ! -e "$root/firmware/.envrc-workspace" ]; t
   fix "nix run .#sync"
 fi
 
+# --- envrc shell drift ----------------------------------
+# A generated .envrc names a dev shell; flake.nix can rename that shell
+# later (meshtastic-mcp's `mcp` became `python`) and sync's never-clobber
+# rule used to keep the stale file alive forever. The symptom is one
+# nix-direnv evaluation error scrolling past and a fallback to the
+# cached environment — unpinned, and silent thereafter. Compared against
+# the TABLE (what sync would write) and against the flake's actual
+# devShells (what can evaluate at all). Worktrees carry their own copy
+# when they sit outside the repo or the repo tracks .envrc, so they are
+# walked too. Hand-written files are reported but are the user's call.
+shells=" ${NIXTASTIC_SHELLS:-} "
+drift=""
+foreign=""
+nenvrc=0
+check_envrc_shell() { # $1 = file, $2 = wanted shell, $3 = label
+  [ -f "$1" ] || return 0
+  have=$(envrc_shell_of "$1")
+  [ -n "$have" ] || return 0 # `use nix` and friends select no flake shell
+  nenvrc=$((nenvrc + 1))
+  [ "$have" = "$2" ] && return 0
+  why="$have→$2"
+  if [ -n "${NIXTASTIC_SHELLS:-}" ]; then
+    case "$shells" in *" $have "*) ;; *) why="$have: no such devShell, want $2" ;; esac
+  fi
+  if envrc_is_generated "$1"; then
+    drift="$drift $3($why)"
+  else
+    foreign="$foreign $3($why)"
+  fi
+}
+while IFS=$'\t' read -r dir _ shell; do
+  [ -d "$root/$dir/.git" ] || continue
+  for f in .envrc .envrc-workspace; do
+    git -C "$root/$dir" ls-files --error-unmatch "$f" >/dev/null 2>&1 && continue
+    check_envrc_shell "$root/$dir/$f" "$shell" "$dir/$f"
+  done
+  while read -r wt; do
+    [ -d "$wt" ] || continue
+    for f in .envrc .envrc-workspace; do
+      git -C "$wt" ls-files --error-unmatch "$f" >/dev/null 2>&1 && continue
+      check_envrc_shell "$wt/$f" "$shell" "$dir/${wt##*/}/$f"
+    done
+  done <<< "$(git -C "$root/$dir" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' | tail -n +2)"
+done < "$NIXTASTIC_REPOS_TSV"
+if [ -n "$drift" ]; then
+  bad "envrc shells" "stale generated file(s):$drift"
+  fix "nix run .#sync   (rewrites generated files; then direnv allow)"
+fi
+if [ -n "$foreign" ]; then
+  warn "envrc shells" "hand-written, wrong shell:$foreign"
+  fix "rm <file> && nix run .#sync   (or fix the use flake line yourself)"
+fi
+if [ -z "$drift" ] && [ -z "$foreign" ]; then
+  ok "envrc shells" "$nenvrc file(s) match the table"
+fi
+
 # --- worktrees ------------------------------------------
 # Hand- or harness-made worktrees fail silently two ways:
 # no .mcp.json (the MCP tools are just absent), and — where

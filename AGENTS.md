@@ -466,7 +466,13 @@ blob's line endings before believing the worktree is dirty.
 
 direnv loads only the **nearest** `.envrc`. A repo with none falls back to the
 workspace-root file and gets `.#default` — wrong toolchain, no error. So
-`nix run .#sync` writes one per repo, idempotently, never clobbering.
+`nix run .#sync` writes one per repo, idempotently, never clobbering — with
+one exception: a file **it wrote** (generated header) whose `use flake` shell
+the table has since renamed is rewritten and reported as `envrc updated`,
+because the old never-clobber rule kept `meshtastic-mcp/.envrc` pointing at
+the retired `#mcp` shell through every sync while nix-direnv silently fell
+back to a cached, unpinned environment. Hand-written and tracked files are
+only warned about; `doctor` reports the same drift as `envrc shells`.
 
 Two ordering constraints, both silent when violated:
 
@@ -799,7 +805,7 @@ free — Pillow ships manylinux wheels on the same terms.
   `NIXTASTIC_*` env vars via `runtimeEnv`), so ShellCheck still sees each
   tool whole when `checks` builds. New scripts must be whitelisted in
   `.gitignore` **and** at least `git add`ed, or pure eval cannot see them.
-- The git-state logic in `sync` and `worktree` has fixture tests —
+- The git-state logic in `sync`, `worktree` and `doctor` has fixture tests —
   [`scripts/tools-tests.sh`](./scripts/tools-tests.sh), built as
   `checks.<system>.tools-tests` against a fake workspace, one tiny repo per
   entry in the real table, with local
