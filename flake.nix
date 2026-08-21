@@ -1233,9 +1233,7 @@
               # The shells that actually exist, so a generated .envrc
               # naming a renamed one is reported as such, not as mere
               # disagreement with the table.
-              NIXTASTIC_SHELLS = nixpkgs.lib.concatStringsSep " " (
-                builtins.attrNames self.devShells.${system}
-              );
+              NIXTASTIC_SHELLS = nixpkgs.lib.concatStringsSep " " (builtins.attrNames self.devShells.${system});
             };
             # lib.sh fronts doctor as well as sync: sync writes the
             # aggregated subagent copies and doctor verifies them, so both
