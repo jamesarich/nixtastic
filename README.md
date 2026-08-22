@@ -311,7 +311,7 @@ repo builds.
 
 | Command | Does |
 | --- | --- |
-| `nix run .#sync` | fetch all, report drift. Read-only *for git*; always regenerates `.envrc` and `.mcp.json`, and adopts worktrees it didn't create. Bare `nix run .` is the same thing. |
+| `nix run .#sync` | fetch all, report drift. Read-only *for git*; writes missing `.envrc` files (and repairs generated ones naming a renamed shell), always regenerates `.mcp.json`, and adopts worktrees it didn't create. Bare `nix run .` is the same thing. |
 | `nix run .#sync -- --pull` | fast-forward where safe |
 | `nix run .#sync -- --main` | switch each repo to its default branch, then pull |
 | `nix run .#brief -- <repo>` | orient: branch, shell, docs to read, PRs |
@@ -340,6 +340,7 @@ nix run .#doctor
 | --- | --- | --- |
 | Gradle downloads its own JDKs | `MESHTASTIC_WORKSPACE` unset, or a hand-written repo `.envrc` that exports it *after* `use flake` | `nix run .#sync` regenerates the file correctly; then `direnv allow` |
 | `cd <repo>` gives the wrong toolchain | that repo has no `.envrc`, so the workspace-root one loads and you get `.#default` | `nix run .#sync` |
+| `cd <repo>` prints a nix-direnv evaluation error, then an old environment | the generated `.envrc` names a dev shell `flake.nix` has since renamed | `nix run .#doctor` names it; `nix run .#sync` rewrites generated files, then `direnv allow` |
 | `pio` dies with `bwrap` in `firmware` | upstream's tracked `.envrc` (`use nix`) won over ours | check `~/.config/direnv/direnvrc` sources this repo's `direnvrc`, and that `firmware/.envrc-workspace` exists |
 | Worktree has no MCP tools, or `firmware` worktree hits `bwrap` | created by hand or by an agent harness — no `.mcp.json`, no sidecar | `nix run .#sync` adopts it; prefer `nix run .#worktree` next time |
 | An agent's isolated worktree has no repos in it | harness worktree isolation clones the *workspace* repo; the org repos are untracked | use `nix run .#worktree -- <repo> <branch>` for repo work |

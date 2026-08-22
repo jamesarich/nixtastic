@@ -98,7 +98,9 @@ while IFS=$'\t' read -r dir repo shell; do
   g="git -C $root/$dir"
 
   # Give the repo its own dev shell, once. Never clobber a file
-  # that is already there.
+  # that is already there — except one WE wrote whose shell the
+  # table has since renamed (repair_envrc in lib.sh): that one is
+  # rewritten, and direnv will want a fresh `allow` for it.
   envrc=""
   if [ ! -e "$root/$dir/.envrc" ]; then
     write_envrc "$root/$dir/.envrc" "$shell"
@@ -113,9 +115,16 @@ while IFS=$'\t' read -r dir repo shell; do
     if [ ! -e "$root/$dir/.envrc-workspace" ]; then
       write_envrc "$root/$dir/.envrc-workspace" "$shell"
       envrc="envrc-workspace written (upstream tracks .envrc)"
+    else
+      envrc=$(repair_envrc "$root/$dir/.envrc-workspace" "$shell" write_envrc)
     fi
+  else
+    envrc=$(repair_envrc "$root/$dir/.envrc" "$shell" write_envrc)
   fi
-  [ -n "$envrc" ] && echo "$dir" >> "$pending"
+  case "$envrc" in
+    WARN*) echo "  WARN      $dir: ${envrc#WARN }"; envrc="" ;;
+    ?*) echo "$dir" >> "$pending" ;;
+  esac
 
   # Adopt worktrees this tool did not create — hand-made
   # (`git worktree add`), agent-skill-made, or an agent
@@ -140,6 +149,8 @@ while IFS=$'\t' read -r dir repo shell; do
       if [ ! -e "$wt/.envrc-workspace" ]; then
         write_worktree_envrc "$wt/.envrc-workspace" "$shell"
         got="envrc-workspace"
+      else
+        got=$(repair_envrc "$wt/.envrc-workspace" "$shell" write_worktree_envrc)
       fi
     else
       case "$wt/" in
@@ -148,10 +159,16 @@ while IFS=$'\t' read -r dir repo shell; do
           if [ ! -e "$wt/.envrc" ]; then
             write_worktree_envrc "$wt/.envrc" "$shell"
             got="envrc — approve once: direnv allow $wt"
+          else
+            got=$(repair_envrc "$wt/.envrc" "$shell" write_worktree_envrc)
+            [ -n "$got" ] && got="$got — approve again: direnv allow $wt"
           fi
           ;;
       esac
     fi
+    case "$got" in
+      WARN*) echo "  WARN      $dir/${wt##*/}: ${got#WARN }"; got="" ;;
+    esac
     # Upstream may TRACK .mcp.json (android, firmware and
     # meshtastic-mcp do — android's registers context7 for
     # the team). Overwriting would dirty the worktree and

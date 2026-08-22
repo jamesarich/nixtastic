@@ -1070,7 +1070,7 @@
       # .mcp.json, info/exclude patterns — regenerated idempotently.
       #############################################################
       packages = forAllSystems (
-        { pkgs, ... }:
+        { pkgs, system, ... }:
         let
           #########################################################
           # Google's android CLI — the agent-oriented front end over
@@ -1230,6 +1230,10 @@
             ];
             runtimeEnv = {
               NIXTASTIC_REPOS_TSV = reposTsv;
+              # The shells that actually exist, so a generated .envrc
+              # naming a renamed one is reported as such, not as mere
+              # disagreement with the table.
+              NIXTASTIC_SHELLS = nixpkgs.lib.concatStringsSep " " (builtins.attrNames self.devShells.${system});
             };
             # lib.sh fronts doctor as well as sync: sync writes the
             # aggregated subagent copies and doctor verifies them, so both
@@ -1294,6 +1298,7 @@
             sync = "${self.packages.${system}.sync}/bin/meshtastic-sync";
             worktree = "${self.packages.${system}.worktree}/bin/meshtastic-worktree";
             brief = "${self.packages.${system}.brief}/bin/meshtastic-brief";
+            doctor = "${self.packages.${system}.doctor}/bin/meshtastic-doctor";
           } (builtins.readFile ./scripts/tools-tests.sh);
 
           # statix + deadnix over this repo's own tracked files. ${self}
