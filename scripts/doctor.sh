@@ -139,7 +139,7 @@ check_envrc_shell() { # $1 = file, $2 = wanted shell, $3 = label
   [ -n "$have" ] || return 0 # `use nix` and friends select no flake shell
   nenvrc=$((nenvrc + 1))
   [ "$have" = "$2" ] && return 0
-  why="$have→$2"
+  why="${have}→${2}"
   if [ -n "${NIXTASTIC_SHELLS:-}" ]; then
     case "$shells" in *" $have "*) ;; *) why="$have: no such devShell, want $2" ;; esac
   fi
