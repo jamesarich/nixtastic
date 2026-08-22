@@ -79,38 +79,29 @@ SDK).
   tracked on <https://github.com/orgs/meshtastic/projects/16>, not in the repo.
 - `design` is also vendored as a submodule inside `meshtastic` at
   `static/design`, the same pattern as the `protobufs` submodules above.
-- `api` backs meshtastic.org and already serves other small JSON resources
-  (`data/deviceLinks.json`, `data/eventFirmware.json`), now joined by
-  `data/bootloaderOtaQuirks.json` at `resource/bootloaderOtaQuirks`
-  (2026-08-20, thebentern's proposal) — moved verbatim from `android`'s
-  bundled `androidApp/src/main/assets/device_bootloader_ota_quirks.json`.
-  `android`'s `DeviceHardwareRepositoryImpl` is the only real consumer so
-  far and still reads the bundled asset — switching it to fetch this
-  endpoint (with what offline fallback, given the `softDeviceVariants`
-  table gates a destructive flash and must fail closed) is still open.
-  `apple`'s OTAFIX bootloader-upgrade flow (PRs #2338/#2339) currently
-  hand-mirrors its own board map from `android`'s `MaintenanceUf2.kt` and
-  could take the advisory `devices` list instead; `web-flasher`'s
-  drag-and-drop UF2 flow has no such nudge at all today. Neither consumes
-  it yet.
+- `api` backs meshtastic.org and serves the small JSON resources the clients
+  share: `data/deviceLinks.json`, `data/eventFirmware.json`, and since
+  2026-08-20/21 `data/bootloaderOtaQuirks.json` (`resource/bootloaderOtaQuirks`)
+  and `data/maintenanceUf2.json` (`resource/maintenanceUf2`, api #125).
+  `android` consumes both (#6803): `BootloaderOtaQuirksRepositoryImpl` and
+  `MaintenanceUf2RepositoryImpl` fetch the endpoint, seeded from a bundled
+  asset so they are never empty offline, and the maintenance manifest's
+  SHA-256 is verified before any UF2 write — so the trust-model question is
+  settled as "digest-pinned manifest, not compile-time constants". A
+  scheduled Action (#6813) refreshes the bundled seeds from the API. `apple`'s
+  OTAFIX flow (#2338/#2339) still hand-mirrors its board map and
+  `web-flasher`'s drag-and-drop UF2 flow has no nudge — neither consumes
+  either endpoint yet.
 - `web-flasher` already calls `api.meshtastic.org` for
   `resource/deviceHardware` and `resource/eventFirmware` (mirroring its own
   cached copy of the hardware list, refreshed by a scheduled GitHub Action —
   the same "committed sync copy" shape as `api`'s own `deviceLinks.ts`).
-- `android`'s `feature/firmware/.../MaintenanceUf2.kt` pins the nRF52
-  factory-erase and OTAFIX bootloader-upgrade UF2 images by URL + SHA-256.
-  The erase images are hosted via a commit-pinned
-  `raw.githubusercontent.com` URL into **`web-flasher`'s own
-  `public/uf2/`** — so `android` already depends on that repo's static
-  assets, one direction earlier than the `api`-mediated couplings above.
-  The OTAFIX images are pinned to a `Adafruit_nRF52_Bootloader_OTAFIX`
-  release tag. `apple` hand-copies this whole board-ID → image/hash map
-  (confirmed duplicated, not just the advisory piece noted above); every
-  new OTAFIX release currently means editing both by hand. Migrating it to
-  `api` (proposed 2026-08-20) is under evaluation — unlike the advisory
-  data above, this table gates the write itself, so serving it over the
-  network is a real trust-model change from today's compile-time-pinned
-  constants, not just a caching question.
+- The nRF52 factory-erase images the maintenance manifest points at are
+  hosted via commit-pinned `raw.githubusercontent.com` URLs into
+  **`web-flasher`'s own `public/uf2/`**, and the OTAFIX images at an
+  `Adafruit_nRF52_Bootloader_OTAFIX` release tag — so a new OTAFIX release
+  is now an `api` data change (plus `apple`'s hand copy), no longer an
+  `android` code change.
 
 The wire-level contracts these couplings rest on — the phone↔device handshake,
 proto change rules, MQTT topics and the release order — are in
