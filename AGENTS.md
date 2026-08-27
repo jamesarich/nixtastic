@@ -251,6 +251,41 @@ fighting trunk over the same files.
 
 ---
 
+## The bench
+
+The radios on this machine's USB are shared mutable state, and the sharing is
+invisible from inside a session. Operational detail — recovery, identity,
+known-bad pairings, where the fleet tooling lives — is in
+[`notes/bench-fleet.md`](./notes/bench-fleet.md). Two invariants belong here,
+because they are properties of *this workspace's wiring*, not of the hardware.
+
+### Every session builds and flashes out of one `firmware/` checkout
+
+`scripts/lib.sh` exports `MESHTASTIC_FIRMWARE_ROOT="$root/firmware"` from both
+MCP entry points — the generated `.mcp.json` and the user-scope launcher
+`bin/meshtastic-mcp-launch`. Deliberately not worktree-relative: the flash and
+build tools must reach a real firmware tree from any cwd on the machine.
+
+Nothing prints the consequence. A session in `android/.claude/worktrees/x`
+builds in the primary `firmware/.pio`; so does every other concurrent session;
+so does a `meshtastic-mcp` test whose mocked upload leaks. Both failure modes
+were seen live on 2026-08-26 — another session's build wiped a finished
+8-minute artifact between `build_poll` reporting `done` and the next `ls`, and
+an orphaned `pio run -t upload` carrying an *invalid* port went to PlatformIO's
+auto-detect fallback with real boards on the bus. Check `pgrep -af 'pio run'`
+before a flash session, and flash the moment a build reports done.
+
+### A serial port number is not a device identity
+
+`/dev/ttyACM*` is assignment order. It changes on every replug, power cycle and
+lockup recovery, and two boards of the same model are separable only by USB
+serial — which has already mattered here (two RAK4631s on the bus at once,
+2026-08-22). Resolve through `/dev/serial/by-id/` at the point of use. Any
+tool, script or note that stores a port number across a session boundary is
+storing a guess.
+
+---
+
 ## Python
 
 ### One shell serves every Python repo, and it is named for the stack
@@ -578,6 +613,16 @@ a full re-run.
 fronts `doctor` as well as `sync` for this reason: one definition of where a
 copy belongs, or the two drift and doctor blesses files sync would not write.
 
+**The copy tracks the primary checkout's working tree, not the repo's
+upstream.** `sync` reads `<repo>/.claude/agents/*.md` as they sit on disk, so
+the root's copy is whatever branch the primary checkout is parked on, and a
+subagent fix made on a **branch** does not reach root sessions until that PR
+merges, `main` is pulled, and `sync` runs again. Both directions bite: an agent
+repaired in a worktree keeps failing at the root, and a checkout left on a
+feature branch quietly publishes that branch's agents workspace-wide. Fixing a
+subagent is therefore not done when the commit lands locally — it is done when
+`doctor` says the root copy matches.
+
 ### Per-repo skills need `bin/claude-ws`, and it names one repo at a time
 
 Skills could not take the same route. A skill is a *directory* whose name is
@@ -662,6 +707,32 @@ silent:
 worktrees created behind its back (hand-made, agent skills, harness
 isolation), writing whichever of the three pieces is missing, idempotently.
 `nix run .#doctor` warns about unoutfitted ones.
+
+### Worktrees accumulate, and squash-merge hides which are dead
+
+`doctor` answers "is every worktree outfitted", never "should this one still
+exist". As of 2026-08-27 that gap reads: 71 worktrees workspace-wide, 38 of
+them under `android`, 57 GB on disk, and 21 `android` branches with no upstream
+at all — 17 of those untouched for two weeks or more.
+
+Do not classify them with `git merge-base --is-ancestor <branch> origin/main`.
+Every repo here that merges through a queue **squashes**, so a fully merged
+branch is never an ancestor of `main`; the branches that *are* ancestors are
+mostly fresh worktrees cut at main-tip whose work is not committed yet. That
+test inverts the answer. Ask GitHub instead — verified 2026-08-27:
+
+    gh pr list --head <branch> --state merged --json number,mergedAt
+
+Read an empty result carefully: it means "no merged PR ever had this head",
+which covers a live branch and one that was **never pushed** alike — and
+never-pushed is the common case here (21 of `android`'s local branches have no
+upstream at all). For those, GitHub knows nothing and the local branch is the
+only copy of the work.
+
+`--prune` does not close this either: `git worktree prune` drops **dead
+registrations** (a directory already deleted), not live worktrees whose work
+landed. Removing a live one is a judgement call about unpushed work — an
+unpushed branch is the only copy of it — so it stays manual.
 
 ### Agent-harness worktree isolation makes a decoy workspace
 

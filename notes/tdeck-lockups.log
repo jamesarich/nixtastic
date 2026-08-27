@@ -1,0 +1,12 @@
+2026-08-26 14:38:15 t-deck-mui wedged on /dev/ttyACM4 (hub 1-2 port 2) — cycling
+2026-08-26 14:38:40 t-deck-mui cycle failed
+2026-08-26 14:39:12 t-deck-nomui wedged on /dev/ttyACM3 (hub 1-2 port 3) — cycling
+2026-08-26 14:39:34 t-deck-nomui cycle failed
+2026-08-26 14:43:39 t-deck-mui off-bus
+2026-08-26 14:43:39 t-deck-nomui off-bus
+2026-08-26 14:46:43 t-deck-mui recovered
+2026-08-26 14:46:44 t-deck-nomui recovered
+2026-08-26 14:53:19 t-deck-mui wedged on /dev/ttyACM7 (addr 1-2.2 -> hub 1-2 port 2) — cycling
+2026-08-26 14:53:47 t-deck-mui recovered by cycle
+2026-08-26 14:57:21 t-deck-nomui wedged on /dev/ttyACM9 (addr 1-2.3.2 -> hub 1-2.3 port 2) — cycling
+2026-08-26 14:57:45 t-deck-nomui recovered by cycle

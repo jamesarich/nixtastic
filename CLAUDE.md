@@ -211,6 +211,13 @@ finds — run it before diagnosing by hand.
   (same for bare `xcrun`/`simctl` calls). Verified 2026-08-20 against Xcode
   26.6 — a full `build-for-testing` + test run only succeeded once every one
   of these was stripped.
+- **The bench is shared, and so is `firmware/.pio`** — every session's MCP
+  tools export `MESHTASTIC_FIRMWARE_ROOT` pointing at the one primary
+  `firmware/` checkout, whatever worktree you are standing in. Another
+  session's build cleans your artifacts, and a leaked `pio run -t upload` with
+  an invalid port auto-detects onto whichever board it finds. `/dev/ttyACM*`
+  numbers are assignment order, not identity — resolve by USB serial through
+  `/dev/serial/by-id/`. [`notes/bench-fleet.md`](./notes/bench-fleet.md).
 - **Six JDKs required**, satisfying three separate Gradle mechanisms. Removing
   any one breaks a specific repo.
 - **Toolchain config belongs in `gradle.properties`, never `GRADLE_OPTS`** —
