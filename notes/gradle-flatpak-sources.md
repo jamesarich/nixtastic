@@ -6,7 +6,7 @@ and `CODEOWNERS` are the only governance.
 - **Role:** Gradle plugin that generates Flathub-compliant **offline dependency
   manifests** — the thing that lets a Gradle build run inside Flathub's
   network-isolated builder.
-- **Stack:** Kotlin, Gradle 9.6.1 wrapper. Single `plugin/` module.
+- **Stack:** Kotlin, Gradle 9.7.1 wrapper (`-all`). Single `plugin/` module.
 - **Default branch:** `main`
 - **Shell:** `.#kotlin`
 
@@ -36,5 +36,13 @@ packaging. Its output is consumed by the Flathub submission for
   against its own bundled file. Vendoring the identical `-bin` artifact instead
   fixed it and shed ~70 MB (`android` `97d081dea`, PR #6625). Whenever the
   wrapper version moves, the vendored artifact and the checksum move together.
+- **CI's Gradle version is not the wrapper's.** `setup-gradle` pins
+  `matrix.gradle` over whatever the wrapper says, so a green CI run says
+  nothing about the version developers and consumers actually use. The matrix
+  was 9.5.1-only while the wrapper sat on 9.7.1, which is how two
+  configuration-cache bugs shipped in 0.2.0 (PR #45): the task action captured
+  the listener's live URL set, and the service's set was injected from outside
+  so a reused CC entry emitted an empty manifest. Now 9.5.1 / 9.6.1 / 9.7.1 —
+  floor, `android`'s pin, current. Add the consumer's version whenever it moves.
 - Small repo, low commit volume — check whether history is recent before
   assuming current conventions.
