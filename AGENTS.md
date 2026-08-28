@@ -69,6 +69,40 @@ JVM shells therefore put `libglvnd` on `LD_LIBRARY_PATH` on Linux — verified
 sufficient for headless raster tests. Same failure class as the manylinux
 wheels in `.#python`.
 
+### The desktop app inherits the Gradle daemon's environment, not yours
+
+`./gradlew :desktopApp:hotRun` forks the app from the **Gradle daemon**, so the
+app sees the daemon's environment — and Gradle reuses any *compatible* daemon,
+where compatibility covers JVM args and JDK but never environment variables. A
+single daemon started from a non-graphical shell (an agent tool call, CI, a
+plain `ssh`) therefore poisons the pool: every later `hotRun`, including one
+launched from a desktop terminal that plainly has a display, dies with
+`java.awt.HeadlessException: No X11 DISPLAY variable was set`. The error blames
+X11 and the terminal, never the daemon, which is what makes it expensive.
+`-Djava.awt.headless=true` in `android/gradle.properties` is a red herring — it
+applies to the daemon JVM only.
+
+Check which daemon would serve you before believing anything else:
+
+    for p in $(pgrep -f GradleDaemon); do
+      printf '%s: ' "$p"
+      tr '\0' '\n' < /proc/$p/environ | grep -E '^(DISPLAY|XAUTHORITY)=' || echo NONE
+    done
+
+Run with `--no-daemon` and the display exported, which sidesteps the pool. AWT
+reaches a Wayland session through XWayland, so `DISPLAY` and `XAUTHORITY` are
+what matter — `WAYLAND_DISPLAY` alone does nothing:
+
+    export DISPLAY=:0 XAUTHORITY=/run/user/1000/.mutter-Xwaylandauth.*
+    direnv exec . ./gradlew --no-daemon :desktopApp:hotRun
+
+Skiko then logs `RenderException: Cannot create Linux GL context` and falls back
+to software, which renders fine. Do **not** chase that with
+`LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu`: prepending the whole system library
+path loads a second GLib beside the Nix one `libnotify` already pulled in,
+GObject refuses to re-register its types (`cannot register existing type
+'GInitable'`), and no window opens at all. Verified 2026-08-28.
+
 ### A comma in a backtick test name breaks Kotlin/Native, not the JVM
 
 Kotlin/Native rejects `,` inside a backtick-quoted identifier. JVM and Android

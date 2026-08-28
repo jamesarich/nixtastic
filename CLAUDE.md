@@ -211,6 +211,13 @@ finds — run it before diagnosing by hand.
   (same for bare `xcrun`/`simctl` calls). Verified 2026-08-20 against Xcode
   26.6 — a full `build-for-testing` + test run only succeeded once every one
   of these was stripped.
+- **`:desktopApp:hotRun` dies headless because of the *daemon*, not your
+  terminal** — the app is forked by the Gradle daemon and inherits its
+  environment, and Gradle reuses any compatible daemon regardless of env. One
+  daemon started from an agent tool call or `ssh` makes every later run fail
+  with `HeadlessException` from a desktop terminal too. Use `--no-daemon` with
+  `DISPLAY`/`XAUTHORITY` exported (AWT reaches Wayland via XWayland).
+  `AGENTS.md` → Gradle and JDKs.
 - **The bench is shared, and so is `firmware/.pio`** — every session's MCP
   tools export `MESHTASTIC_FIRMWARE_ROOT` pointing at the one primary
   `firmware/` checkout, whatever worktree you are standing in. Another
