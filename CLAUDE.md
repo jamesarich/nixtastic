@@ -211,6 +211,12 @@ finds — run it before diagnosing by hand.
   (same for bare `xcrun`/`simctl` calls). Verified 2026-08-20 against Xcode
   26.6 — a full `build-for-testing` + test run only succeeded once every one
   of these was stripped.
+- **The Nix JDK SIGSEGVs linking Kotlin/Native test binaries** — `./gradlew
+  build` or `allTests` in any KMP repo here kills the daemon during
+  `linkDebugTest*`, blaming nothing. Not memory: `21.0.12+8-nixos` crashes where
+  Temurin 21 passes on the same host. Pass
+  `-Dorg.gradle.java.home=$HOME/.gradle/jdks/eclipse_adoptium-21-amd64-linux.2`.
+  `AGENTS.md` → Gradle and JDKs.
 - **`:desktopApp:hotRun` dies headless because of the *daemon*, not your
   terminal** — the app is forked by the Gradle daemon and inherits its
   environment, and Gradle reuses any compatible daemon regardless of env. One

@@ -108,6 +108,38 @@ path loads a second GLib beside the Nix one `libnotify` already pulled in,
 GObject refuses to re-register its types (`cannot register existing type
 'GInitable'`), and no window opens at all. Verified 2026-08-28.
 
+### The Nix JDK SIGSEGVs linking Kotlin/Native test binaries
+
+`linkDebugTest{MingwX64,LinuxX64,LinuxArm64}` — so any `./gradlew build` or
+`allTests` in a KMP repo here — kills the Gradle daemon outright:
+
+    Gradle build daemon disappeared unexpectedly
+
+with an `hs_err` log whose native frames read `jni_DeleteGlobalRef` →
+`libkotlinxcinteropjvmcallbacks.so ffiFreeClosure0` →
+`kotlinx.cinterop.Caches.disposeFfi` → `ThreadSafeDisposableHelper.dispose`.
+It is the in-process Kotlin/Native compiler's teardown, and it takes the whole
+daemon with it, so the reported failure names no cause at all.
+
+**It is the JDK, not memory.** Verified 2026-08-28 in `kzstd`, same host and
+tasks minutes apart: the shell's default `21.0.12+8-nixos` crashed twice (the
+second time under `--rerun-tasks`) with 21 GB free on a 60 GB machine, while
+Temurin `21.0.10+7-LTS` built all three link tasks in 36 s. Two repos filed this
+separately — kzstd#56 blaming memory pressure, MQTTastic#119 correctly ruling
+memory out — and both are the same bug. CI never sees it: GitHub runners use
+Temurin.
+
+**Workaround** — point Gradle at the Temurin JDK the toolchain resolver already
+downloaded:
+
+    ./gradlew -Dorg.gradle.java.home="$HOME/.gradle/jdks/eclipse_adoptium-21-amd64-linux.2" <task>
+
+Keep it per-invocation. `org.gradle.java.home` in a repo's `gradle.properties`
+would also work, but that file is committed and would push a developer-machine
+workaround onto CI, which does not have the bug. Note the daemon is selected by
+its JVM, so a crashing daemon is already running until you stop it — pass the
+flag from the first invocation, or run `./gradlew --stop` first.
+
 ### A comma in a backtick test name breaks Kotlin/Native, not the JVM
 
 Kotlin/Native rejects `,` inside a backtick-quoted identifier. JVM and Android
