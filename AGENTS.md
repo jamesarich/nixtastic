@@ -84,10 +84,15 @@ applies to the daemon JVM only.
 
 Check which daemon would serve you before believing anything else:
 
-    for p in $(pgrep -f GradleDaemon); do
+    for p in $(pgrep -f 'Gradle[D]aemon'); do
       printf '%s: ' "$p"
       tr '\0' '\n' < /proc/$p/environ | grep -E '^(DISPLAY|XAUTHORITY)=' || echo NONE
     done
+
+The bracket in `Gradle[D]aemon` is load-bearing: a plain `pgrep -f GradleDaemon`
+also matches the shell running it, so it reports a phantom `NONE` daemon and you
+go hunting a daemon that is really your own command line. (`pkill -f` has the
+same trap and kills that shell — it exits 144 with no output.)
 
 Run with `--no-daemon` and the display exported, which sidesteps the pool. AWT
 reaches a Wayland session through XWayland, so `DISPLAY` and `XAUTHORITY` are
