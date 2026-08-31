@@ -41,7 +41,7 @@ git init -q -b main "$root"
 # fixture directories must carry the REAL names. firmware tracks .envrc
 # upstream and android tracks .mcp.json — mirror both, they are exactly
 # the cases the tools special-case.
-repos="Adafruit_nRF52_Bootloader_OTAFIX MQTTastic-Client-KMP TAKPacket-SDK android api apple design firmware gradle-flatpak-sources kzstd labeltastic meshtastic meshtastic-mcp meshtastic-python meshtastic-sdk protobufs web-flasher"
+repos="Adafruit_nRF52_Bootloader_OTAFIX MQTTastic-Client-KMP TAKPacket-SDK android api apple design device-ui firmware gradle-flatpak-sources kzstd labeltastic meshtastic meshtastic-mcp meshtastic-python meshtastic-sdk protobufs web-flasher"
 for r in $repos; do
   git init -q --bare -b main "$origins/$r.git"
   git init -q -b main "$root/$r"

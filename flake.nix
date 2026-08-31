@@ -55,6 +55,10 @@
           shell = "firmware";
           repo = "meshtastic/firmware";
         };
+        device-ui = {
+          shell = "firmware";
+          repo = "meshtastic/device-ui";
+        };
         android = {
           shell = "android";
           repo = "meshtastic/Meshtastic-Android";
