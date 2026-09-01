@@ -212,11 +212,25 @@ result above said the feared collision did not happen. On hardware:
 
 rc=8 is `BLE_HS_ENOTSUP`. With `CONFIG_BT_NIMBLE_EXT_ADV=y` the legacy
 advertising API is not supported, and the Arduino BLE wrapper the PhoneAPI
-advertisement goes through calls exactly that. So enabling ext-adv on ESP32
-requires porting the PhoneAPI advertisement onto an ext-adv instance (0), which
-is what Ben's `#if defined(NIMBLE_TWO) || CONFIG_BT_NIMBLE_EXT_ADV` guard change
-was doing for the NimBLE version his branch targeted. Linking is not evidence;
-this is the concrete reason the note said so.
+advertisement goes through calls exactly that. So the link-time "no collision"
+result was not evidence of anything: linking only proves the symbol exists.
+
+**How far that goes is NOT established, and an earlier draft of this note
+overstated it.** The error is on `stop()`, and a failing stop does not
+necessarily prevent advertising from starting. Scanning for the Meshtastic
+service UUID found no connectable advertisement from that node - but that
+observation is worthless as evidence, for two reasons: no baseline scan was
+taken before flashing the spike, and Meshtastic stops advertising anyway once a
+phone is connected, which the owner's phone probably was. A later scan then
+failed to see a node that had been clearly visible a minute earlier, so the
+scans are not reliable enough to conclude from.
+
+What is safe to say: `ble_gap_adv_stop` is genuinely unsupported under ext-adv,
+so at minimum the PhoneAPI's advertising lifecycle needs porting onto an ext-adv
+instance (0) - which is what Ben's `#if defined(NIMBLE_TWO) ||
+CONFIG_BT_NIMBLE_EXT_ADV` guard change was doing for the NimBLE version his
+branch targeted. Whether a phone can still connect in the meantime is untested.
+The test to run: baseline scan, flash, rescan, with the phone disconnected.
 
 **nRF52 needs a linker change before it can receive.** Scanning needs a central
 link, and `Bluefruit.begin()` defaults to zero. Asking for one with
