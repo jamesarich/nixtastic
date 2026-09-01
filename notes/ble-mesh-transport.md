@@ -268,26 +268,55 @@ nothing advertises; on most boots it never becomes active and the node has no
 BLE whatsoever. A RAK4631 beside it advertises normally throughout, so this is
 the ESP32 stack rather than the environment.
 
-**Why the obvious fix does not work.** Porting the PhoneAPI advertisement to
-`ble_gap_ext_adv_configure(0, ...)` with `legacy_pdu = 1` would keep the on-air
-PDU an ordinary `ADV_IND` (so every phone still sees it) while using the API
-that actually exists. But `ble_gap_ext_adv_configure` takes the GAP event
-callback, and the one connections must reach is
-`BLEServer::handleGATTServerEvent` {D} declared `private` in the framework's
-`BLEServer.h`. Registering a different callback breaks more than connect: the
-server's subscribed-peer list is built from `BLE_GAP_EVENT_SUBSCRIBE`, and that
-list is what `fromNum` notifications depend on. Taking GAP over means
-reimplementing a chunk of the wrapper on the most important path the firmware
-has.
+**Correction: the fix *does* work, and it is spike-sized.** A first pass concluded
+otherwise. A second reviewer broke that, and the reasoning was wrong in two
+specific ways worth recording, because both are the kind of mistake that ends
+investigations early:
 
-So ESP32 BLE mesh needs one of:
+- I checked that `BLEServer::handleGATTServerEvent` is `private` and stopped.
+  But `BLEDevice::getServer()` is **public** (`BLEDevice.h:200`), and the
+  function pointer itself is reachable through the standard explicit-instantiation
+  access-bypass idiom {D} roughly ten lines. `[temp.explicit]` exempts explicit
+  instantiation arguments from access checking.
+- I assumed replacing the GAP callback would break the subscribed-peer list that
+  `fromNum` notifications depend on. You do not replace it, you **reuse** it.
+  NimBLE stores the advertising instance's callback on the connection
+  (`ble_gap.c:3449/3454`: `conn->bhc_cb = ble_gap_slave[instance].cb`), so
+  SUBSCRIBE, MTU, ENC_CHANGE and pairing all continue to reach `BLEServer`
+  untouched.
 
-1. arduino-esp32 adding ext-adv to the NimBLE branch of its BLE wrapper
-   (upstream, not ours), or
-2. Meshtastic's ESP32 BLE moving advertising *and* GAP event handling off the
-   wrapper onto raw NimBLE. `NimbleBluetooth.cpp` already includes
-   `host/ble_gap.h`, so this is where the tree is drifting anyway {D} but it is a
-   real change to the phone connection path, not a spike-sized one.
+The route, then: in `NimbleBluetooth::startAdvertising()`, drive instance 0
+directly {D} `ble_gap_ext_adv_configure(0, {legacy_pdu=1, connectable=1,
+scannable=1}, ..., forwarder, BLEDevice::getServer())`, then `set_data` /
+`rsp_set_data` / `ext_adv_start(0, 0, 0)`. `legacy_pdu = 1` keeps the on-air PDU
+an ordinary `ADV_IND`, so phones without BLE 5 still see it.
+`ble_hs_adv_set_fields_mbuf` (`ble_hs_adv.h:224`) serialises the same fields as
+today (flags + 128-bit service UUID + preferred interval, about 27 bytes, inside
+the legacy 31), and the name stays in the scan response. The mesh transport
+already sits on instance 1 with `MAX_EXT_ADV_INSTANCES=2`, so instance 0 is free.
+
+One real residual edge: inside the stock handler a *failed* connect calls
+`BLEDevice::startAdvertising()` (`BLEServer.cpp:798-800`), which now returns
+ENOTSUP silently {D} so the forwarder has to re-arm instance 0 on `CONNECT` with
+`status != 0`. The disconnect path is already covered by `pendingStartAdvertising`.
+Call it 60-80 lines, fragile against wrapper-signature changes, which is
+acceptable here and worth a comment.
+
+Two related dead ends, checked so nobody re-checks them: the flag is genuinely
+global rather than per-instance (`esp_nimble_cfg.h:99-102` maps
+`CONFIG_BT_NIMBLE_EXT_ADV` 1:1 to a host-wide `MYNEWT_VAL_BLE_EXT_ADV`), and
+periodic advertising is not an escape hatch because it *depends* on ext-adv
+(`Kconfig.in:654-657`). Upstream arduino-esp32 `master` has the identical file
+set, so pinning the framework forward buys nothing.
+
+**Still undiagnosed, and do not let the above absorb it.** ENOTSUP explains the
+boots where advertising failed while the stack was up. It does **not** explain
+the boots where BLE never became active at all: `NimbleBluetooth::isActive()` is
+just `bleServer != nullptr` (`NimbleBluetooth.cpp:878-881`), set unconditionally
+in `setup()` after `createServer()`, so "never active" means `setup()` never ran
+{D} which ENOTSUP cannot cause. That is a second failure (crash loop, host-sync
+failure, or the bluetooth state machine never enabling) and it needs a serial log
+from one of those boots before any of this is called finished.
 
 **nRF52 has none of this problem.** It reaches extended advertising through the
 SoftDevice directly, with no wrapper in between, which is why the RAK4631 is
