@@ -259,5 +259,30 @@ finds — run it before diagnosing by hand.
 - **Default branches are not all `main`** — see the table.
 - **`.gitignore` here denies by default** — a new file is untracked until
   whitelisted.
+- **An ESP32 build rewrites a *shared* framework sdkconfig** — `custom_sdkconfig`
+  in a variant `.ini` is applied by editing
+  `~/.platformio/packages/framework-arduinoespressif32-libs/<mcu>/sdkconfig`
+  in place, not a per-env copy. So reading that file tells you what the **last
+  env built** asked for, not what your env asks for, and two envs for the same
+  MCU silently fight over it. Reading it mid-session produced flatly
+  contradictory answers about whether `CONFIG_BT_NIMBLE_EXT_ADV` was set.
+  Trust the built ELF (`readelf`/`strings`), not the sdkconfig file.
+- **`MYNEWT_VAL(...)` does not reflect `custom_sdkconfig`** — NimBLE feature
+  macros resolve from the *prebuilt* `esp_nimble_cfg.h` in the framework's
+  include tree, so `#if MYNEWT_VAL(BLE_EXT_ADV)` reads 0 even in a build whose
+  rebuilt NimBLE library has extended advertising. Gate firmware code on a flag
+  the repo sets in `build_flags`; a `MYNEWT_VAL` guard compiles your feature out
+  and leaves no trace in the log.
+- **`firmware`'s native test suite needs Docker on macOS** —
+  `bin/run-tests.sh` is Linux-only and `bin/test-native-docker.sh` is the macOS
+  path. Running `pio test` directly cannot substitute: `-e coverage` passes the
+  GCC-only `-fprofile-abs-path`, and `-e native`'s LovyanGFX fonts do not
+  compile under Apple clang. Run it from a git worktree and it prints two
+  `fatal: not a git repository` lines — cosmetic, version stamping only.
+- **`pio device monitor` cannot run with stdout redirected** — pyserial's
+  miniterm calls `termios.tcgetattr` on stdin and dies on a non-tty, so it
+  produces nothing from a script or agent tool call. The `meshtastic-mcp`
+  serial tools hand the child a pty and work; for a one-off, read the port with
+  pyserial directly (`~/.platformio/penv/bin/python`).
 - **`nix flake check` only evaluates shells** — passing eval does not mean a
   repo builds.
