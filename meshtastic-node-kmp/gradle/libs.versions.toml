@@ -1,0 +1,10 @@
+[versions]
+# Tracks the version android and meshtastic-sdk pin, so a consumer of both gets one Kotlin.
+kotlin = "2.4.10"
+meshtastic-protobufs = "2.8.0"
+
+[libraries]
+meshtastic-protobufs = { module = "org.meshtastic:protobufs", version.ref = "meshtastic-protobufs" }
+
+[plugins]
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
