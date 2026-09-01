@@ -1,10 +1,24 @@
+# Versions track meshtastic-sdk's catalog, so an app consuming both gets one of everything.
 [versions]
-# Tracks the version android and meshtastic-sdk pin, so a consumer of both gets one Kotlin.
-kotlin = "2.4.10"
-meshtastic-protobufs = "2.8.0"
+kotlin                      = "2.4.10"
+coroutines                  = "1.11.0"
+cryptography                = "0.6.0"
+kotest                      = "6.2.4"
+bouncyCastle                = "1.83"
+turbine                     = "1.2.1"
+meshtastic-protobufs        = "2.8.0"
 
 [libraries]
-meshtastic-protobufs = { module = "org.meshtastic:protobufs", version.ref = "meshtastic-protobufs" }
+coroutinesCore              = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+coroutinesTest              = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+cryptographyCore            = { module = "dev.whyoleg.cryptography:cryptography-core", version.ref = "cryptography" }
+cryptographyProviderOpenssl3 = { module = "dev.whyoleg.cryptography:cryptography-provider-openssl3-prebuilt", version.ref = "cryptography" }
+cryptographyProviderJdk     = { module = "dev.whyoleg.cryptography:cryptography-provider-jdk", version.ref = "cryptography" }
+bouncyCastle                = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncyCastle" }
+kotlinTest                  = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+turbine                     = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
+kotestAssertions            = { module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
+meshtasticProtobufs         = { module = "org.meshtastic:protobufs", version.ref = "meshtastic-protobufs" }
 
 [plugins]
-kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+kotlinMultiplatform         = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }

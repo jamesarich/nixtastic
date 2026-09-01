@@ -1,50 +1,47 @@
 plugins {
-    alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.kotlinMultiplatform)
 }
 
 kotlin {
-    // Every public declaration carries an explicit visibility and return type: this is a
-    // library, and its API surface should change only on purpose.
-    explicitApi()
-
     jvmToolchain(21)
 
-    // Only the JVM target is wired up so far. The source layout is already
-    // commonMain/<platform>Main, and the single platform-specific seam is the AES provider in
-    // Crypto.kt, so adding androidTarget() and the apple targets is mechanical rather than a
-    // restructure. Deliberately not enabled yet: apple targets need Xcode, and every active Nix
-    // shell breaks a real Xcode build (see the workspace CLAUDE.md).
+    // Every public declaration carries an explicit visibility and return type: this is a library,
+    // and its API surface should change only on purpose.
+    explicitApi()
+
+    // Matches meshtastic-sdk's target set, so an app can depend on both without a target mismatch.
+    // There is no platform source set here at all - cryptography-kotlin provides AES and X25519 in
+    // common code - so adding a target is a one-line change rather than a porting exercise.
     jvm()
+    iosArm64()
+    iosX64()
+    iosSimulatorArm64()
+
+    applyDefaultHierarchyTemplate()
 
     sourceSets {
         commonMain.dependencies {
-            implementation(libs.meshtastic.protobufs)
+            api(libs.coroutinesCore)
+            api(libs.cryptographyCore)
+            api(libs.meshtasticProtobufs)
+        }
+        // The provider is the one genuinely platform-specific thing here, and the reason is
+        // AES-CCM: Meshtastic's PKI layer needs it, and neither the JDK's default JCA provider nor
+        // Apple's CryptoKit has it - the JVM fails outright with "Cannot find any provider
+        // supporting AES/CCM/NoPadding". openssl3 covers it on native but publishes no JVM
+        // artifact, so the JVM uses the JDK provider backed by BouncyCastle. See MeshCrypto.kt.
+        jvmMain.dependencies {
+            implementation(libs.cryptographyProviderJdk)
+            implementation(libs.bouncyCastle)
+        }
+        appleMain.dependencies {
+            implementation(libs.cryptographyProviderOpenssl3)
         }
         commonTest.dependencies {
-            implementation(kotlin("test"))
-        }
-    }
-}
-
-// Publishing. The artifacts are what make this consumable by android, apple and desktop alike;
-// without it the library is a directory rather than a dependency.
-plugins.apply("maven-publish")
-
-extensions.configure<PublishingExtension> {
-    publications.withType<MavenPublication>().configureEach {
-        pom {
-            name.set("Meshtastic Node :: ${project.name.removePrefix("node-")}")
-            description.set(
-                "Client-side implementation of the Meshtastic mesh protocol: a node, not a client " +
-                    "of one."
-            )
-            url.set("https://github.com/meshtastic/meshtastic-node-kmp")
-            licenses {
-                license {
-                    name.set("GPL-3.0-or-later")
-                    url.set("https://www.gnu.org/licenses/gpl-3.0.html")
-                }
-            }
+            implementation(libs.kotlinTest)
+            implementation(libs.coroutinesTest)
+            implementation(libs.turbine)
+            implementation(libs.kotestAssertions)
         }
     }
 }

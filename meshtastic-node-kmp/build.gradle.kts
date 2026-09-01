@@ -1,5 +1,5 @@
 plugins {
-    alias(libs.plugins.kotlin.multiplatform) apply false
+    alias(libs.plugins.kotlinMultiplatform) apply false
 }
 
 allprojects {

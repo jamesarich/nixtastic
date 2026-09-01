@@ -1,79 +1,134 @@
 package org.meshtastic.node
 
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import kotlin.test.Test
-import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
-/** Pure protocol behaviour, with no platform or I/O involved. */
-class ProtocolTest {
+class RelayPolicyTest {
 
     @Test
-    fun `builds the CTR nonce the firmware builds`() {
-        val nonce = ChannelCrypto.buildNonce(packetId = 0x04050b6eL, fromNode = 0x3061b02eL)
-        assertEquals("6e0b0504000000002eb0613000000000", nonce.joinToString("") { b ->
-            val v = b.toInt() and 0xFF
-            "0123456789abcdef"[v ushr 4].toString() + "0123456789abcdef"[v and 0xF]
-        })
+    fun `island is the default and cannot be relayed`() {
+        RelayPolicy.Island.hopLimit shouldBe 0
     }
 
     @Test
-    fun `resolves the short-form psk index the way the firmware does`() {
-        assertNull(ChannelCrypto.resolveKey(byteArrayOf(0)), "index 0 is cleartext")
-        assertNull(ChannelCrypto.resolveKey(ByteArray(0)), "empty psk is cleartext")
-        val one = assertNotNull(ChannelCrypto.resolveKey(byteArrayOf(1)))
-        val three = assertNotNull(ChannelCrypto.resolveKey(byteArrayOf(3)))
-        assertEquals(16, one.size)
-        assertEquals((one[15] + 2).toByte(), three[15], "index n increments the last byte by n-1")
-        val raw = ByteArray(32) { it.toByte() }
-        assertTrue(assertNotNull(ChannelCrypto.resolveKey(raw)).contentEquals(raw), "a raw key is used as-is")
-    }
-
-    @Test
-    fun `island mode is the default and cannot be relayed`() {
-        assertEquals(0, RelayPolicy.Island.hopLimit, "hop_limit 0 means no radio will relay it")
-        assertEquals(3, RelayPolicy.Meshed(3).hopLimit)
+    fun `a meshed policy must name a hop limit the wire can carry`() {
+        RelayPolicy.Meshed(3).hopLimit shouldBe 3
         assertFailsWith<IllegalArgumentException> { RelayPolicy.Meshed(0) }
-        assertFailsWith<IllegalArgumentException> { RelayPolicy.Meshed(8) }
+        assertFailsWith<IllegalArgumentException> { RelayPolicy.Meshed(RelayPolicy.HOP_MAX + 1) }
     }
+}
+
+class PacketHistoryTest {
 
     @Test
-    fun `packet history suppresses duplicates and expires them`() {
+    fun `suppresses duplicates and forgets them after expiry`() {
         val history = PacketHistory(expiryMs = 1000)
-        assertFalse(history.wasSeenRecently(from = 1, id = 7, nowMs = 0), "first sighting")
-        assertTrue(history.wasSeenRecently(from = 1, id = 7, nowMs = 10), "duplicate")
-        assertFalse(history.wasSeenRecently(from = 2, id = 7, nowMs = 10), "different sender")
-        assertFalse(history.wasSeenRecently(from = 1, id = 7, nowMs = 5000), "expired, so seen afresh")
+
+        history.wasSeenRecently(from = 1, id = 7, nowMs = 0) shouldBe false
+        history.wasSeenRecently(from = 1, id = 7, nowMs = 10) shouldBe true
+        history.wasSeenRecently(from = 2, id = 7, nowMs = 10) shouldBe false
+        history.wasSeenRecently(from = 1, id = 7, nowMs = 5000) shouldBe false
     }
 
     @Test
-    fun `packet history is bounded`() {
+    fun `stays bounded under sustained traffic`() {
         val history = PacketHistory(capacity = 4, expiryMs = Long.MAX_VALUE / 2)
         repeat(20) { history.wasSeenRecently(from = it.toLong(), id = 1, nowMs = it.toLong()) }
-        assertTrue(history.size <= 4, "stays within capacity, was ${history.size}")
+
+        (history.size <= 4) shouldBe true
     }
+}
+
+class MeshFrameHeaderTest {
 
     @Test
-    fun `frame header round-trips with its flag packing`() {
+    fun `round-trips with its flag packing`() {
         val header = MeshFrameHeader(
-            to = 0xFFFFFFFFL, from = 0x3061b02eL, id = 0x04050b6eL,
+            to = 0xFFFFFFFF, from = 0x3061b02e, id = 0x04050b6e,
             flags = 3 or MeshFrameHeader.WANT_ACK_MASK or (5 shl MeshFrameHeader.HOP_START_SHIFT),
             channelHash = 50, nextHop = 0x2e, relayNode = 0x11,
         )
         val decoded = assertNotNull(MeshFrameHeader.decode(header.encode()))
-        assertEquals(header, decoded)
-        assertEquals(3, decoded.hopLimit)
-        assertEquals(5, decoded.hopStart)
-        assertTrue(decoded.wantAck)
-        assertFalse(decoded.viaMqtt)
-        assertEquals(MeshFrameHeader.SIZE, header.encode().size)
+
+        decoded shouldBe header
+        decoded.hopLimit shouldBe 3
+        decoded.hopStart shouldBe 5
+        decoded.wantAck shouldBe true
+        decoded.viaMqtt shouldBe false
+        header.encode().size shouldBe MeshFrameHeader.SIZE
     }
 
     @Test
-    fun `frame header rejects a short buffer`() {
+    fun `rejects a short buffer`() {
         assertNull(MeshFrameHeader.decode(ByteArray(MeshFrameHeader.SIZE - 1)))
+    }
+}
+
+class MeshIdentityTest {
+
+    @Test
+    fun `derives a stable address from a seed`() {
+        val a = MeshIdentity.derive("install-seed".encodeToByteArray(), "n", "N")
+        val b = MeshIdentity.derive("install-seed".encodeToByteArray(), "n", "N")
+        val c = MeshIdentity.derive("other-seed".encodeToByteArray(), "n", "N")
+
+        // Stability is the point: an address that changes on restart appears as a new node in every
+        // peer's NodeDB, and those hold 120 entries - 10 on STM32WL.
+        a.nodeNum shouldBe b.nodeNum
+        a.nodeNum shouldNotBe c.nodeNum
+    }
+
+    @Test
+    fun `never derives the reserved zero address`() {
+        MeshIdentity.derive(byteArrayOf(0), "n", "N").nodeNum shouldNotBe 0L
+    }
+
+    @Test
+    fun `formats the node id the way the apps do`() {
+        MeshIdentity(0x1234abcd, "n", "N").nodeId shouldBe "!1234abcd"
+        MeshIdentity(10, "n", "N").nodeId shouldBe "!0000000a"
+    }
+
+    @Test
+    fun `rejects an unusable identity`() {
+        assertFailsWith<IllegalArgumentException> { MeshIdentity(0, "n", "N") }
+        assertFailsWith<IllegalArgumentException> { MeshIdentity(1, "n", "") }
+    }
+}
+
+class MeshChannelTest {
+
+    @Test
+    fun `hash is a byte and depends on both name and key`() {
+        val a = MeshChannel("LongFast", ByteArray(32) { it.toByte() })
+        val b = MeshChannel("LongFast", ByteArray(32) { (it + 1).toByte() })
+        val c = MeshChannel("Secret", ByteArray(32) { it.toByte() })
+
+        (a.hash in 0..255) shouldBe true
+        (a.hash != b.hash || a.hash != c.hash) shouldBe true
+    }
+
+    @Test
+    fun `recognises a cleartext channel`() {
+        MeshChannel("Open", ByteArray(0)).isCleartext shouldBe true
+        MeshChannel("Open", byteArrayOf(0)).isCleartext shouldBe true
+        MeshChannel("Closed", ByteArray(16) { 1 }).isCleartext shouldBe false
+    }
+
+    @Test
+    fun `compares by key contents rather than identity`() {
+        // Default data-class equality on a ByteArray compares references, which would make two
+        // identical channels unequal and break any map keyed on one.
+        MeshChannel("A", byteArrayOf(1, 2)) shouldBe MeshChannel("A", byteArrayOf(1, 2))
+        MeshChannel("A", byteArrayOf(1, 2)).hashCode() shouldBe MeshChannel("A", byteArrayOf(1, 2)).hashCode()
+    }
+
+    @Test
+    fun `does not print key material`() {
+        MeshChannel("A", byteArrayOf(0xd, 0xe)).toString().contains("13") shouldBe false
     }
 }

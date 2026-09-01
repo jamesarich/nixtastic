@@ -1,41 +1,29 @@
 plugins {
-    alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.kotlinMultiplatform)
 }
 
 kotlin {
     jvmToolchain(21)
+    explicitApi()
+
+    // JVM only, and that is a property of the transport rather than an omission: iOS needs the
+    // restricted com.apple.developer.networking.multicast entitlement, which is granted per app by
+    // Apple rather than by a library, so an iOS multicast transport has to be assembled by the
+    // consuming app.
     jvm()
+
+    applyDefaultHierarchyTemplate()
 
     sourceSets {
         commonMain.dependencies {
             api(project(":node-core"))
-            implementation(libs.meshtastic.protobufs)
+            api(libs.coroutinesCore)
         }
         commonTest.dependencies {
-            implementation(kotlin("test"))
-        }
-    }
-}
-
-// Publishing. The artifacts are what make this consumable by android, apple and desktop alike;
-// without it the library is a directory rather than a dependency.
-plugins.apply("maven-publish")
-
-extensions.configure<PublishingExtension> {
-    publications.withType<MavenPublication>().configureEach {
-        pom {
-            name.set("Meshtastic Node :: ${project.name.removePrefix("node-")}")
-            description.set(
-                "Client-side implementation of the Meshtastic mesh protocol: a node, not a client " +
-                    "of one."
-            )
-            url.set("https://github.com/meshtastic/meshtastic-node-kmp")
-            licenses {
-                license {
-                    name.set("GPL-3.0-or-later")
-                    url.set("https://www.gnu.org/licenses/gpl-3.0.html")
-                }
-            }
+            implementation(libs.kotlinTest)
+            implementation(libs.coroutinesTest)
+            implementation(libs.turbine)
+            implementation(libs.kotestAssertions)
         }
     }
 }
