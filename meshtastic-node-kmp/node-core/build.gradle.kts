@@ -3,6 +3,10 @@ plugins {
 }
 
 kotlin {
+    // Every public declaration carries an explicit visibility and return type: this is a
+    // library, and its API surface should change only on purpose.
+    explicitApi()
+
     jvmToolchain(21)
 
     // Only the JVM target is wired up so far. The source layout is already
