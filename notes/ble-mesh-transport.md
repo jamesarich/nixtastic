@@ -33,13 +33,30 @@ when it overhears another node relaying the same packet. That cancellation is
 the mechanism that stops a flood from exploding, and it only works on a medium
 where every neighbour hears every transmission.
 
-GATT is point-to-point. Reaching N peers means N writes, nobody overhears
-anybody, nothing cancels. A connection-oriented BLE mesh transport does not
-merely perform worse — it defeats the algorithm that makes flooding survivable.
+GATT is point-to-point. Reaching N peers means N writes and nobody overhears
+anybody, so one advertisement per packet becomes N connection writes per packet.
+BLE 5 connectionless extended advertising keeps the one-to-many shape LoRa has,
+which is why the spike is built on `ble_gap_ext_adv_*` rather than on the GATT
+server already in `src/nimble/`.
 
-BLE 5 connectionless extended advertising restores the overhear property. That
-is the whole reason the spike is built on `ble_gap_ext_adv_*` rather than the
-GATT server already in `src/nimble/`.
+**But be precise about suppression, because the first draft of this note was
+wrong.** The overhear *property* belongs to the medium; the *code* that acts on
+it is LoRa-only today. `FloodingRouter::perhapsCancelDupe` is gated
+`transport_mechanism == TRANSPORT_LORA`, with the comment "But only LoRa packets
+should be able to trigger this", and `Router::cancelSending` reaches only `iface`
+— the LoRa TX queue — which cannot see `BleMeshHandler`'s own TX ring.
+
+So on BLE today: every node that hears a packet re-advertises it, and nothing
+cancels. Dedup still terminates the flood (`PacketHistory` drops a packet seen
+recently, `hop_limit` decrements per relay), but the redundant copies are paid
+for. Advertising is still the right choice — it costs one TX instead of N
+regardless, and it makes suppression *possible* later. But "flood suppression
+works as designed over BLE" is not true, and the first draft of this note said
+it did.
+
+Making it true is two changes, not one: extend the `perhapsCancelDupe` gate, and
+give `BleMeshHandler` a cancel path keyed on `(from, id)` over its ring. Neither
+is in the spike.
 
 ## Firmware spike — what was built
 
@@ -87,6 +104,18 @@ one report per neighbour and then go silent — every subsequent mesh frame from
 that node filtered away as a "duplicate advertisement". This is the trap in the
 whole design.
 
+**The egress guard is deliberately NOT UDP's.** `UdpMulticastHandler::onSend`
+logs "Attempt to send UDP sourced packet over UDP" as an error. Copying that
+straight across was a bug, and it was in the first commit: a packet that
+arrived over BLE and comes back through `Router::send` is a *rebroadcast*.
+`NextHopRouter::perhapsRebroadcast` does `allocCopy(*p)`, and nothing on the TX
+path rewrites `transport_mechanism` — `RadioInterface` stamps `TRANSPORT_LORA`
+in `deliverToReceiver`, which is RX-only. So the copy still says
+`TRANSPORT_BLE_ADV`, the guard refused it, and the BLE mesh was silently capped
+at one hop. Now it logs and proceeds. Loop protection is LoRa's: `PacketHistory`
+drops a packet seen recently, `hop_limit` decrements, and `onScanReport` ignores
+frames whose sender is us.
+
 **A TX ring, because ext adv is set-and-repeat.** The instance holds one payload
 and repeats it; it is not a packet queue. `runOnce` clocks queued frames through
 the single instance, `BLE_MESH_ADV_EVENTS` repeats each. Throughput ceiling is
@@ -118,6 +147,21 @@ non-connectable one at the same time is a runtime question, and untested — no
 device has run this. If it does turn out to conflict, the fix is to move the
 PhoneAPI advertisement onto ext-adv instance 0, which is why the mesh transport
 deliberately sits on instance 1.
+
+A second target (`tbeam`, where `HAS_UDP_MULTICAST` is set and `HAS_BLE_MESH` is
+not) also builds green, so the `#if` guards and the `main.h` include
+restructuring hold on targets the transport does not touch.
+
+**The native test suite was not run.** `bin/run-tests.sh` is Linux-only by
+design and `bin/test-native-docker.sh` is the macOS path, but Docker is not
+installed on this host. Running `pio test` directly fails either way: the
+`coverage` env passes GCC-only `-fprofile-abs-path`, and the `native` env's
+LovyanGFX fonts do not compile under Apple clang — both persist after
+stripping the Nix `CC`/`CXX`/`DEVELOPER_DIR` pollution. What was checked by
+inspection instead: the two generated-header edits are additive, nothing
+outside `src/mesh/generated/` reads either enum's `_ARRAYSIZE` or `_MAX`, and
+there is no exhaustive `switch` over either enum. Run the suite on a Linux host
+before trusting this branch.
 
 Everything below the link step is unverified: no two nodes have exchanged a
 frame, and the 60-90 ms/packet throughput ceiling is arithmetic, not a
@@ -165,8 +209,9 @@ is built on GATT connections rather than adverts.
 
 The honest shape is a **two-mode transport behind one interface**:
 
-- **Mode A — advertisement.** Android, Linux. Broadcast; flood suppression works
-  as designed; the firmware spike is a peer on this mode.
+- **Mode A — advertisement.** Android, Linux. One TX reaches every neighbour;
+  the firmware spike is a peer on this mode. Suppression is not active (see
+  above), so redundant relays are paid for; dedup still terminates the flood.
 - **Mode B — GATT dual-role.** Required for Apple. Point-to-point; overhear
   cancellation is unavailable, so it needs an explicit forwarding policy with a
   bounded peer count, leaning on `PacketHistory` dedup to stop loops rather than
