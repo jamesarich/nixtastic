@@ -55,6 +55,21 @@ public object BleMeshAdvert {
     }
 
     /**
+     * Extract the packet from a manufacturer-data *body* - everything after the company ID, which
+     * is the form platform scan APIs hand back (Kable, Android's `getManufacturerSpecificData`,
+     * CoreBluetooth's `kCBAdvDataManufacturerData` minus its prefix).
+     *
+     * Distinct from [extractPacketBytes], which walks whole AD structures: a scanner has already
+     * done that walk, and redoing it would mean reassembling a raw advertisement the platform never
+     * exposes.
+     */
+    public fun extractPacketFromBody(body: ByteArray): ByteArray? {
+        if (body.size < 2) return null
+        if ((body[0].toInt() and 0xFF) != PROTOCOL_VERSION) return null
+        return body.copyOfRange(1, body.size)
+    }
+
+    /**
      * Build the manufacturer-data body a platform BLE API expects - everything *after* the 2-byte
      * company ID, since Android's `AdvertiseData.addManufacturerData(id, body)` and its equivalents
      * take the company ID as a separate argument.

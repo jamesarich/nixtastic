@@ -83,6 +83,7 @@ public class MeshNode(
         text: String,
         channel: MeshChannel = config.channels.first(),
         to: Long = BROADCAST,
+        wantAck: Boolean = false,
     ): Boolean {
         val id = nextId()
         val direct = to != BROADCAST
@@ -98,8 +99,10 @@ public class MeshNode(
             null
         }
 
+        // Asking every hearer of a broadcast to reply is how you flood a shared channel, so the
+        // request is only honoured for a directed message.
         val encoded = codec.encode(
-            OutboundMessage(text, identity.nodeNum, to, id, channel, relayPolicy.hopLimit, pki)
+            OutboundMessage(text, identity.nodeNum, to, id, channel, relayPolicy.hopLimit, pki, wantAck && direct)
         ) ?: return false
 
         // Our own packet must never come back to us as a fresh sighting.
@@ -127,6 +130,11 @@ public class MeshNode(
 
         val relayed = relay(frame, header)
 
+        // Acknowledge before interpreting. The sender is waiting on the receipt, not on whether we
+        // could make sense of the contents - and a packet we cannot read is still one that reached
+        // us, which is exactly what want_ack asks about.
+        if (header.wantAck && header.to == identity.nodeNum) acknowledge(header)
+
         val keys = KeyRing(config.channels, identity.nodeNum, config.privateKey, ::publicKeyFor)
         return when (val decoded = codec.decode(frame.bytes, keys)) {
             is DecodedPacket.Text ->
@@ -145,6 +153,8 @@ public class MeshNode(
 
             is DecodedPacket.Position ->
                 MeshEvent.PositionReport(header.from, decoded.latitudeI, decoded.longitudeI, decoded.altitude)
+
+            is DecodedPacket.Ack -> MeshEvent.Delivered(header.from, decoded.requestId)
 
             // Decrypted but unmodelled, or unreadable. Both are worth surfacing: a mesh is mostly
             // traffic you cannot read, and silence would make a working node look dead.
@@ -172,6 +182,26 @@ public class MeshNode(
 
         val sent = config.transports.filter { it.canTransmit }.any { it.send(forwarded) }
         return if (sent) MeshEvent.Relayed(header.from, header.id, header.hopLimit - 1) else null
+    }
+
+    /**
+     * Send a receipt for a packet that asked for one.
+     *
+     * Broadcast traffic is never acknowledged, and the guard above enforces it: a broadcast with
+     * want_ack would have every node that heard it reply at once, which is the classic way to melt
+     * a shared channel.
+     */
+    private suspend fun acknowledge(header: PacketHeaderView) {
+        val channel = config.channels.firstOrNull { it.hash == header.channelHash } ?: return
+        val ack = codec.encodeAck(
+            toNodeNum = header.from,
+            requestId = header.id,
+            from = identity.nodeNum,
+            channel = channel,
+            id = nextId(),
+            hopLimit = relayPolicy.hopLimit,
+        ) ?: return
+        config.transports.filter { it.canTransmit }.forEach { it.send(ack) }
     }
 
     /** Keys we were given explicitly win; otherwise whatever a NodeInfo broadcast taught us. */

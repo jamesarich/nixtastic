@@ -16,6 +16,9 @@ kotlin {
     iosArm64()
     iosX64()
     iosSimulatorArm64()
+    // macOS is less a shipping target than a test bench: it is the one platform where a BLE scan
+    // can run against a real radio from a unit test on a developer machine.
+    macosArm64()
 
     applyDefaultHierarchyTemplate()
 

@@ -5,6 +5,7 @@ import org.meshtastic.proto.Data
 import org.meshtastic.proto.MeshPacket
 import org.meshtastic.proto.PortNum
 import org.meshtastic.proto.Position
+import org.meshtastic.proto.Routing
 import org.meshtastic.proto.User
 
 /**
@@ -24,6 +25,7 @@ public class ProtoPacketCodec(
             id = pkt.id.toLong() and MASK32,
             channelHash = pkt.channel,
             hopLimit = pkt.hop_limit,
+            wantAck = pkt.want_ack,
         )
     }
 
@@ -31,7 +33,33 @@ public class ProtoPacketCodec(
         val plaintext = Data.ADAPTER.encode(
             Data(portnum = PortNum.TEXT_MESSAGE_APP, payload = message.text.encodeToByteArray().toByteString())
         )
-        return seal(plaintext, message.from, message.to, message.id, message.channel, message.hopLimit, message.pki)
+        return seal(
+            plaintext, message.from, message.to, message.id, message.channel, message.hopLimit,
+            message.pki, wantAck = message.wantAck,
+        )
+    }
+
+    override suspend fun encodeAck(
+        toNodeNum: Long,
+        requestId: Long,
+        from: Long,
+        channel: MeshChannel,
+        id: Long,
+        hopLimit: Int,
+    ): ByteArray? {
+        val plaintext = Data.ADAPTER.encode(
+            Data(
+                portnum = PortNum.ROUTING_APP,
+                payload = Routing.ADAPTER.encode(Routing(error_reason = Routing.Error.NONE)).toByteString(),
+                // What makes this an acknowledgement of something rather than a bare routing
+                // message: the sender matches it against the id it is waiting on.
+                request_id = requestId.toInt(),
+            )
+        )
+        // Channel-encrypted, never PKI: the sender has to be able to read the receipt whether or
+        // not the two of us have exchanged keys. ROUTING_APP is one of the portnums the firmware
+        // deliberately keeps out of the PKI path for the same reason.
+        return seal(plaintext, from, toNodeNum, id, channel, hopLimit, pki = null, wantAck = false)
     }
 
     override suspend fun encodeNodeInfo(
@@ -104,6 +132,7 @@ public class ProtoPacketCodec(
         channel: MeshChannel,
         hopLimit: Int,
         pki: PkiSend?,
+        wantAck: Boolean = false,
     ): ByteArray? {
         val ciphertext = pki?.let {
             pkiCrypto.encrypt(plaintext, it.ourPrivateKey, it.peerPublicKey, id, from, it.extraNonce)
@@ -121,6 +150,7 @@ public class ProtoPacketCodec(
                 channel = channel.hash,
                 hop_limit = hopLimit,
                 hop_start = hopLimit,
+                want_ack = wantAck,
                 pki_encrypted = pki != null,
                 encrypted = ciphertext.toByteString(),
             )
@@ -147,6 +177,14 @@ public class ProtoPacketCodec(
                 runCatching { User.ADAPTER.decode(data.payload) }.getOrNull()
                     ?.let { DecodedPacket.NodeInfo(it.long_name, it.short_name, it.public_key.toByteArray().takeIf { k -> k.isNotEmpty() }) }
                     ?: DecodedPacket.Unreadable
+
+            PortNum.ROUTING_APP ->
+                // An ack is a Routing with no error. A Routing *with* an error is a delivery
+                // failure report, which is a different thing and not modelled here.
+                runCatching { Routing.ADAPTER.decode(data.payload) }.getOrNull()
+                    ?.takeIf { it.error_reason == Routing.Error.NONE && data.request_id != 0 }
+                    ?.let { DecodedPacket.Ack(data.request_id.toLong() and MASK32) }
+                    ?: DecodedPacket.Other(data.portnum.value)
 
             PortNum.POSITION_APP ->
                 runCatching { Position.ADAPTER.decode(data.payload) }.getOrNull()

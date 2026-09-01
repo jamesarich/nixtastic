@@ -27,6 +27,23 @@ public interface PacketCodec {
      */
     public fun forForwarding(encodedPacket: ByteArray, relayNodeNum: Long): ByteArray?
 
+    /**
+     * Build the acknowledgement for a packet that asked for one.
+     *
+     * A Meshtastic ack is a `ROUTING_APP` packet carrying `Routing.error_reason = NONE`, with
+     * `Data.request_id` set to the id being acknowledged. It goes back to the original sender on
+     * the channel it arrived on, and is never PKI-encrypted - a sender must be able to read the
+     * receipt whether or not the two have exchanged keys.
+     */
+    public suspend fun encodeAck(
+        toNodeNum: Long,
+        requestId: Long,
+        from: Long,
+        channel: MeshChannel,
+        id: Long,
+        hopLimit: Int,
+    ): ByteArray?
+
     /** Announce ourselves so peers can learn our name and, crucially, our public key. */
     public suspend fun encodeNodeInfo(
         identity: MeshIdentity,
@@ -44,6 +61,8 @@ public data class PacketHeaderView(
     val id: Long,
     val channelHash: Int,
     val hopLimit: Int,
+    /** The sender asked to be told this arrived. */
+    val wantAck: Boolean = false,
 )
 
 /** A message this node is sending. */
@@ -56,6 +75,8 @@ public data class OutboundMessage(
     val hopLimit: Int,
     /** Set for a direct message; null for channel traffic. */
     val pki: PkiSend? = null,
+    /** Ask the recipient to acknowledge. Only meaningful for a directed message. */
+    val wantAck: Boolean = false,
 )
 
 /** What a direct message needs beyond the channel key. */
@@ -113,6 +134,9 @@ public sealed interface DecodedPacket {
 
     /** Decrypted, but a payload type this library does not model. Still evidence of a live peer. */
     public data class Other(val portnum: Int) : DecodedPacket
+
+    /** An acknowledgement of a packet we sent. [requestId] is the id being acknowledged. */
+    public data class Ack(val requestId: Long) : DecodedPacket
 
     /** Structurally valid but not for us, or on a channel we hold no key for. */
     public data object Unreadable : DecodedPacket
