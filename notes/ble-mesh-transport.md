@@ -245,6 +245,55 @@ currently participate both ways.
 ESP32-S3, or the nRF52 linker work. The 60-90 ms/packet throughput ceiling
 remains arithmetic, not a measurement.
 
+## ESP32 is blocked on the Arduino BLE wrapper, and it is a hard block
+
+Chased to the source. `CONFIG_BT_NIMBLE_EXT_ADV=y` and the PhoneAPI cannot
+coexist as this tree is built, and the reason is not tuning:
+
+```c
+/* framework-espidf .../nimble/host/src/ble_gap.c */
+#if NIMBLE_BLE_ADVERTISE && !MYNEWT_VAL(BLE_EXT_ADV)
+```
+
+Legacy `ble_gap_adv_start`/`ble_gap_adv_stop` are compiled out when extended
+advertising is enabled. The Arduino-ESP32 BLE wrapper's NimBLE branch calls
+exactly those (`BLEAdvertising.cpp:1775`, `:1807`), and its ext-adv support
+exists **only** in its Bluedroid branch (`BLEMultiAdvertising`, which calls
+`esp_ble_gap_ext_adv_*`). So on a NimBLE-backed build there is no ext-adv path
+through the wrapper at all.
+
+Observed consequences, in order of how they present: `ble_gap_adv_stop` returns
+rc=8 `BLE_HS_ENOTSUP`; on some boots `NimbleBluetooth::isActive()` is true while
+nothing advertises; on most boots it never becomes active and the node has no
+BLE whatsoever. A RAK4631 beside it advertises normally throughout, so this is
+the ESP32 stack rather than the environment.
+
+**Why the obvious fix does not work.** Porting the PhoneAPI advertisement to
+`ble_gap_ext_adv_configure(0, ...)` with `legacy_pdu = 1` would keep the on-air
+PDU an ordinary `ADV_IND` (so every phone still sees it) while using the API
+that actually exists. But `ble_gap_ext_adv_configure` takes the GAP event
+callback, and the one connections must reach is
+`BLEServer::handleGATTServerEvent` {D} declared `private` in the framework's
+`BLEServer.h`. Registering a different callback breaks more than connect: the
+server's subscribed-peer list is built from `BLE_GAP_EVENT_SUBSCRIBE`, and that
+list is what `fromNum` notifications depend on. Taking GAP over means
+reimplementing a chunk of the wrapper on the most important path the firmware
+has.
+
+So ESP32 BLE mesh needs one of:
+
+1. arduino-esp32 adding ext-adv to the NimBLE branch of its BLE wrapper
+   (upstream, not ours), or
+2. Meshtastic's ESP32 BLE moving advertising *and* GAP event handling off the
+   wrapper onto raw NimBLE. `NimbleBluetooth.cpp` already includes
+   `host/ble_gap.h`, so this is where the tree is drifting anyway {D} but it is a
+   real change to the phone connection path, not a spike-sized one.
+
+**nRF52 has none of this problem.** It reaches extended advertising through the
+SoftDevice directly, with no wrapper in between, which is why the RAK4631 is
+healthy on the BLE-mesh build. The practical sequencing is therefore: land BLE
+mesh on nRF52 first, and treat ESP32 as gated on the wrapper.
+
 ## The client node exists and its receive path is proven
 
 [`meshnode-spike/`](../meshnode-spike/) is a Kotlin proof of the whole receive
