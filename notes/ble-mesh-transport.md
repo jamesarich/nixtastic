@@ -3,11 +3,17 @@
 Feasibility work, 2026-09-01. Two tracks: a firmware node carrying mesh frames
 over BLE, and a client app participating as a node with no radio attached.
 
-Short version: the firmware side is a new file on an existing template and it
-builds. The client side is a second implementation of the mesh protocol, and its
-first transport should be UDP multicast rather than BLE - that works against
-released firmware today, while BLE has a platform asymmetry no amount of
-engineering removes.
+Short version: **it works.** Two boards of different families exchange mesh
+frames over BLE 5 extended advertisements, and a Kotlin library decodes and
+decrypts them. Firmware lives on `spike/ble-mesh-transport`; the client is
+[`meshtastic-node-kmp`](../meshtastic-node-kmp/).
+
+What is *not* done is the shipping surface: the on-air framing still uses the
+SIG test company ID, the proto change needs a real nanopb regen, and BLE has a
+platform asymmetry no engineering removes — Apple can receive and never
+transmit. For a client people can actually use, UDP multicast remains the
+transport to ship first: it works against released firmware with nothing to
+merge.
 
 Firmware spike branch: `firmware` → `spike/ble-mesh-transport`
 (worktree `firmware/.claude/worktrees/spike-ble-mesh-transport`).
@@ -184,170 +190,143 @@ One wrinkle worth knowing: running the harness from a git *worktree* prints
 absolute host path the container does not mount. It is cosmetic — version stamping
 only — and the suites run fine.
 
-## On hardware, 2026-09-01
+## It works — node-to-node, cross-platform, on hardware
 
-Ran on a Heltec V3 (ESP32-S3) and a RAK4631 (nRF52840). Four results, two of
-them things no amount of reading would have found.
-
-**It transmits, and a laptop can decode it.** With `BLE_BROADCAST` set, the
-Heltec puts real mesh frames on the air as BLE 5 extended advertisements. A Mac
-scanning for company ID 0xFFFF picked one up:
+A Heltec V3 (ESP32-S3) and a RAK4631 (nRF52840) exchange mesh frames over BLE 5
+extended advertisements. The proof is a frame the Heltec originated, seen
+advertised by the RAK:
 
 ```
-MESH ADV  from=0x3061b02e to=0xffffffff id=0x04050b6e ch=50
-          hop=2/3 enc=108B transport=1 rssi=-65
+from=0xd1d90f21 id=0xce0513cf  via=RAK  transport=9
 ```
 
-`from` is another node and `transport=1` is TRANSPORT_LORA, so this is a packet
-that arrived over LoRa being *re-advertised* onto BLE. That is precisely the
-rebroadcast path the one-hop echo-guard bug was blocking. Scanner:
-[`ble-mesh-sniff.py`](./ble-mesh-sniff.py).
+`transport=9` is `TRANSPORT_BLE_ADV`, which `deliverToRouter` stamps only on BLE
+receive, and the RAK's region is UNSET so its LoRa RX is disabled. There is no
+path that packet could have taken but BLE. Two further frames from other mesh
+nodes relayed the same way.
 
-**The ext-adv / legacy-advertising collision is real after all.** The link-time
-result above said the feared collision did not happen. On hardware:
+### The three settings that were actually in the way
 
-```
-[E][BLEAdvertising.cpp:1807] stop(): ble_gap_adv_stop rc=8
-```
+None of them is in the transport's own code, and each failed differently:
 
-rc=8 is `BLE_HS_ENOTSUP`. With `CONFIG_BT_NIMBLE_EXT_ADV=y` the legacy
-advertising API is not supported, and the Arduino BLE wrapper the PhoneAPI
-advertisement goes through calls exactly that. So the link-time "no collision"
-result was not evidence of anything: linking only proves the symbol exists.
+| Setting | Failure without it |
+| --- | --- |
+| `CONFIG_BT_NIMBLE_ROLE_OBSERVER=y` | Scanning is a NimBLE *role*, compiled out of the stock Arduino build (`ROLE_BROADCASTER=y`, observer not set). `ble_gap_ext_disc` returns `BLE_HS_ENOTSUP`, so the transport advertises and never receives. |
+| `CONFIG_BT_NIMBLE_EXT_ADV_MAX_SIZE=257` | The default 1650 is the chained ceiling, reserved *per instance* — 3.3 KB across two, for a transport capped at one 251-byte PDU. |
+| `CONFIG_BT_CTRL_BLE_MAX_ACT=4` | The controller counts advertising sets, scans and connections as "activities" and budgets 2 by default: one advertisement plus one connection. This needs three. Both the scan enable and the second `ext_adv_configure` return HCI 0x07, Memory Capacity Exceeded (NimBLE 519). |
 
-**How far that goes is NOT established, and an earlier draft of this note
-overstated it.** The error is on `stop()`, and a failing stop does not
-necessarily prevent advertising from starting. Scanning for the Meshtastic
-service UUID found no connectable advertisement from that node - but that
-observation is worthless as evidence, for two reasons: no baseline scan was
-taken before flashing the spike, and Meshtastic stops advertising anyway once a
-phone is connected, which the owner's phone probably was. A later scan then
-failed to see a node that had been clearly visible a minute earlier, so the
-scans are not reliable enough to conclude from.
+The nRF52 needed its own analogue: scanning requires a central link,
+`Bluefruit.begin()` defaults to zero, and asking for one raises the SoftDevice's
+RAM requirement past the linker ORIGIN — hence
+`nrf52840_s140_v6_blemesh.ld` at `0x20006000` and the `rak4631_blemesh` env.
+Three platforms, one shape of bug: **scanning is a capability the default build
+does not include, and it fails as "unsupported" rather than "misconfigured".**
 
-What is safe to say: `ble_gap_adv_stop` is genuinely unsupported under ext-adv,
-so at minimum the PhoneAPI's advertising lifecycle needs porting onto an ext-adv
-instance (0) - which is what Ben's `#if defined(NIMBLE_TWO) ||
-CONFIG_BT_NIMBLE_EXT_ADV` guard change was doing for the NimBLE version his
-branch targeted. Whether a phone can still connect in the meantime is untested.
-The test to run: baseline scan, flash, rescan, with the phone disconnected.
+### The PhoneAPI advertisement had to move to extended advertising
 
-**nRF52 needs a linker change before it can receive.** Scanning needs a central
-link, and `Bluefruit.begin()` defaults to zero. Asking for one with
-`begin(1, 1)` raises the SoftDevice's RAM requirement past the ORIGIN in
-`nrf52840_s140_v*.ld`; `sd_ble_enable()` then rejects the RAM base. The RAK went
-silent on the serial API and stopped logging until reflashed without it. Gated
-behind `BLE_MESH_NRF52_CENTRAL` until the linker script is re-based. nRF52 can
-therefore transmit but not receive, and ESP32 is the only platform that can
-currently participate both ways.
+IDF's NimBLE guards legacy advertising with
+`#if NIMBLE_BLE_ADVERTISE && !MYNEWT_VAL(BLE_EXT_ADV)`, so under ext-adv every
+`ble_gap_adv_*` call returns ENOTSUP — and the Arduino BLE wrapper's NimBLE path
+calls exactly those, with no extended equivalent (its `BLEMultiAdvertising` is
+Bluedroid-only). `NimbleBluetooth::startAdvertising()` now drives ext-adv
+instance 0 with `legacy_pdu = 1`, so the on-air PDU stays an ordinary `ADV_IND`
+and pre-BLE-5 phones discover the node exactly as before.
 
-**Not yet shown: two nodes exchanging a frame.** That needs either a second
-ESP32-S3, or the nRF52 linker work. The 60-90 ms/packet throughput ceiling
-remains arithmetic, not a measurement.
+It **reuses** the wrapper's own GAP callback rather than replacing it. NimBLE
+stores the advertising instance's callback on every connection made through it
+(`ble_gap.c`: `conn->bhc_cb = ble_gap_slave[instance].cb`), so SUBSCRIBE, MTU and
+pairing keep reaching `BLEServer` and `fromNum` notifications are untouched.
+Reaching that private member uses the explicit-instantiation access idiom.
+One residual edge: a *failed* connect makes the stock handler call
+`BLEDevice::startAdvertising()`, now the ENOTSUP path, so the forwarder re-arms
+instance 0 itself.
 
-## ESP32 is blocked on the Arduino BLE wrapper, and it is a hard block
+### The mistake worth remembering
 
-Chased to the source. `CONFIG_BT_NIMBLE_EXT_ADV=y` and the PhoneAPI cannot
-coexist as this tree is built, and the reason is not tuning:
+The transport worked before Ben's platform layer was merged and stopped
+afterwards, and I spent a long time hunting device state. It was the merge. His
+code gates the extended path on `MYNEWT_VAL(BLE_EXT_ADV)`, which resolves from
+the **prebuilt** `esp_nimble_cfg.h` and reads 0 regardless of `custom_sdkconfig`
+— so the extended path compiled out and the transport fell back to the legacy
+31-byte branch, which cannot carry a mesh frame. The original spike worked
+precisely because it called `ble_gap_ext_adv_*` unguarded. Gate on a flag the
+repo sets in `build_flags`; a `MYNEWT_VAL` guard removes your feature and leaves
+nothing in the log.
 
-```c
-/* framework-espidf .../nimble/host/src/ble_gap.c */
-#if NIMBLE_BLE_ADVERTISE && !MYNEWT_VAL(BLE_EXT_ADV)
-```
+Two of my own measurements were also wrong and produced confident nulls: I
+scanned for service UUID `...eab5` when Meshtastic's is `...eafd`, and checked
+`firmware.elf` when the build emits `firmware-<env>-<version>.elf`. Both said
+"nothing there" about things that were there.
 
-Legacy `ble_gap_adv_start`/`ble_gap_adv_stop` are compiled out when extended
-advertising is enabled. The Arduino-ESP32 BLE wrapper's NimBLE branch calls
-exactly those (`BLEAdvertising.cpp:1775`, `:1807`), and its ext-adv support
-exists **only** in its Bluedroid branch (`BLEMultiAdvertising`, which calls
-`esp_ble_gap_ext_adv_*`). So on a NimBLE-backed build there is no ext-adv path
-through the wrapper at all.
+### Why it took so long: boot logs
 
-Observed consequences, in order of how they present: `ble_gap_adv_stop` returns
-rc=8 `BLE_HS_ENOTSUP`; on some boots `NimbleBluetooth::isActive()` is true while
-nothing advertises; on most boots it never becomes active and the node has no
-BLE whatsoever. A RAK4631 beside it advertises normally throughout, so this is
-the ESP32 stack rather than the environment.
+Nearly every wrong turn traces to not being able to see the boot.
+`pio device monitor` cannot run with stdout redirected — miniterm calls
+`termios.tcgetattr` and dies on a non-tty — and `debug_log_api` routes firmware
+logs to protobuf, silencing the UART. So the one time the monitor path was
+disabled, the thing that would have printed was off too. Reading the port with
+pyserial and pulsing DTR/RTS to reset the board made the boot visible, and every
+real finding landed within minutes of that. Both traps are now in the workspace
+`CLAUDE.md`, and `meshtastic-mcp` grew `serial_open(reset=True)` plus a hint on
+empty reads.
 
-**Correction: the fix *does* work, and it is spike-sized.** A first pass concluded
-otherwise. A second reviewer broke that, and the reasoning was wrong in two
-specific ways worth recording, because both are the kind of mistake that ends
-investigations early:
+### What is still open
 
-- I checked that `BLEServer::handleGATTServerEvent` is `private` and stopped.
-  But `BLEDevice::getServer()` is **public** (`BLEDevice.h:200`), and the
-  function pointer itself is reachable through the standard explicit-instantiation
-  access-bypass idiom {D} roughly ten lines. `[temp.explicit]` exempts explicit
-  instantiation arguments from access checking.
-- I assumed replacing the GAP callback would break the subscribed-peer list that
-  `fromNum` notifications depend on. You do not replace it, you **reuse** it.
-  NimBLE stores the advertising instance's callback on the connection
-  (`ble_gap.c:3449/3454`: `conn->bhc_cb = ble_gap_slave[instance].cb`), so
-  SUBSCRIBE, MTU, ENC_CHANGE and pairing all continue to reach `BLEServer`
-  untouched.
+- **No dedupe suppression over BLE.** `perhapsCancelDupe` is gated on
+  `TRANSPORT_LORA` and `Router::cancelSending` reaches only `iface`'s TX queue.
+  Redundant relays are paid for; dedup still terminates the flood.
+- **Company ID 0xFFFF** is the SIG test identifier. Shipping wants an assigned
+  16-bit service UUID with the payload as *service data*, which also buys iOS
+  background receive — it can only scan by service UUID.
+- **The generated nanopb headers are hand-edited** for `TRANSPORT_BLE_ADV` and
+  `BLE_BROADCAST`; the matching `.proto` change is on protobufs'
+  `spike/ble-mesh-transport` branch and needs a real regen plus a submodule bump.
 
-The route, then: in `NimbleBluetooth::startAdvertising()`, drive instance 0
-directly {D} `ble_gap_ext_adv_configure(0, {legacy_pdu=1, connectable=1,
-scannable=1}, ..., forwarder, BLEDevice::getServer())`, then `set_data` /
-`rsp_set_data` / `ext_adv_start(0, 0, 0)`. `legacy_pdu = 1` keeps the on-air PDU
-an ordinary `ADV_IND`, so phones without BLE 5 still see it.
-`ble_hs_adv_set_fields_mbuf` (`ble_hs_adv.h:224`) serialises the same fields as
-today (flags + 128-bit service UUID + preferred interval, about 27 bytes, inside
-the legacy 31), and the name stays in the scan response. The mesh transport
-already sits on instance 1 with `MAX_EXT_ADV_INSTANCES=2`, so instance 0 is free.
 
-One real residual edge: inside the stock handler a *failed* connect calls
-`BLEDevice::startAdvertising()` (`BLEServer.cpp:798-800`), which now returns
-ENOTSUP silently {D} so the forwarder has to re-arm instance 0 on `CONNECT` with
-`status != 0`. The disconnect path is already covered by `pendingStartAdvertising`.
-Call it 60-80 lines, fragile against wrapper-signature changes, which is
-acceptable here and worth a comment.
+## The client library: `meshtastic-node-kmp`
 
-Two related dead ends, checked so nobody re-checks them: the flag is genuinely
-global rather than per-instance (`esp_nimble_cfg.h:99-102` maps
-`CONFIG_BT_NIMBLE_EXT_ADV` 1:1 to a host-wide `MYNEWT_VAL_BLE_EXT_ADV`), and
-periodic advertising is not an escape hatch because it *depends* on ext-adv
-(`Kconfig.in:654-657`). Upstream arduino-esp32 `master` has the identical file
-set, so pinning the framework forward buys nothing.
+[`meshtastic-node-kmp/`](../meshtastic-node-kmp/) (was `meshnode-spike`), 34
+tests green.
 
-**Still undiagnosed, and do not let the above absorb it.** ENOTSUP explains the
-boots where advertising failed while the stack was up. It does **not** explain
-the boots where BLE never became active at all: `NimbleBluetooth::isActive()` is
-just `bleServer != nullptr` (`NimbleBluetooth.cpp:878-881`), set unconditionally
-in `setup()` after `createServer()`, so "never active" means `setup()` never ran
-{D} which ENOTSUP cannot cause. That is a second failure (crash loop, host-sync
-failure, or the bluetooth state machine never enabling) and it needs a serial log
-from one of those boots before any of this is called finished.
+`node-core` holds the protocol and no I/O, so it is testable on any target:
 
-**nRF52 has none of this problem.** It reaches extended advertising through the
-SoftDevice directly, with no wrapper in between, which is why the RAK4631 is
-healthy on the BLE-mesh build. The practical sequencing is therefore: land BLE
-mesh on nRF52 first, and treat ESP32 as gated on the wrapper.
+| | |
+| --- | --- |
+| `ChannelCrypto` | AES-CTR, PSK size semantics including the 1-byte default-index form, `packet_id ‖ from ‖ counter` nonce |
+| `Crypto.kt` | the one platform seam — expect/actual over AES-CTR |
+| `MeshIdentity` | NodeNum + names, derived stably from a per-install seed |
+| `MeshChannel` | name + PSK, and the channel hash the wire carries |
+| `PacketHistory` | `(from, id)` dedup, bounded and expiring |
+| `RelayPolicy` | `Island` by default |
+| `MeshNode` | identity, keys, dedup, policy; drives the transports |
+| `ProtoPacketCodec` | encoded-`MeshPacket` framing, as UDP and BLE adverts use |
 
-## The client node exists and its receive path is proven
+`node-transport-udp` speaks `239.0.0.69:4403`, matching `UdpMulticastHandler`.
 
-[`meshnode-spike/`](../meshnode-spike/) is a Kotlin proof of the whole receive
-chain, tested against the frame captured above rather than against anything
-synthetic:
+The receive chain is proven against a frame captured off the air rather than a
+fixture — a real packet relayed by the Heltec, advertised over BLE, captured by
+a laptop:
 
 ```
 BLE advertisement -> AD walk -> MeshPacket -> AES-CTR decrypt -> Data
 ```
 
-It decrypts to a `POSITION_APP` message with a 36-byte payload. That closes the
-question of whether the crypto layer is reimplementable outside the firmware:
-`ChannelCrypto` covers the PSK size semantics (including the 1-byte
-default-PSK-index form) and the `packet_id ‖ from ‖ counter` nonce, in about a
-hundred lines.
+It decrypts to a `POSITION_APP` message with a 36-byte payload. That matters
+more than a synthetic test would: a hand-built fixture agrees with a wrong nonce
+byte order just as readily as a right one.
 
-Still missing before a client can be a full node: PKI for DMs
-(X25519 -> SHA-256 -> AES-256-CCM), `PacketHistory` dedup, and the flood policy.
-Until dedup and policy exist a client node can listen but must not relay.
+**`node-core` depends only on `org.meshtastic:protobufs`, never on
+`meshtastic-sdk`.** An app can then be both a client and a node with no cycle,
+and the SDK can later depend on this rather than the reverse. That direction is
+the one structural choice that would be expensive to undo.
 
-It deliberately lives outside `meshtastic-sdk`, per the recommendation above -
-that repo is Spec Kit-governed and its contract is "client talks to a radio".
-This is the spike that should precede that conversation, not bypass it.
+Still missing before a client is a full node: PKI for DMs (X25519 → SHA-256 →
+AES-256-CCM), and the flood / next-hop policy. `MeshNode` deliberately does not
+relay — dedup alone is not enough, and a node that rebroadcasts without the
+policy amplifies everything it hears.
 
----
+It lives outside `meshtastic-sdk` deliberately, for the reasons under
+*Standalone library, or an SDK module?* below.
 
 ## Client apps as nodes, with no radio
 
