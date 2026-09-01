@@ -3,6 +3,12 @@
 Feasibility work, 2026-09-01. Two tracks: a firmware node carrying mesh frames
 over BLE, and a client app participating as a node with no radio attached.
 
+Short version: the firmware side is a new file on an existing template and it
+builds. The client side is a second implementation of the mesh protocol, and its
+first transport should be UDP multicast rather than BLE - that works against
+released firmware today, while BLE has a platform asymmetry no amount of
+engineering removes.
+
 Firmware spike branch: `firmware` → `spike/ble-mesh-transport`
 (worktree `firmware/.claude/worktrees/spike-ble-mesh-transport`).
 
@@ -94,9 +100,14 @@ Not worth it. The cost: 254 − 5 (AD wrapper) − 16 (PacketHeader) = 233 bytes
 ciphertext against a `DATA_PAYLOAD_LEN` of 237. The largest ~4 bytes' worth of
 packets cannot ride BLE. They still go out over LoRa.
 
-**Company ID 0xFFFF.** SIG-reserved for internal/test use — correct for a spike,
-wrong for a release. Shipping needs a member company ID or an assigned 16-bit
-service UUID.
+**Company ID 0xFFFF, and it is probably the wrong AD type entirely.** 0xFFFF is
+SIG-reserved for internal/test use — fine for a spike, wrong for a release. But
+the choice of *manufacturer data* over *service data* is the bigger mistake, and
+it is the client track that reveals why: iOS can only scan in the background when
+filtering by service UUID, so a manufacturer-data advertisement is invisible to a
+backgrounded iPhone. Advertising under an assigned service UUID instead costs a
+couple of bytes and buys iOS background receive. Change this before anyone builds
+on the format.
 
 **`filter_duplicates = 0` on the scanner, and it must stay 0.** The controller
 de-duplicates on *advertiser address*, not payload. Enabling it would deliver
@@ -152,16 +163,19 @@ A second target (`tbeam`, where `HAS_UDP_MULTICAST` is set and `HAS_BLE_MESH` is
 not) also builds green, so the `#if` guards and the `main.h` include
 restructuring hold on targets the transport does not touch.
 
-**The native test suite was not run.** `bin/run-tests.sh` is Linux-only by
-design and `bin/test-native-docker.sh` is the macOS path, but Docker is not
-installed on this host. Running `pio test` directly fails either way: the
-`coverage` env passes GCC-only `-fprofile-abs-path`, and the `native` env's
-LovyanGFX fonts do not compile under Apple clang — both persist after
-stripping the Nix `CC`/`CXX`/`DEVELOPER_DIR` pollution. What was checked by
-inspection instead: the two generated-header edits are additive, nothing
-outside `src/mesh/generated/` reads either enum's `_ARRAYSIZE` or `_MAX`, and
-there is no exhaustive `switch` over either enum. Run the suite on a Linux host
-before trusting this branch.
+**The native test suite is green.** `bin/test-native-docker.sh` — 1372 test cases,
+1372 succeeded, exit 0. That matters because the two generated-header edits are
+unconditional and reach every target, including the suites that touch this code
+(`test_nexthop_routing`, `test_packet_history`, `test_traffic_management`,
+`test_mqtt`, `test_event_channel_router`). Docker is required on macOS: the
+`coverage` env passes GCC-only `-fprofile-abs-path` and the `native` env's
+LovyanGFX fonts do not compile under Apple clang, both even after stripping the
+Nix `CC`/`CXX`/`DEVELOPER_DIR` pollution.
+
+One wrinkle worth knowing: running the harness from a git *worktree* prints
+`fatal: not a git repository` twice, because `.git` is a file pointing at an
+absolute host path the container does not mount. It is cosmetic — version stamping
+only — and the suites run fine.
 
 Everything below the link step is unverified: no two nodes have exchanged a
 frame, and the 60-90 ms/packet throughput ceiling is arithmetic, not a
@@ -203,11 +217,32 @@ advertisements.** That is not a limitation to engineer around; it is an OS
 policy. A room full of iPhones is a room full of passive listeners.
 
 Consequence: there is no single BLE transport that works everywhere. Two-way
-Apple participation requires GATT dual-role — which reintroduces exactly the
-flood-suppression problem above, and is why Bitchat (the closest prior art)
-is built on GATT connections rather than adverts.
+Apple participation requires GATT dual-role, which brings back the one-write-per-
+peer fan-out that advertising avoids, and forecloses ever adding overhear-based
+suppression on that path. It is why Bitchat, the closest prior art, is built on
+GATT connections rather than advertisements.
 
-The honest shape is a **two-mode transport behind one interface**:
+### Background operation is a second, separate constraint
+
+A node that only meshes while its app is on screen is a different product from a
+node. Both platforms throttle this, in different ways:
+
+- **Android.** `BLUETOOTH_SCAN` and `BLUETOOTH_ADVERTISE` are runtime permissions
+  from API 31; `BLUETOOTH_SCAN` can carry `neverForLocation` to avoid dragging in
+  location. Sustained background scanning needs a foreground service with its
+  persistent notification, and Doze/App Standby throttle what is left.
+- **iOS.** Needs the `bluetooth-central` background mode, and background scanning
+  **must filter by service UUID** — `scanForPeripherals(withServices: nil)`
+  returns nothing once backgrounded. The spike's manufacturer-data framing has no
+  service UUID at all, so a backgrounded iPhone would not even hear the mesh. That
+  is fixable in the AD format (use service data), and it is the strongest single
+  argument for changing it.
+
+So the capability matrix above is the foreground story. Backgrounded, iOS drops to
+nothing unless the AD format carries a service UUID, and Android costs a
+persistent notification.
+
+The honest shape is a **multi-mode transport behind one interface**:
 
 - **Mode A — advertisement.** Android, Linux. One TX reaches every neighbour;
   the firmware spike is a peer on this mode. Suppression is not active (see
@@ -216,6 +251,8 @@ The honest shape is a **two-mode transport behind one interface**:
   cancellation is unavailable, so it needs an explicit forwarding policy with a
   bounded peer count, leaning on `PacketHistory` dedup to stop loops rather than
   on overhearing.
+- **Mode C — UDP multicast.** Every platform, no firmware change, but needs an AP
+  or hotspot. The right one to build first — see below.
 
 Mode B is a different routing policy, not a different socket. Do not let it be
 specified as "the same thing but over GATT".
@@ -255,6 +292,46 @@ design risk sits. The full spec for 2 and 4 is in the firmware's
 `.github/copilot-instructions.md` under "Encryption & Key Management" — precise
 enough to implement from, and the only place it is written down.
 
+### UDP multicast is the faster first milestone, and needs no firmware change
+
+BLE is the interesting transport but it is not the shortest path to a working
+client node. `UdpMulticastHandler` already ships: group `239.0.0.69`, port `4403`,
+a serialised `meshtastic_MeshPacket` on the wire, gated on
+`ProtocolFlags_UDP_BROADCAST`, and compiled in wherever `HAS_UDP_MULTICAST=1` is
+set — which is `variants/esp32/esp32-common.ini`, so most ESP32 boards, plus
+portduino, the Pico W variants, `rak4631_eth_gw`, `esp32p4` and several S3 boards.
+
+A Kotlin node can join that group and be a peer **today, against released
+firmware, with nothing to merge**. That is a far better way to find out whether
+the protocol implementation is right than debugging it over advertisements.
+
+It is also easier on the wire: UDP carries the encoded `MeshPacket`, so the
+published `org.meshtastic:protobufs` artifact does the parsing and the 16-byte
+`PacketHeader` codec is not needed at all. What it does **not** dodge is the hard
+part — `UdpMulticastHandler::onReceive` only accepts
+`which_payload_variant == encrypted_tag`, so the AES-CTR and PKI layers are
+required exactly as before. Good: the crypto gets validated against real firmware
+before any BLE work starts.
+
+What it costs:
+
+- **It needs infrastructure.** UDP multicast wants a shared L2 segment — an AP or
+  a hotspot. BLE needs nothing at all, which is the entire point of BLE for the
+  crowd-in-a-field case. These are complements, not alternatives.
+- **Android.** A `WifiManager.MulticastLock` is mandatory or the socket receives
+  nothing. And `ACCESS_LOCAL_NETWORK` covers UDP multicast, not just discovery:
+  see [`local-network-permission-gap.md`](./local-network-permission-gap.md), which
+  traced the same restriction for the app's TCP path. It becomes mandatory at
+  targetSdk 37 and its failure mode is a timeout, not an error.
+- **iOS.** Needs `com.apple.developer.networking.multicast`, a restricted
+  entitlement granted by request through Apple's form (state the group address and
+  port; roughly two weeks). It works in the simulator without it and fails on
+  device, which is a nasty way to find out.
+
+So the sequencing is: **implement the node over UDP first**, prove the crypto and
+routing against a real radio, then add BLE mode A as a second transport behind the
+same interface. The firmware spike is what mode A talks to when you get there.
+
 ### Standalone library, or an SDK module?
 
 **Recommendation: standalone repo first, upstream into `meshtastic-sdk` later.**
@@ -292,10 +369,72 @@ A phone holding a real NodeNum is a real node, with real consequences:
   cannot absorb it. This is the harm vector, and it is a property of the feature
   working, not of it failing.
 
-Therefore: phone-nodes should default to **BLE-island mode**, meshing only with
+**And the LoRa injection path is already open.** This is not a future risk gated
+behind the BLE work. `FloodingRouter::shouldFilterReceived` hands any non-duplicate
+packet to `perhapsRebroadcast`, which is not transport-gated, and `Router::send`
+ends at `iface->send` — LoRa. So a UDP-multicast packet from an unknown NodeNum
+is relayed onto the air by any UDP-enabled radio on the same LAN, using released
+firmware. `UdpMulticastHandler::onReceive` only rejects `isFromUs`; it does not
+require the sender to be in the NodeDB. A Kotlin node built on the mode C path
+above exercises this on its first packet.
+
+Therefore: client nodes should default to an **island mode**, meshing only with
 each other, and bridging to LoRa should be an explicit, rate-limited, opt-in
 role rather than a default. Design that in from the start; it is much harder to
 retrofit once islands and bridges are indistinguishable on the wire.
+
+### Ben's branch — `meshtastic/firmware` `ble-mesh-working`
+
+`d84355d15a`, Ben Meadors, 2026-03-07, one commit, now 1128 behind develop. Not a
+fork — it is a branch on the org repo. It carries a 625-line
+`docs/ble-mesh-implementation-plan.md` (written before the docs/ purge), an
+abstract `src/mesh/BLEMeshHandler.h`, and two platform implementations:
+`ESP32BLEMesh` (NimBLE) and `NRF52BLEMesh` (Bluefruit).
+
+**The two designs converged independently**, which is reassuring about both:
+same `onSend` hook in `Router::send`, same `HAS_BLE_MESH` flag, same
+`UdpMulticastHandler` template, same 0xFFFF company ID with the same "until a real
+SIG ID is assigned" note, same `pki_encrypted`/`public_key`/RSSI resets, and the
+same advertising-instance split (his plan —3.3: "extended adv set 0 for phone,
+set 1 for mesh"; the spike puts mesh on instance 1 for exactly that reason).
+
+**What his branch has that the spike does not:** a platform abstraction, and
+nRF52/Bluefruit support. That is the better architecture and it is a whole
+platform this spike does not touch. Take it.
+
+**Four things to fix before building on it**, all found by the spike:
+
+1. **`TRANSPORT_BLE_MESH = 8` is now taken.** He reserved 8 with a `#ifndef`
+   placeholder pending a proto change that never landed; `TRANSPORT_UNICAST_UDP = 8`
+   shipped since. Anything rebased off that branch mislabels UDP packets as BLE.
+   The spike uses 9.
+2. **The echo guard caps the mesh at one hop** — his plan —2.3 and his committed
+   code both `return false` on a packet whose `transport_mechanism` is the BLE one.
+   As traced above, a rebroadcast is an `allocCopy` that still carries that value,
+   so every relay is refused. The spike had this bug too, from copying the same UDP
+   line; it is fixed in `39999f581`.
+3. **Ext-adv is enabled the pre-pioarduino way.** He sets
+   `-DCONFIG_BT_NIMBLE_EXT_ADV=1` as a build flag. The Arduino 3.x/pioarduino
+   migration (`a54195748`) converted those into `custom_sdkconfig` entries and left
+   them commented out in `variants/esp32c3/esp32c3.ini` — which is where the
+   commented lines the spike found came from. Under the current build system a `-D`
+   does not reconfigure the prebuilt IDF NimBLE, so the flags have to move to
+   `custom_sdkconfig`. The spike does that, and it links.
+4. **Missing UDP's ingress guards.** No `isFromUs`/`from == 0` spoof drop and no
+   `hop_limit`/`hop_start > HOP_MAX` clamp. Both are in `UdpMulticastHandler` and
+   both are in the spike.
+
+**One open disagreement: the wire format.** He encodes a whole `MeshPacket`, as UDP
+does; the spike sends the LoRa frame. `meshtastic_MeshPacket_size` is 450, and his
+`CONFIG_BT_NIMBLE_MAX_EXT_ADV_DATA_LEN=251` cannot hold an encrypted-variant packet
+near the top of the ciphertext range (~270-280 bytes encoded). LoRa framing buys
+roughly fifteen bytes and byte-identity with the LoRa path; neither format covers
+the full 237-byte payload range in one PDU. Worth settling deliberately rather than
+by inheritance.
+
+Suggested shape: his platform abstraction and nRF52 implementation, the spike's
+guards, enum value, sdkconfig enablement and rebroadcast fix, and an explicit
+decision on framing.
 
 ### Prior art
 
