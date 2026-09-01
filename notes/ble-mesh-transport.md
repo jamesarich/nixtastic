@@ -93,12 +93,19 @@ is a memcpy rather than a translation. `encodeAdvPayload` mirrors
 `RadioInterface::beginSending`; the scan path mirrors `RadioLibInterface`'s RX
 block including the `hop_start == 0 → next_hop/relay_node invalid` rule.
 
-**Capped at one PDU (254 bytes), no chaining.** Chaining is possible (ESP32
-allows 1650) but `ble_gap_ext_disc_desc.length_data` is a `uint8_t`, so chained
-adverts arrive as several INCOMPLETE reports needing per-advertiser reassembly.
-Not worth it. The cost: 254 − 5 (AD wrapper) − 16 (PacketHeader) = 233 bytes of
-ciphertext against a `DATA_PAYLOAD_LEN` of 237. The largest ~4 bytes' worth of
-packets cannot ride BLE. They still go out over LoRa.
+**Capped at one PDU, and that PDU is 251 bytes, not 254.** `BLE_HCI_MAX_EXT_ADV_DATA_LEN`
+is 251: the HCI *LE Set Extended Advertising Data* command spends four of its 255
+parameter bytes on handle, operation, fragment preference and length, so an
+unfragmented payload never reaches the 254 an AUX_ADV_IND could hold. The spike had
+254 and was three bytes optimistic — Ben's branch had 251 and was right. A
+`static_assert` now pins it to NimBLE's constant.
+
+Chaining past one PDU is possible (ESP32 allows 1650) but
+`ble_gap_ext_disc_desc.length_data` is a `uint8_t`, so chained adverts arrive as
+several INCOMPLETE reports needing per-advertiser reassembly. Not worth it. The
+cost: 251 — 5 (AD wrapper) — 16 (PacketHeader) = 230 bytes of ciphertext against a
+`DATA_PAYLOAD_LEN` of 237. The largest handful of packets cannot ride BLE. They
+still go out over LoRa.
 
 **Company ID 0xFFFF, and it is probably the wrong AD type entirely.** 0xFFFF is
 SIG-reserved for internal/test use — fine for a spike, wrong for a release. But
@@ -398,9 +405,12 @@ SIG ID is assigned" note, same `pki_encrypted`/`public_key`/RSSI resets, and the
 same advertising-instance split (his plan —3.3: "extended adv set 0 for phone,
 set 1 for mesh"; the spike puts mesh on instance 1 for exactly that reason).
 
-**What his branch has that the spike does not:** a platform abstraction, and
-nRF52/Bluefruit support. That is the better architecture and it is a whole
-platform this spike does not touch. Take it.
+**What his branch has that the spike does not:** a platform abstraction, nRF52/
+Bluefruit support, and both a legacy and an extended advertising path
+(`ble_gap_adv_*` alongside `ble_gap_ext_adv_*`) so pre-BLE-5 parts get a 31-byte
+fallback. It is advertising throughout — no GATT server or client anywhere in it,
+despite his plan sketching a GATT mode in —3.2. That is the better architecture and
+covers a platform this spike does not touch. Take it.
 
 **Four things to fix before building on it**, all found by the spike:
 
@@ -408,8 +418,9 @@ platform this spike does not touch. Take it.
    placeholder pending a proto change that never landed; `TRANSPORT_UNICAST_UDP = 8`
    shipped since. Anything rebased off that branch mislabels UDP packets as BLE.
    The spike uses 9.
-2. **The echo guard caps the mesh at one hop** — his plan —2.3 and his committed
-   code both `return false` on a packet whose `transport_mechanism` is the BLE one.
+2. **The echo guard caps the mesh at one hop** — confirmed in his committed code, not
+   just the plan: `ESP32BLEMesh.cpp` has `// Don't echo packets that arrived via BLE
+   mesh` then `return false` on a packet whose `transport_mechanism` is the BLE one.
    As traced above, a rebroadcast is an `allocCopy` that still carries that value,
    so every relay is refused. The spike had this bug too, from copying the same UDP
    line; it is fixed in `39999f581`.
@@ -425,12 +436,12 @@ platform this spike does not touch. Take it.
    both are in the spike.
 
 **One open disagreement: the wire format.** He encodes a whole `MeshPacket`, as UDP
-does; the spike sends the LoRa frame. `meshtastic_MeshPacket_size` is 450, and his
-`CONFIG_BT_NIMBLE_MAX_EXT_ADV_DATA_LEN=251` cannot hold an encrypted-variant packet
-near the top of the ciphertext range (~270-280 bytes encoded). LoRa framing buys
-roughly fifteen bytes and byte-identity with the LoRa path; neither format covers
-the full 237-byte payload range in one PDU. Worth settling deliberately rather than
-by inheritance.
+does (`uint8_t buffer[meshtastic_MeshPacket_size]`, and that constant is 450); the
+spike sends the LoRa frame. Proto framing spends more bytes per packet than the
+16-byte `PacketHeader`, so it hits the 251-byte ceiling sooner, and neither format
+covers the full 237-byte payload range in one PDU. LoRa framing also makes a
+BLE-heard frame byte-identical to a LoRa-heard one. Worth settling deliberately
+rather than by inheritance from the UDP handler.
 
 Suggested shape: his platform abstraction and nRF52 implementation, the spike's
 guards, enum value, sdkconfig enablement and rebroadcast fix, and an explicit
