@@ -16,6 +16,25 @@ public interface PacketCodec {
 
     /** Decrypt and interpret an inbound packet against the keys we hold. */
     public suspend fun decode(encodedPacket: ByteArray, keys: KeyRing): DecodedPacket?
+
+    /**
+     * Rewrite a received packet for forwarding: hop limit decremented, relay marked as us.
+     *
+     * Needs no key, and that is the point - `hop_limit` is a plaintext field of `MeshPacket`
+     * (field 9) while the ciphertext is field 5, so a node relays traffic it cannot read, exactly
+     * as `NextHopRouter::perhapsRebroadcast` does. Returns null when the packet is exhausted and
+     * must not travel further.
+     */
+    public fun forForwarding(encodedPacket: ByteArray, relayNodeNum: Long): ByteArray?
+
+    /** Announce ourselves so peers can learn our name and, crucially, our public key. */
+    public suspend fun encodeNodeInfo(
+        identity: MeshIdentity,
+        publicKey: ByteArray?,
+        channel: MeshChannel,
+        id: Long,
+        hopLimit: Int,
+    ): ByteArray?
 }
 
 /** The routing-relevant fields of a packet, readable without any key. */
@@ -72,6 +91,28 @@ public data class KeyRing(
 public sealed interface DecodedPacket {
     /** Readable text, and how it was protected. */
     public data class Text(val text: String, val direct: Boolean) : DecodedPacket
+
+    /** A peer describing itself. Carries the public key that makes direct messages to it possible. */
+    public data class NodeInfo(
+        val longName: String?,
+        val shortName: String?,
+        val publicKey: ByteArray?,
+    ) : DecodedPacket {
+        override fun equals(other: Any?): Boolean = this === other || (
+            other is NodeInfo && longName == other.longName && shortName == other.shortName &&
+                (publicKey?.contentEquals(other.publicKey ?: ByteArray(0)) ?: (other.publicKey == null))
+            )
+
+        override fun hashCode(): Int =
+            31 * (31 * (longName?.hashCode() ?: 0) + (shortName?.hashCode() ?: 0)) +
+                (publicKey?.contentHashCode() ?: 0)
+    }
+
+    /** A position report. Coordinates are Meshtastic's 1e-7 degree integers. */
+    public data class Position(val latitudeI: Int?, val longitudeI: Int?, val altitude: Int?) : DecodedPacket
+
+    /** Decrypted, but a payload type this library does not model. Still evidence of a live peer. */
+    public data class Other(val portnum: Int) : DecodedPacket
 
     /** Structurally valid but not for us, or on a channel we hold no key for. */
     public data object Unreadable : DecodedPacket

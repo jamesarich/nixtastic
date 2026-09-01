@@ -47,6 +47,9 @@ public class MeshNode(
     public val receiveOnlyTransports: List<MeshTransport> get() = config.transports.filterNot { it.canTransmit }
 
     private val history = PacketHistory()
+
+    /** What this node knows about its neighbours, built from what it hears. */
+    public val directory: NodeDirectory = NodeDirectory()
     private val codec = config.codec
     private var nextPacketId: Long = config.random.nextLong(1, UInt.MAX_VALUE.toLong())
 
@@ -86,7 +89,10 @@ public class MeshNode(
 
         val pki = if (direct) {
             val ourKey = config.privateKey ?: return false
-            val peerKey = config.peerPublicKey(to) ?: return false
+            // publicKeyFor, not config.peerPublicKey: a key learned from a NodeInfo broadcast is
+            // exactly as usable as one supplied up front, and requiring manual wiring would make
+            // direct messages unreachable for anyone who did not already know the peer.
+            val peerKey = publicKeyFor(to) ?: return false
             PkiSend(ourKey, peerKey, config.random.nextInt())
         } else {
             null
@@ -102,43 +108,88 @@ public class MeshNode(
     }
 
     private suspend fun process(frame: InboundFrame): MeshEvent? {
-        val header = codec.peek(frame.bytes) ?: return null
+        val header = codec.peek(frame.bytes)
+            ?: return MeshEvent.Dropped(0, 0, MeshEvent.DropReason.MALFORMED)
 
         if (header.from == 0L) return MeshEvent.Dropped(0, header.id, MeshEvent.DropReason.NO_SENDER)
         if (header.from == identity.nodeNum) return null // our own frame, heard by our own receiver
         if (header.hopLimit > RelayPolicy.HOP_MAX) {
             return MeshEvent.Dropped(header.from, header.id, MeshEvent.DropReason.BAD_HOP_COUNT)
         }
-        if (history.wasSeenRecently(header.from, header.id, config.clock())) {
+
+        val now = config.clock()
+        if (history.wasSeenRecently(header.from, header.id, now)) {
             return MeshEvent.Dropped(header.from, header.id, MeshEvent.DropReason.DUPLICATE)
         }
 
-        relay(frame, header)
+        // Presence first: hearing a node is evidence it exists, whether or not we can read it.
+        directory.heard(header.from, now, frame.rssi)
 
-        val keys = KeyRing(config.channels, identity.nodeNum, config.privateKey, config.peerPublicKey)
+        val relayed = relay(frame, header)
+
+        val keys = KeyRing(config.channels, identity.nodeNum, config.privateKey, ::publicKeyFor)
         return when (val decoded = codec.decode(frame.bytes, keys)) {
             is DecodedPacket.Text ->
                 MeshEvent.TextMessage(header.from, header.to, decoded.text, decoded.direct, frame.rssi)
-            DecodedPacket.Unreadable, null ->
-                MeshEvent.Opaque(header.from, header.to, header.channelHash, frame.rssi)
+
+            is DecodedPacket.NodeInfo -> MeshEvent.PeerUpdated(
+                directory.learn(
+                    nodeNum = header.from,
+                    nowMs = now,
+                    longName = decoded.longName,
+                    shortName = decoded.shortName,
+                    publicKey = decoded.publicKey,
+                    rssi = frame.rssi,
+                )
+            )
+
+            is DecodedPacket.Position ->
+                MeshEvent.PositionReport(header.from, decoded.latitudeI, decoded.longitudeI, decoded.altitude)
+
+            // Decrypted but unmodelled, or unreadable. Both are worth surfacing: a mesh is mostly
+            // traffic you cannot read, and silence would make a working node look dead.
+            is DecodedPacket.Other, DecodedPacket.Unreadable, null ->
+                relayed ?: MeshEvent.Opaque(header.from, header.to, header.channelHash, frame.rssi)
         }
     }
 
     /**
      * Forward a packet onward, if policy allows.
      *
-     * Deliberately conservative. Dedup terminates the flood and the hop limit bounds it, but this
-     * node has no next-hop table and no overhear-based suppression, so it relays every packet it
-     * has not seen - which is correct but noisy. [RelayPolicy.Island] disables it entirely and is
-     * the default.
+     * No key is needed and none is used: `hop_limit` is a plaintext `MeshPacket` field, so a node
+     * forwards traffic it cannot read - which is what makes a mesh a mesh rather than a collection
+     * of listeners.
+     *
+     * Deliberately conservative all the same. Dedup terminates the flood and the hop limit bounds
+     * it, but this node has no next-hop table and no overhear-based suppression, so it forwards
+     * every packet it has not already seen: correct, and noisier than a radio would be.
+     * [RelayPolicy.Island] disables it entirely and is the default.
      */
-    private suspend fun relay(frame: InboundFrame, header: PacketHeaderView) {
-        if (relayPolicy !is RelayPolicy.Meshed) return
-        if (header.hopLimit <= 0) return // exhausted; forwarding it would be a loop with no brake
-        if (header.to == identity.nodeNum) return // for us, not through us
-        // Relaying requires rewriting hop_limit, which means re-encoding - and re-encoding needs
-        // the channel key, which we may not hold. Left to a codec-level operation rather than
-        // faked here, so a node never emits a packet it could not construct honestly.
+    private suspend fun relay(frame: InboundFrame, header: PacketHeaderView): MeshEvent? {
+        if (relayPolicy !is RelayPolicy.Meshed) return null
+        if (header.to == identity.nodeNum) return null // for us, not through us
+        val forwarded = codec.forForwarding(frame.bytes, identity.nodeNum) ?: return null
+
+        val sent = config.transports.filter { it.canTransmit }.any { it.send(forwarded) }
+        return if (sent) MeshEvent.Relayed(header.from, header.id, header.hopLimit - 1) else null
+    }
+
+    /** Keys we were given explicitly win; otherwise whatever a NodeInfo broadcast taught us. */
+    private fun publicKeyFor(nodeNum: Long): ByteArray? =
+        config.peerPublicKey(nodeNum) ?: directory.publicKeyOf(nodeNum)
+
+    /**
+     * Broadcast who we are, including our public key.
+     *
+     * Not optional in practice: a peer cannot send this node a direct message until it has our
+     * X25519 public key, and this is the only way it travels. Call it on join and periodically -
+     * radios re-announce roughly every few minutes.
+     */
+    public suspend fun announce(channel: MeshChannel = config.channels.first()): Boolean {
+        val publicKey = config.publicKey
+        val encoded = codec.encodeNodeInfo(identity, publicKey, channel, nextId(), relayPolicy.hopLimit)
+            ?: return false
+        return config.transports.filter { it.canTransmit }.any { it.send(encoded) }
     }
 
     private fun nextId(): Long {
@@ -160,7 +211,13 @@ public class MeshNode(
         /** Our X25519 private key. Required to send or read direct messages. */
         public var privateKey: ByteArray? = null
 
-        /** Public key for a peer, if known. */
+        /** Our X25519 public key, broadcast by [announce] so peers can reach us. */
+        public var publicKey: ByteArray? = null
+
+        /**
+         * Public key for a peer, consulted before the directory. Supply one to pin keys from your
+         * own store; leave it and the node uses whatever NodeInfo broadcasts have taught it.
+         */
         public var peerPublicKey: (Long) -> ByteArray? = { null }
 
         /** Monotonic milliseconds, used only for duplicate expiry. */

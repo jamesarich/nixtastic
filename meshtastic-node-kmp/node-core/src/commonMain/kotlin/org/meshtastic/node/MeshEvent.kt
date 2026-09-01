@@ -25,6 +25,17 @@ public sealed interface MeshEvent {
     /** A packet this node forwarded onward. Only ever emitted under [RelayPolicy.Meshed]. */
     public data class Relayed(val from: Long, val id: Long, val hopLimit: Int) : MeshEvent
 
+    /** A peer identified itself, or we learned something new about one. */
+    public data class PeerUpdated(val peer: NodeDirectory.Peer) : MeshEvent
+
+    /** A position report from a peer. */
+    public data class PositionReport(
+        val from: Long,
+        val latitudeI: Int?,
+        val longitudeI: Int?,
+        val altitude: Int?,
+    ) : MeshEvent
+
     public enum class DropReason {
         /** `from == 0`: nothing legitimate advertises without a sender. */
         NO_SENDER,
