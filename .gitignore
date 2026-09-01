@@ -69,3 +69,10 @@
 #   datasets/     packet captures
 #   logs/         adb, build and replay logs
 #   meshcon/      conference capture db + screenshots
+
+# meshnode-spike: the Kotlin client-node proof of concept. Source only — its
+# Gradle build dir and wrapper caches stay out.
+!/meshnode-spike/
+!/meshnode-spike/**
+/meshnode-spike/build/
+/meshnode-spike/.gradle/

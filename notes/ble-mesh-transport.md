@@ -184,11 +184,76 @@ One wrinkle worth knowing: running the harness from a git *worktree* prints
 absolute host path the container does not mount. It is cosmetic — version stamping
 only — and the suites run fine.
 
-Everything below the link step is unverified: no two nodes have exchanged a
-frame, and the 60-90 ms/packet throughput ceiling is arithmetic, not a
-measurement. First hardware test should be two C3 boards with LoRa disabled and
-`BLE_BROADCAST` set, checking that a text sent on one arrives on the other with
-`transport_mechanism == TRANSPORT_BLE_ADV`.
+## On hardware, 2026-09-01
+
+Ran on a Heltec V3 (ESP32-S3) and a RAK4631 (nRF52840). Four results, two of
+them things no amount of reading would have found.
+
+**It transmits, and a laptop can decode it.** With `BLE_BROADCAST` set, the
+Heltec puts real mesh frames on the air as BLE 5 extended advertisements. A Mac
+scanning for company ID 0xFFFF picked one up:
+
+```
+MESH ADV  from=0x3061b02e to=0xffffffff id=0x04050b6e ch=50
+          hop=2/3 enc=108B transport=1 rssi=-65
+```
+
+`from` is another node and `transport=1` is TRANSPORT_LORA, so this is a packet
+that arrived over LoRa being *re-advertised* onto BLE. That is precisely the
+rebroadcast path the one-hop echo-guard bug was blocking. Scanner:
+[`ble-mesh-sniff.py`](./ble-mesh-sniff.py).
+
+**The ext-adv / legacy-advertising collision is real after all.** The link-time
+result above said the feared collision did not happen. On hardware:
+
+```
+[E][BLEAdvertising.cpp:1807] stop(): ble_gap_adv_stop rc=8
+```
+
+rc=8 is `BLE_HS_ENOTSUP`. With `CONFIG_BT_NIMBLE_EXT_ADV=y` the legacy
+advertising API is not supported, and the Arduino BLE wrapper the PhoneAPI
+advertisement goes through calls exactly that. So enabling ext-adv on ESP32
+requires porting the PhoneAPI advertisement onto an ext-adv instance (0), which
+is what Ben's `#if defined(NIMBLE_TWO) || CONFIG_BT_NIMBLE_EXT_ADV` guard change
+was doing for the NimBLE version his branch targeted. Linking is not evidence;
+this is the concrete reason the note said so.
+
+**nRF52 needs a linker change before it can receive.** Scanning needs a central
+link, and `Bluefruit.begin()` defaults to zero. Asking for one with
+`begin(1, 1)` raises the SoftDevice's RAM requirement past the ORIGIN in
+`nrf52840_s140_v*.ld`; `sd_ble_enable()` then rejects the RAM base. The RAK went
+silent on the serial API and stopped logging until reflashed without it. Gated
+behind `BLE_MESH_NRF52_CENTRAL` until the linker script is re-based. nRF52 can
+therefore transmit but not receive, and ESP32 is the only platform that can
+currently participate both ways.
+
+**Not yet shown: two nodes exchanging a frame.** That needs either a second
+ESP32-S3, or the nRF52 linker work. The 60-90 ms/packet throughput ceiling
+remains arithmetic, not a measurement.
+
+## The client node exists and its receive path is proven
+
+[`meshnode-spike/`](../meshnode-spike/) is a Kotlin proof of the whole receive
+chain, tested against the frame captured above rather than against anything
+synthetic:
+
+```
+BLE advertisement -> AD walk -> MeshPacket -> AES-CTR decrypt -> Data
+```
+
+It decrypts to a `POSITION_APP` message with a 36-byte payload. That closes the
+question of whether the crypto layer is reimplementable outside the firmware:
+`ChannelCrypto` covers the PSK size semantics (including the 1-byte
+default-PSK-index form) and the `packet_id ‖ from ‖ counter` nonce, in about a
+hundred lines.
+
+Still missing before a client can be a full node: PKI for DMs
+(X25519 -> SHA-256 -> AES-256-CCM), `PacketHistory` dedup, and the flood policy.
+Until dedup and policy exist a client node can listen but must not relay.
+
+It deliberately lives outside `meshtastic-sdk`, per the recommendation above -
+that repo is Spec Kit-governed and its contract is "client talks to a radio".
+This is the spike that should precede that conversation, not bypass it.
 
 ---
 
