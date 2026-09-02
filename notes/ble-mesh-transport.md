@@ -1,19 +1,33 @@
 # Meshtastic mesh protocol over a BLE transport
 
-Feasibility work, 2026-09-01. Two tracks: a firmware node carrying mesh frames
-over BLE, and a client app participating as a node with no radio attached.
+Feasibility work begun 2026-09-01, carried into a working implementation by
+2026-09-02. Two tracks: a firmware node carrying mesh frames over BLE, and a
+client app participating as a node with no radio attached.
+
+> **Current status (2026-09-02).** Much of what the sections below frame as
+> "planned", "untested", or "recommended" has since shipped — read this banner
+> as authoritative where the body still speaks in the future tense.
+>
+> - **`meshtastic-node-kmp` is its own private org repo** now, not a workspace
+>   directory (the "standalone first" recommendation was taken).
+> - **Three transports, one interface:** UDP multicast, connectionless BLE
+>   advertisements (`node-transport-ble`), and dual-role BLE GATT
+>   (`node-transport-ble-gatt`).
+> - **Apple transmits** — over GATT, proven on an iPad against a Mac in both
+>   directions. The advertisement asymmetry is a limit of *that* transport, not
+>   of iOS.
+> - **The node is a full node:** PKI direct messages (X25519 → AES-256-CCM,
+>   acked by a bench radio) and a proper relay (contention window, cancel on
+>   overhear, `next_hop`) are built and verified on the air.
+> - Still genuinely open: the on-air framing still uses the SIG test company ID,
+>   and the iOS GATT connection goes quiet after its first moments (a lifetime
+>   bug, not a write-path one).
 
 Short version: **it works.** Two boards of different families exchange mesh
-frames over BLE 5 extended advertisements, and a Kotlin library decodes and
-decrypts them. Firmware lives on `spike/ble-mesh-transport`; the client is
-[`meshtastic-node-kmp`](../meshtastic-node-kmp/).
-
-What is *not* done is the shipping surface: the on-air framing still uses the
-SIG test company ID, the proto change needs a real nanopb regen, and BLE has a
-platform asymmetry no engineering removes — Apple can receive and never
-transmit. For a client people can actually use, UDP multicast remains the
-transport to ship first: it works against released firmware with nothing to
-merge.
+frames over BLE 5 extended advertisements, a Kotlin library decodes and decrypts
+them, and every platform pair on the bench has carried whole packets. Firmware
+lives on `spike/ble-mesh-transport`; the client is the standalone repo
+[`meshtastic/meshtastic-node-kmp`](../meshtastic-node-kmp/).
 
 Firmware spike branch: `firmware` → `spike/ble-mesh-transport`
 (worktree `firmware/.claude/worktrees/spike-ble-mesh-transport`).
@@ -72,7 +86,9 @@ is in the spike.
 
 ## Firmware spike — what was built
 
-New `src/mesh/ble/BleMeshHandler.{h,cpp}`, modelled on `UdpMulticastHandler`,
+New `src/mesh/BLEMeshHandler.{h,cpp}` (the abstract base) plus the platform layers
+`src/platform/esp32/ESP32BLEMesh.{h,cpp}` and `src/platform/nrf52/NRF52BLEMesh.{h,cpp}`,
+modelled on `UdpMulticastHandler`,
 including all four of its ingress guards (each is a bug someone already hit):
 
 1. spoofed local origin (`from == 0`, or `from == our nodenum`) — dropped
@@ -91,13 +107,15 @@ Proto additions: `TRANSPORT_BLE_ADV = 9` on `MeshPacket.TransportMechanism`,
 
 ### Design decisions worth arguing about
 
-**LoRa wire framing, not an encoded MeshPacket.** UDP puts a serialised
-`meshtastic_MeshPacket` on the wire; it has a 1500-byte MTU and can afford it.
-BLE cannot. Sending `PacketHeader` + ciphertext is ~40% smaller and makes a
-BLE-heard frame byte-identical to a LoRa-heard one, so a future BLE↔LoRa bridge
-is a memcpy rather than a translation. `encodeAdvPayload` mirrors
-`RadioInterface::beginSending`; the scan path mirrors `RadioLibInterface`'s RX
-block including the `hop_start == 0 → next_hop/relay_node invalid` rule.
+**An encoded `MeshPacket`, not the LoRa wire frame — settled, not inherited.**
+The spike originally sent `PacketHeader` + ciphertext: ~40% smaller, and
+byte-identical to a LoRa-heard frame so a future BLE↔LoRa bridge would be a
+memcpy. The merge in `dd9a01c90` took Ben's choice instead — a serialised
+`meshtastic_MeshPacket`, the same shape UDP multicast puts on the wire — and the
+client library follows it (`ProtoPacketCodec` carries a whole encoded packet).
+The trade is real: a larger frame for one uniform on-air shape across UDP and
+BLE, and a `FrameAdapter` seam in the client so a future LoRa transport, whose
+framing genuinely differs, translates at the edge rather than everywhere.
 
 **Capped at one PDU, and that PDU is 251 bytes, not 254.** `BLE_HCI_MAX_EXT_ADV_DATA_LEN`
 is 251: the HCI *LE Set Extended Advertising Data* command spends four of its 255
@@ -301,7 +319,11 @@ tests green.
 | `MeshNode` | identity, keys, dedup, policy; drives the transports |
 | `ProtoPacketCodec` | encoded-`MeshPacket` framing, as UDP and BLE adverts use |
 
-`node-transport-udp` speaks `239.0.0.69:4403`, matching `UdpMulticastHandler`.
+Three transports, one interface. `node-transport-udp` speaks `239.0.0.69:4403`,
+matching `UdpMulticastHandler`. `node-transport-ble` is connectionless BLE 5
+advertisements over our own CoreBluetooth and Android implementations — receive
+everywhere, transmit on Android. `node-transport-ble-gatt` is dual-role GATT, the
+Apple transmit path.
 
 The receive chain is proven against a frame captured off the air rather than a
 fixture — a real packet relayed by the Heltec, advertised over BLE, captured by
@@ -320,10 +342,13 @@ byte order just as readily as a right one.
 and the SDK can later depend on this rather than the reverse. That direction is
 the one structural choice that would be expensive to undo.
 
-Still missing before a client is a full node: PKI for DMs (X25519 → SHA-256 →
-AES-256-CCM), and the flood / next-hop policy. `MeshNode` deliberately does not
-relay — dedup alone is not enough, and a node that rebroadcasts without the
-policy amplifies everything it hears.
+Both of those have since been built. PKI for DMs is `PkiCrypto` (X25519 →
+SHA-256 → AES-256-CCM, 8-byte MAC, 13-byte nonce), proven by a direct message a
+bench radio acked with `ROUTING_APP`. And `MeshNode` is now a proper relay under
+`RelayPolicy.Meshed` — a contention window inverted against signal strength,
+cancel-on-overhear keyed on the relayer, and `next_hop` honoured and set — while
+the default `Island` policy still relays nothing, so a node never amplifies what
+it hears unless asked to.
 
 It lives outside `meshtastic-sdk` deliberately, for the reasons under
 *Standalone library, or an SDK module?* below.
@@ -357,7 +382,8 @@ extension of the client API.
 
 **Apple platforms can hear the mesh but cannot speak to it over
 advertisements.** That is not a limitation to engineer around; it is an OS
-policy. A room full of iPhones is a room full of passive listeners.
+policy. It is a limit of *this transport*, though, not of iOS: Apple transmits
+fine over GATT, and `node-transport-ble-gatt` now proves it on device.
 
 Consequence: there is no single BLE transport that works everywhere. Two-way
 Apple participation requires GATT dual-role, which brings back the one-write-per-
