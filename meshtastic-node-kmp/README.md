@@ -16,10 +16,10 @@ whose audience today never touches one.
 
 | Module | | Status |
 | --- | --- | --- |
-| `node-core` | Identity, channels, AES-CTR, dedup, relay policy, the node itself. No I/O. | works |
-| `node-transport-udp` | Multicast `239.0.0.69:4403` | works |
-| `node-transport-ble-adv` | Connectionless extended advertising (Android, Linux) | planned |
-| `node-transport-ble-gatt` | Dual-role GATT (Apple, Android fallback) | planned |
+| `node-core` | Identity, channels, AES-CTR, PKI, acks, dedup, relay policy, the node itself. No I/O. | works |
+| `node-transport-udp` | Multicast `239.0.0.69:4403` | works, verified against a radio |
+| `node-transport-ble` | Scanning for mesh advertisements (Kable) | receive only |
+| `node-transport-ble-adv` | Transmitting extended advertisements (Android, Linux) | planned |
 | `node-android` | Foreground service, permissions, Doze | planned |
 
 **`node-core` depends only on `org.meshtastic:protobufs`, never on
@@ -81,16 +81,54 @@ It decrypts to a `POSITION_APP` message with a 36-byte payload. Nothing in that
 test is synthetic, which is the point: a hand-built fixture would agree with a
 wrong nonce byte order just as readily as a right one.
 
+`FirmwareInteropTest` goes further and runs the whole node against a radio. Given
+a channel URL it joins `239.0.0.69:4403` and, against a stock Heltec V3 on
+2.8.0 with `enabled_protocols` including `UDP_BROADCAST`:
+
+- decrypts live traffic, including LoRa packets the radio relays onto UDP;
+- gets itself into the radio's NodeDB as an ordinary node;
+- sends a PKI direct message and receives the radio's `ROUTING_APP`
+  acknowledgement.
+
+It is skipped unless `MESH_INTEROP_CHANNEL_URL` is set, because it needs
+hardware. See the file header for the invocation.
+
+### Three rules a radio enforces that talking to yourself will not reveal
+
+Each of these was found by watching a bench radio decrypt our packets, log them,
+and throw them away. All three are covered by `FirmwareWireRulesTest`.
+
+- **`Data.bitfield` must be present on every packet.** `classifyHopStart` uses
+  its presence to tell a modern zero-hop broadcast from firmware older than
+  2.3.0. Without it, `RelayPolicy.Island` — which sets `hop_start = 0`
+  deliberately — makes every packet look ancient, and the radio drops it after
+  decrypting it. The drop log is rate-limited, so most leave no trace.
+- **A PKI packet must carry `channel = 0`.** `Router::perhapsDecode` gates its
+  entire PKI branch on it. Stamp the channel hash and the radio never attempts
+  X25519: it tries the channel key, gets noise, and reports "bad psk".
+- **Persist the address and the keypair together.** A radio pins the first
+  public key it sees for a node number and answers every later one with
+  "Public Key mismatch, drop NodeInfo". A node that keeps its address but
+  regenerates its key is permanently unreachable to every peer that
+  remembers it.
+
+And one that is about the host rather than the protocol: a `MulticastSocket`
+with no interface set does not necessarily transmit on the route that reaches
+the group. On macOS it does not, while the loopback copy still shows the right
+source address — so a local capture shows packets leaving that no other host
+ever sees. `UdpMulticastTransport` resolves the interface by running the route
+lookup itself.
+
 ## Not yet here
 
-- **PKI for direct messages** — X25519 → SHA-256 → AES-256-CCM, 8-byte MAC,
-  12 bytes of wire overhead. Needed before a node can send or read a DM.
 - **Flood / next-hop routing**, without which the node must not relay.
-- **Targets beyond JVM.** The layout is already `commonMain`/`jvmMain` with a
-  single platform seam (the AES provider in `Crypto.kt`), so adding
-  `androidTarget()` and the apple targets is mechanical. Note Apple can *receive*
-  on BLE advertisements and never transmit: CoreBluetooth cannot advertise
-  arbitrary payload, and backgrounded it can only scan by service UUID.
+- **Transmitting on BLE.** `node-transport-ble` scans; it declares
+  `canTransmit = false` because Kable is central-role only and CoreBluetooth
+  cannot advertise arbitrary payload at all. Android and Linux can, and that is
+  a separate module.
+- **Android.** No `androidTarget()` yet, and the UDP transport needs a
+  `WifiManager.MulticastLock` there — without one the socket silently receives
+  nothing.
 
 ## Building
 

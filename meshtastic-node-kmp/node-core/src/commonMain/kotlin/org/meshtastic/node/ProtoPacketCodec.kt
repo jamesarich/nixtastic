@@ -15,7 +15,31 @@ import org.meshtastic.proto.User
 public class ProtoPacketCodec(
     private val channelCrypto: ChannelCrypto = ChannelCrypto(),
     private val pkiCrypto: PkiCrypto = PkiCrypto(),
+    /**
+     * Whether relays may forward our traffic to MQTT - bit 0 of [bitfield], the field's original
+     * and still only defined use.
+     *
+     * Off by default. A client node is a person's own device, and putting its traffic on a public
+     * map is a decision to opt into rather than out of.
+     */
+    private val okToMqtt: Boolean = false,
 ) : PacketCodec {
+
+    /**
+     * `Data.bitfield`, set on every packet we send - and it must be *present*, not merely zero.
+     *
+     * This is not cosmetic. `hop_start == 0` is ambiguous on the wire: it means either a modern
+     * zero-hop broadcast or firmware older than 2.3.0 that never populated the field at all.
+     * `Router::classifyHopStart` resolves the ambiguity by looking for this bitfield, which 2.5.0
+     * made unconditional - and a packet it classifies as pre-hop is dropped after decoding, before
+     * any module, the phone, MQTT or rebroadcast ever see it.
+     *
+     * So without this field, a node using [RelayPolicy.Island] - which stamps `hop_start = 0` on
+     * purpose so no radio relays it - has every packet silently discarded by current firmware. The
+     * radio decrypts it, logs it, and throws it away, and the drop log is rate-limited so most of
+     * them leave no trace at all.
+     */
+    private val bitfield: Int = if (okToMqtt) 1 else 0
 
     override fun peek(encodedPacket: ByteArray): PacketHeaderView? {
         val pkt = decodePacket(encodedPacket) ?: return null
@@ -31,7 +55,11 @@ public class ProtoPacketCodec(
 
     override suspend fun encode(message: OutboundMessage): ByteArray? {
         val plaintext = Data.ADAPTER.encode(
-            Data(portnum = PortNum.TEXT_MESSAGE_APP, payload = message.text.encodeToByteArray().toByteString())
+            Data(
+                portnum = PortNum.TEXT_MESSAGE_APP,
+                payload = message.text.encodeToByteArray().toByteString(),
+                bitfield = bitfield,
+            )
         )
         return seal(
             plaintext, message.from, message.to, message.id, message.channel, message.hopLimit,
@@ -54,6 +82,7 @@ public class ProtoPacketCodec(
                 // What makes this an acknowledgement of something rather than a bare routing
                 // message: the sender matches it against the id it is waiting on.
                 request_id = requestId.toInt(),
+                bitfield = bitfield,
             )
         )
         // Channel-encrypted, never PKI: the sender has to be able to read the receipt whether or
@@ -68,6 +97,7 @@ public class ProtoPacketCodec(
         channel: MeshChannel,
         id: Long,
         hopLimit: Int,
+        wantResponse: Boolean,
     ): ByteArray? {
         val user = User(
             id = identity.nodeId,
@@ -76,7 +106,15 @@ public class ProtoPacketCodec(
             public_key = (publicKey ?: ByteArray(0)).toByteString(),
         )
         val plaintext = Data.ADAPTER.encode(
-            Data(portnum = PortNum.NODEINFO_APP, payload = User.ADAPTER.encode(user).toByteString())
+            Data(
+                portnum = PortNum.NODEINFO_APP,
+                payload = User.ADAPTER.encode(user).toByteString(),
+                // NodeInfoModule replies with its own NodeInfo when this is set, which is how a
+                // node that has just joined learns its neighbours without waiting out their
+                // broadcast interval.
+                want_response = wantResponse,
+                bitfield = bitfield,
+            )
         )
         // Never PKI-encrypted, even when addressed: peers have to read this to learn the very key
         // PKI would need. The firmware routes NODEINFO_APP through channel encryption for exactly
@@ -147,7 +185,12 @@ public class ProtoPacketCodec(
                 from = from.toInt(),
                 to = to.toInt(),
                 id = id.toInt(),
-                channel = channel.hash,
+                // A PKI packet MUST carry channel 0, and this is not a convention we could choose
+                // differently: `Router::perhapsDecode` gates its whole PKI branch on
+                // `p->channel == 0`. Stamp the channel hash here and real firmware never even
+                // attempts X25519 - it decrypts with the channel key, gets noise, and drops the
+                // packet as "bad psk". The DM is not rejected, it is unreadable.
+                channel = if (pki != null) PKI_CHANNEL else channel.hash,
                 hop_limit = hopLimit,
                 hop_start = hopLimit,
                 want_ack = wantAck,
@@ -201,6 +244,9 @@ public class ProtoPacketCodec(
         runCatching { MeshPacket.ADAPTER.decode(bytes) }.getOrNull()
 
     private companion object {
+        /** `MESHTASTIC_PKC_CHANNEL_INDEX`: what a PKI packet must put in `MeshPacket.channel`. */
+        const val PKI_CHANNEL = 0
+
         const val MASK32 = 0xFFFFFFFFL
         const val BROADCAST = 0xFFFFFFFFL
 

@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import org.meshtastic.node.transport.InboundFrame
 import org.meshtastic.node.transport.MeshTransport
 import java.net.DatagramPacket
+import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.MulticastSocket
@@ -79,12 +80,33 @@ public class UdpMulticastTransport(
         }
     }.flowOn(dispatcher)
 
+    /**
+     * The interface to transmit on.
+     *
+     * Receiving works with the OS's own choice, but transmitting does not: a `MulticastSocket` with
+     * no interface set does not necessarily leave by the route that reaches the group, and on macOS
+     * it demonstrably does not - the loopback copy still appears with the right source address, so
+     * a local capture shows packets going out that no other host on the segment ever sees. That
+     * failure looks exactly like a radio ignoring valid packets.
+     *
+     * Connecting an unconnected datagram socket sends nothing; it just runs the route lookup and
+     * fixes the source address, which is precisely the interface the kernel would have used.
+     */
+    private val sendInterface: NetworkInterface? by lazy {
+        networkInterface ?: runCatching {
+            DatagramSocket().use { probe ->
+                probe.connect(InetAddress.getByName(group), port)
+                NetworkInterface.getByInetAddress(probe.localAddress)
+            }
+        }.getOrNull()
+    }
+
     override suspend fun send(encodedPacket: ByteArray): Boolean = withContext(dispatcher) {
         runCatching {
             // A separate short-lived socket rather than the receiving one: send is independent of
             // whether anything is collecting, and sharing would tie the two lifetimes together.
             MulticastSocket().use { socket ->
-                networkInterface?.let { socket.networkInterface = it }
+                sendInterface?.let { socket.networkInterface = it }
                 socket.send(
                     DatagramPacket(encodedPacket, encodedPacket.size, InetAddress.getByName(group), port)
                 )

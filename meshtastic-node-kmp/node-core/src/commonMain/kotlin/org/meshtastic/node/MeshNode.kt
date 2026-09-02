@@ -214,10 +214,17 @@ public class MeshNode(
      * Not optional in practice: a peer cannot send this node a direct message until it has our
      * X25519 public key, and this is the only way it travels. Call it on join and periodically -
      * radios re-announce roughly every few minutes.
+     *
+     * [wantResponse] asks every hearer to answer with its own NodeInfo. Worth setting once on
+     * join, so the directory fills immediately rather than over the next several minutes; not
+     * worth setting repeatedly, because each one costs a reply from every node in earshot.
      */
-    public suspend fun announce(channel: MeshChannel = config.channels.first()): Boolean {
+    public suspend fun announce(
+        channel: MeshChannel = config.channels.first(),
+        wantResponse: Boolean = false,
+    ): Boolean {
         val publicKey = config.publicKey
-        val encoded = codec.encodeNodeInfo(identity, publicKey, channel, nextId(), relayPolicy.hopLimit)
+        val encoded = codec.encodeNodeInfo(identity, publicKey, channel, nextId(), relayPolicy.hopLimit, wantResponse)
             ?: return false
         return config.transports.filter { it.canTransmit }.any { it.send(encoded) }
     }

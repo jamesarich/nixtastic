@@ -51,6 +51,7 @@ public interface PacketCodec {
         channel: MeshChannel,
         id: Long,
         hopLimit: Int,
+        wantResponse: Boolean = false,
     ): ByteArray?
 }
 
