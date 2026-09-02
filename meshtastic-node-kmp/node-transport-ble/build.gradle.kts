@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
+    alias(libs.plugins.androidKmpLibrary)
 }
 
 // Hardware tests report what they saw on the air, and a println that Gradle swallows is worse
@@ -11,6 +12,17 @@ kotlin {
     explicitApi()
 
     jvm()
+    android {
+        namespace = "org.meshtastic.node.transport.ble"
+        // 37, not 36: org.meshtastic:protobufs-android is built against it and
+        // AAR metadata refuses a consumer compiled against less.
+        compileSdk = 37
+        // Runs the common suites on Android too, so the shared code is verified against Android's
+        // own runtime rather than assumed to behave like the JVM's.
+        withHostTest {}
+        // startAdvertisingSet, the only API that puts more than 31 bytes on the air, is API 26.
+        minSdk = 26
+    }
     iosArm64()
     iosX64()
     iosSimulatorArm64()

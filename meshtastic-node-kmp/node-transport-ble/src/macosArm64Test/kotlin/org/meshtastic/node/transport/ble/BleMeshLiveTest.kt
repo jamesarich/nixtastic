@@ -32,6 +32,10 @@ import kotlin.time.Duration.Companion.seconds
  *     MESH_INTEROP_CHANNEL_URL='https://meshtastic.org/e/#...' \
  *         gradle :node-transport-ble:macosArm64Test
  *
+ * Timing-dependent by nature: it needs a radio to actually send something on our channel while it
+ * runs. A run that fails after the first test passed usually means the mesh went quiet, not that
+ * anything regressed - rerun before investigating.
+ *
  * On ESP32 this cannot be proven at the same time as UDP. `main-esp32.cpp` initialises NimBLE only
  * when `bluetooth.enabled && !network.wifi_enabled`, and the mesh handler waits on
  * `nimbleBluetooth->isActive()` before touching GAP - so with WiFi up the BLE mesh arms and never

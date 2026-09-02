@@ -1,4 +1,14 @@
+pluginManagement {
+    repositories {
+        // AGP is published to Google's maven, not the plugin portal.
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
 rootProject.name = "meshtastic-node-kmp"
+
 
 dependencyResolutionManagement {
     repositories {

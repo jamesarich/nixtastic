@@ -18,8 +18,7 @@ whose audience today never touches one.
 | --- | --- | --- |
 | `node-core` | Identity, channels, AES-CTR, PKI, acks, dedup, relay policy, the node itself. No I/O. | works |
 | `node-transport-udp` | Multicast `239.0.0.69:4403` | works, verified against a radio |
-| `node-transport-ble` | Scanning for mesh advertisements (Kable) | receive only |
-| `node-transport-ble-adv` | Transmitting extended advertisements (Android, Linux) | planned |
+| `node-transport-ble` | Connectionless BLE advertisements, our own CoreBluetooth and Android implementations | receive everywhere; transmit on Android |
 | `node-android` | Foreground service, permissions, Doze | planned |
 
 **`node-core` depends only on `org.meshtastic:protobufs`, never on
@@ -89,7 +88,7 @@ see each file's header for the invocation.
 | --- | --- | --- |
 | **UDP** in and out | `FirmwareInteropTest` | Decrypts live traffic; appears in the radio's NodeDB; sends a PKI direct message and gets the radio's `ROUTING_APP` ack. |
 | **BLE** in | `BleMeshLiveTest` | Scans BLE 5 extended advertisements through Kable and decrypts one — a position report that had arrived at the radio over LoRa. |
-| **BLE** out | — | Not possible here. See `canTransmit` below. |
+| **BLE** out | — | Implemented for Android (`startAdvertisingSet`, non-legacy) but **compile-verified only** — it has never met a radio. Impossible on Apple, see below. |
 | **LoRa** in | `FirmwareInteropTest` | The traffic decrypted over UDP and BLE *originated* on LoRa; a bridging radio republished it. |
 | **LoRa** out | `FirmwareInteropTest`, opt-in | Our packet was relayed onto the air and came back 29 times, rebroadcast by **nine distinct radios** at −112..−52 dBm. |
 
@@ -139,13 +138,18 @@ lookup itself.
 ## Not yet here
 
 - **Flood / next-hop routing**, without which the node must not relay.
-- **Transmitting on BLE.** `node-transport-ble` scans; it declares
-  `canTransmit = false` because Kable is central-role only and CoreBluetooth
-  cannot advertise arbitrary payload at all. Android and Linux can, and that is
-  a separate module.
-- **Android.** No `androidTarget()` yet, and the UDP transport needs a
-  `WifiManager.MulticastLock` there — without one the socket silently receives
-  nothing.
+- **A verified BLE transmit.** The Android implementation exists and compiles,
+  but no Android device has run it. `canTransmit` is the platform's answer, and
+  on Apple it is permanently false: `CBPeripheralManager.startAdvertising`
+  accepts only `CBAdvertisementDataLocalNameKey` and
+  `CBAdvertisementDataServiceUUIDsKey`, so a `MeshPacket` is not expressible as
+  an Apple advertisement at all. No library can lift that.
+- **Linux BLE.** BlueZ over D-Bus would give the JVM both directions —
+  `org.bluez.Adapter1.StartDiscovery` to receive, a registered
+  `org.bluez.LEAdvertisement1` to transmit. The JVM radio today hears nothing
+  and says so.
+- **The UDP transport on Android**, which needs a `WifiManager.MulticastLock` —
+  without one the socket silently receives nothing.
 
 ## Building
 
