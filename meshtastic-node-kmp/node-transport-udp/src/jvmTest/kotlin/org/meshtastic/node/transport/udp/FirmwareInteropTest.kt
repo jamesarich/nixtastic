@@ -1,5 +1,6 @@
 package org.meshtastic.node.transport.udp
 
+import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -78,7 +79,7 @@ class FirmwareInteropTest {
     private val peerPublicKey: ByteArray? = System.getenv("MESH_INTEROP_PEER_KEY")
         ?.let { Base64.Default.decode(it) }
 
-    private inner class Fixture(url: String) {
+    private inner class Fixture(url: String, policy: RelayPolicy = RelayPolicy.Island) {
         val provisionedKey = peerPublicKey
         val channels = ChannelSetUrl.decode(url) ?: fail("MESH_INTEROP_CHANNEL_URL did not decode")
         val scope = CoroutineScope(SupervisorJob())
@@ -87,7 +88,7 @@ class FirmwareInteropTest {
             this.channels += this@Fixture.channels
             transports += UdpMulticastTransport()
             codec = ProtoPacketCodec()
-            relayPolicy = RelayPolicy.Island
+            relayPolicy = policy
             privateKey = OUR_KEYS.privateKey
             publicKey = OUR_KEYS.publicKey
             peerPublicKey = { provisionedKey }
@@ -95,11 +96,14 @@ class FirmwareInteropTest {
         }
     }
 
-    private fun withRadio(block: suspend (Fixture) -> Unit) = runBlocking {
+    private fun withRadio(
+        policy: RelayPolicy = RelayPolicy.Island,
+        block: suspend (Fixture) -> Unit,
+    ) = runBlocking {
         val url = channelUrl ?: return@runBlocking Unit.also {
             println("FirmwareInteropTest skipped: set MESH_INTEROP_CHANNEL_URL to run it against a radio")
         }
-        val fixture = Fixture(url)
+        val fixture = Fixture(url, policy)
         try {
             block(fixture)
         } finally {
@@ -166,5 +170,41 @@ class FirmwareInteropTest {
                 "${(peerPublicKey ?: f.node.directory.publicKeyOf(peer))?.size ?: 0} bytes.",
         )
         println("interop: round trip acknowledged by !${peer.toString(16)}")
+    }
+
+    /**
+     * Reach the LoRa mesh through a bridging radio.
+     *
+     * The node has no LoRa transport and cannot have one - there is no LoRa radio on a laptop. What
+     * is provable is that its packets *reach* LoRa: a UDP-connected radio relays them onto the air
+     * like any other traffic it hears.
+     *
+     * This is the one test that widens [RelayPolicy], and doing so is the entire point. Island mode
+     * stamps `hop_limit = 0`, and `NextHopRouter::perhapsRebroadcast` relays only above zero - so
+     * an island node is kept off LoRa by shipped firmware rather than by our own restraint. Opting
+     * out of that protection is a deliberate act, which is why it is opt-in here too.
+     *
+     * Verified by observation on a second physical radio: `from` is a plaintext MeshPacket field,
+     * so a receiver logs `Lora RX (id=... fr=...)` without holding any key. Set
+     * `MESH_INTEROP_LORA_EGRESS=1` to arm it.
+     */
+    @Test
+    fun `a packet this node sends is relayed onto LoRa`() = withRadio(RelayPolicy.Meshed(2)) { f ->
+        if (System.getenv("MESH_INTEROP_LORA_EGRESS") == null) {
+            println("LoRa egress skipped: set MESH_INTEROP_LORA_EGRESS=1 to put a packet on the air")
+            return@withRadio
+        }
+
+        // Two hops, not seven: the bridging radio relays once and its neighbours decrement to zero
+        // and stop. The smallest footprint that still crosses a LoRa link.
+        f.node.relayPolicy.hopLimit shouldBe 2
+
+        // A minute of it. The bridging radio may be mid-reboot or still rejoining WiFi when this
+        // starts, and a one-shot send that lands in that window proves nothing either way.
+        repeat(20) {
+            f.node.announce()
+            delay(3.seconds)
+        }
+        println("interop: sent as !${f.node.identity.nodeNum.toString(16)} - check a second radio for 'Lora RX ... fr='")
     }
 }
