@@ -265,7 +265,7 @@ cd design && cd tokens && npm ci && npm run build
 
 | Shell | Repos |
 | --- | --- |
-| `.#kotlin` | `meshtastic-sdk`, `MQTTastic-Client-KMP`, `kzstd`, `TAKPacket-SDK`, `gradle-flatpak-sources` |
+| `.#kotlin` | `meshtastic-sdk`, `MQTTastic-Client-KMP`, `kzstd`, `TAKPacket-SDK`, `gradle-flatpak-sources`, `meshtastic-node-kmp` |
 | `.#android` | `android` |
 | `.#firmware` | `firmware` — on any FHS host, i.e. every mainstream distro and macOS |
 | `.#firmware-fhs` | `firmware` — on NixOS and other non-FHS hosts |

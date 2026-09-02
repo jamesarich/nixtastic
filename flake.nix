@@ -91,6 +91,13 @@
           shell = "kotlin";
           repo = "meshtastic/gradle-flatpak-sources";
         };
+        # A client-side *node*: holds its own identity and keys and does its own
+        # crypto, rather than being handed decoded packets by a radio. Private
+        # while the on-air BLE format is still unsettled.
+        meshtastic-node-kmp = {
+          shell = "kotlin";
+          repo = "meshtastic/meshtastic-node-kmp";
+        };
         meshtastic-mcp = {
           shell = "python";
           repo = "meshtastic/meshtastic-mcp";

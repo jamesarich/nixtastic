@@ -70,10 +70,6 @@
 #   logs/         adb, build and replay logs
 #   meshcon/      conference capture db + screenshots
 
-# meshtastic-node-kmp: the Kotlin client-node library (was meshnode-spike).
-# Source only — Gradle build dirs and wrapper caches stay out.
-!/meshtastic-node-kmp/
-!/meshtastic-node-kmp/**
-/meshtastic-node-kmp/build/
-/meshtastic-node-kmp/*/build/
-/meshtastic-node-kmp/.gradle/
+# meshtastic-node-kmp is its own repo now (meshtastic/meshtastic-node-kmp),
+# so it falls under the deny-all above like every other checkout here. It was
+# tracked content until 2026-09-02; its history moved with it via subtree split.
