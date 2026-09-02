@@ -6,7 +6,6 @@ cryptography                = "0.6.0"
 kotest                      = "6.2.4"
 bouncyCastle                = "1.83"
 turbine                     = "1.2.1"
-kable                       = "0.44.3"
 meshtastic-protobufs        = "2.8.0"
 
 [libraries]
@@ -20,7 +19,6 @@ kotlinTest                  = { module = "org.jetbrains.kotlin:kotlin-test", ver
 turbine                     = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
 kotestAssertions            = { module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
 meshtasticProtobufs         = { module = "org.meshtastic:protobufs", version.ref = "meshtastic-protobufs" }
-kableCore                   = { module = "com.juul.kable:kable-core", version.ref = "kable" }
 
 [plugins]
 kotlinMultiplatform         = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }

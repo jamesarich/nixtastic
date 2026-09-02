@@ -22,7 +22,6 @@ kotlin {
         commonMain.dependencies {
             api(project(":node-core"))
             api(libs.coroutinesCore)
-            implementation(libs.kableCore)
         }
         commonTest.dependencies {
             implementation(libs.kotlinTest)

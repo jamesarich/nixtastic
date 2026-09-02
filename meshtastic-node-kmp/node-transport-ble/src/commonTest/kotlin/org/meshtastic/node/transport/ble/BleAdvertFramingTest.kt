@@ -1,6 +1,9 @@
 package org.meshtastic.node.transport.ble
 
 import io.kotest.matchers.shouldBe
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.test.runTest
 import org.meshtastic.node.ble.BleMeshAdvert
 import kotlin.test.Test
 import kotlin.test.assertNotNull
@@ -49,9 +52,55 @@ class BleAdvertFramingTest {
     }
 
     @Test
-    fun `the transport reports that it cannot transmit`() {
-        // Kable is central-role only. Apple cannot advertise arbitrary payload at all, so this is
-        // not a gap to fill later on every platform - it is the truth on some of them.
-        BleMeshTransport().canTransmit shouldBe false
+    fun `a transport over a receive-only radio refuses to send`() {
+        // canTransmit is now the platform's answer, so the per-platform assertions live in the
+        // platform test source sets. What is true everywhere is that a transport does not pretend:
+        // over a radio that cannot transmit, send fails rather than silently dropping.
+        val transport = BleMeshTransport(ReceiveOnlyRadio)
+
+        transport.canTransmit shouldBe false
+        runTest { transport.send(ByteArray(32)) shouldBe false }
+    }
+
+    @Test
+    fun `a packet too large for one advertisement is refused rather than truncated`() = runTest {
+        val radio = RecordingRadio()
+        val transport = BleMeshTransport(radio)
+
+        transport.send(ByteArray(BleMeshAdvert.MAX_PACKET_LEN + 1)) shouldBe false
+        radio.advertised.isEmpty() shouldBe true
+
+        // Fragmentation is not something the firmware offers, so the boundary is hard.
+        transport.send(ByteArray(BleMeshAdvert.MAX_PACKET_LEN)) shouldBe true
+        radio.advertised.single().size shouldBe BleMeshAdvert.MAX_PACKET_LEN + 1 // + the version byte
+    }
+
+    @Test
+    fun `a sent packet round-trips through what a scanner would hear`() = runTest {
+        val radio = RecordingRadio()
+        val packet = ByteArray(48) { it.toByte() }
+
+        BleMeshTransport(radio).send(packet) shouldBe true
+
+        // The body we advertise is exactly the body the receive path expects, so the two halves of
+        // this transport cannot drift apart.
+        assertNotNull(BleMeshAdvert.extractPacketFromBody(radio.advertised.single()))
+            .contentEquals(packet) shouldBe true
+    }
+}
+
+private object ReceiveOnlyRadio : BleMeshRadio {
+    override val canTransmit: Boolean = false
+    override fun advertisements(): Flow<BleAdvertisement> = emptyFlow()
+    override suspend fun advertise(body: ByteArray, durationMs: Long): Boolean = false
+}
+
+private class RecordingRadio : BleMeshRadio {
+    val advertised = mutableListOf<ByteArray>()
+    override val canTransmit: Boolean = true
+    override fun advertisements(): Flow<BleAdvertisement> = emptyFlow()
+    override suspend fun advertise(body: ByteArray, durationMs: Long): Boolean {
+        advertised += body
+        return true
     }
 }
