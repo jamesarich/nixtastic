@@ -81,17 +81,27 @@ It decrypts to a `POSITION_APP` message with a 36-byte payload. Nothing in that
 test is synthetic, which is the point: a hand-built fixture would agree with a
 wrong nonce byte order just as readily as a right one.
 
-`FirmwareInteropTest` goes further and runs the whole node against a radio. Given
-a channel URL it joins `239.0.0.69:4403` and, against a stock Heltec V3 on
-2.8.0 with `enabled_protocols` including `UDP_BROADCAST`:
+The hardware tests go further and run the whole node against real radios. All of
+them are skipped unless `MESH_INTEROP_CHANNEL_URL` names the radio's channel;
+see each file's header for the invocation.
 
-- decrypts live traffic, including LoRa packets the radio relays onto UDP;
-- gets itself into the radio's NodeDB as an ordinary node;
-- sends a PKI direct message and receives the radio's `ROUTING_APP`
-  acknowledgement.
+| Path | Test | Proven by |
+| --- | --- | --- |
+| **UDP** in and out | `FirmwareInteropTest` | Decrypts live traffic; appears in the radio's NodeDB; sends a PKI direct message and gets the radio's `ROUTING_APP` ack. |
+| **BLE** in | `BleMeshLiveTest` | Scans BLE 5 extended advertisements through Kable and decrypts one — a position report that had arrived at the radio over LoRa. |
+| **BLE** out | — | Not possible here. See `canTransmit` below. |
+| **LoRa** in | `FirmwareInteropTest` | The traffic decrypted over UDP and BLE *originated* on LoRa; a bridging radio republished it. |
+| **LoRa** out | `FirmwareInteropTest`, opt-in | Our packet was relayed onto the air and came back 29 times, rebroadcast by **nine distinct radios** at −112..−52 dBm. |
 
-It is skipped unless `MESH_INTEROP_CHANNEL_URL` is set, because it needs
-hardware. See the file header for the invocation.
+Two things that matrix is careful about. **LoRa is not a node transport** and
+cannot be — there is no LoRa radio on a laptop. What is proven is that the LoRa
+mesh is reachable in both directions through a bridging radio, which is the
+useful property. And **BLE and UDP cannot be proven at the same time on an
+ESP32**: `main-esp32.cpp` brings up NimBLE only when
+`bluetooth.enabled && !network.wifi_enabled`, and the mesh handler waits on
+`nimbleBluetooth->isActive()` before touching GAP — so with WiFi up the BLE
+mesh arms and never advertises. They were proven in sequence, with a reboot
+between.
 
 ### Three rules a radio enforces that talking to yourself will not reveal
 
@@ -111,6 +121,13 @@ and throw them away. All three are covered by `FirmwareWireRulesTest`.
   "Public Key mismatch, drop NodeInfo". A node that keeps its address but
   regenerates its key is permanently unreachable to every peer that
   remembers it.
+
+One about BLE testing rather than the protocol: a radio advertises only when it
+has a packet to send, so an idle mesh is genuinely silent and a short scan window
+proves nothing. Bound a scan by *time*, never by advertisement count — in a
+populated room a `take(n)` fills from nearby phones and beacons within seconds,
+long before the next mesh frame, and then reports zero as though none existed.
+`BleScanDiagnosticTest` exists to tell those two apart.
 
 And one that is about the host rather than the protocol: a `MulticastSocket`
 with no interface set does not necessarily transmit on the route that reaches
