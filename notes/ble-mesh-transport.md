@@ -90,9 +90,9 @@ mode that does not and cannot exist.
   connectionless advertisements + LoRa. A dual-transport node — Android does
   both media natively — bridges the two via `FrameAdapter`. Every platform is a
   node; iOS reaches the firmware/LoRa mesh *through* a bridge. No firmware change.
-  Open gap: the end-to-end path iOS → GATT → Android-bridge → advertisement →
-  firmware is designed and each hop is proven, but the whole chain is not yet run
-  as one test.
+  The end-to-end path iOS → GATT → Android-bridge → advertisement → firmware is
+  now proven as one run on the bench (2026-09-02, see gate 2 below); what remains
+  open is a sustained soak and the return path (firmware → bridge → iOS).
 
 - **B — Firmware gains a connectable mesh-peer GATT mode (future, gated).** Not
   "add a GATT server" — the firmware already runs a connectable GATT server (the
@@ -144,7 +144,7 @@ decision, not something more client-side work settles.
    transports — GATT peripheral in, connectionless advertisement out, the bridge
    — which re-advertised each whole reassembled frame, and the v3 firmware
    (BLE-mesh mode, wifi off) logged `BLE mesh RX from=0x000a11ce id=0x0badf00d
-   len=85` fifteen times. The `len=85` is the proof it came through the chain: a
+   len=85` 19 times. The `len=85` is the proof it came through the chain: a
    direct Pixel advertisement in the same rig is `len=31` (a hand-built probe),
    and 85 bytes is `GattProbePacket`, which only the iPad sends and only over
    GATT. Nothing advertised directly during the run, so an 85-byte frame at the
