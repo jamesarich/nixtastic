@@ -85,6 +85,16 @@ mode that does not and cannot exist.
 
 ### The options, and why the recommendation is the hybrid
 
+> **Superseded 2026-09-03 — read
+> [`multi-transport-mesh.md`](./multi-transport-mesh.md) for the current plan.**
+> The A/B/C framing below is still accurate as *analysis*, but the strategy has
+> since widened from "BLE bridge" to a holistic **one protocol, many bearers**
+> model (LoRa · UDP · BLE-adv · BLE-GATT · Wi-Fi · MQTT), and option C's flat
+> "rejected" is now nuanced: firmware-to-firmware GATT stays rejected for the
+> reasons below, but **GATT as a first-class client transport plus a firmware
+> mesh-peer GATT *edge*** (a refined option B) is the recommended direction. Four
+> fresh investigations (2026-09-03) back the reframe; the plan doc carries them.
+
 - **A — Hybrid + bridge (shipped, recommended).** Phones mesh over GATT
   (Android, iOS, macOS all full peers, proven). Firmware and long range use
   connectionless advertisements + LoRa. A dual-transport node — Android does
