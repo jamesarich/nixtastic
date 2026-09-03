@@ -164,6 +164,68 @@ decision, not something more client-side work settles.
 5. **The SIG test company ID (`0xFFFF`) is still the framing** on the
    advertisement side, unresolved on both firmware and client.
 
+### Prior art, and the ideas worth stealing
+
+Surveyed 2026-09-03. The headline: **nobody has an iOS-transmit trick we are
+missing.** Every cross-platform app that includes iOS transmits over
+connection-oriented GATT, exactly as we do — there is no advertisement-based path
+for an iOS sender, and the survey only confirmed it. The fresh ideas are all on
+the *efficiency and reach* side, and three are worth taking.
+
+- **The Bluetooth SIG Mesh "GATT Proxy" role is the standardized name for our
+  bridge.** SIG mesh defines two bearers — an advertising bearer and a GATT
+  bearer — where the GATT bearer exists so "a device lacking mesh support can
+  indirectly communicate with the mesh." A *proxy node* relays GATT-connected
+  clients into the advertising mesh. That is precisely the bridge proven above:
+  iOS cannot do the advertising bearer, so it connects over GATT to a proxy
+  (our Android node) that relays it in. We reinvented it from first principles;
+  worth citing so the design reads as a known pattern, not an improvisation. SIG
+  mesh's *directed forwarding* is also a relay strategy to compare against our
+  managed flood if the mesh ever gets large.
+- **[Knit](https://github.com/getknit/knit) is our architecture already shipping,
+  and has three ideas to take.** It runs Wi-Fi Aware (NAN) and BLE at once behind
+  one `CompositeMeshTransport` seam — the same multi-transport node as our
+  `MeshTransport` + `FrameAdapter` — with jittered, overhear-suppressed flooding,
+  the same shape as our contention window and cancel-on-overhear. Take:
+  1. **Wi-Fi Aware as a fourth transport** (`node-transport-wifi-aware`). Vastly
+     more bandwidth than BLE for Android↔Android, on the existing seam. Android
+     only — iOS does not expose NAN to apps — so it rides the same bridge model,
+     but it is a large throughput win wherever two Android nodes meet.
+  2. **Content-digest anti-entropy sync**, so "an idle mesh does zero data-path
+     work; a new message triggers a targeted sync only with the peers that need
+     it." This is the direct answer to the cost problem this note already flags
+     for GATT (§ *Why connectionless advertising, not GATT*): flooding a
+     connection-oriented medium is N writes per packet. Syncing deltas against a
+     digest instead of flooding could make the phone-GATT mesh far cheaper, and
+     it composes with, rather than replaces, the advertisement flood on the LoRa
+     side.
+  3. **A delay-tolerant store-and-forward layer** that holds messages for peers
+     out of range and re-offers when a path appears. We have none, and BLE links
+     come and go — this is what carries traffic a single flood does not reach.
+  Knit's crypto (X3DH forward secrecy, hardware-backed keys, TOFU + safety
+  numbers) is nicer than Meshtastic's channel-PSK/PKI, but we are pinned to the
+  Meshtastic wire format for firmware interop, so it is aspirational, not
+  adoptable here.
+- **[bitchat](https://github.com/permissionlesstech/bitchat) stays the reference
+  for the GATT half.** Dual-role central+peripheral controlled flood across iOS,
+  macOS and Android, Noise/XX sessions, ~469-byte fragmentation — its whitepaper
+  is the best external read on the fragmentation and flood specifics we
+  implement.
+- **Cautionary, not to copy: Bridgefy.** The commercial BLE-mesh SDK is
+  GATT-based and cross-platform, which confirms the approach, but its crypto and
+  relay were taken apart in academic analysis — a reminder that the connection
+  and framing being right does not make the protocol on top of them safe.
+- **Not a transport, but good client prior art: [pdxlocations](https://github.com/pdxlocations).**
+  `contact` (console client), `meshconfig` (Web Bluetooth/Web Serial config),
+  `firefly`/`connect` (UDP/MQTT sharing) all talk *to* a radio over the existing
+  phone-API GATT or MQTT rather than meshing phone-to-phone. Useful for client
+  protocol and UX, and `meshconfig` is a working proof the Web Bluetooth →
+  radio-GATT path holds across browsers; not a source for the mesh transport.
+
+Net for our roadmap: the GATT proxy framing is free and clarifying; Wi-Fi Aware,
+anti-entropy sync and store-and-forward are the three concrete features to weigh
+once the bridge itself is production (currently an explicit loop, see gate 2).
+
 ---
 
 ## The structural finding
