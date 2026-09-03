@@ -121,10 +121,11 @@ mode that does not and cannot exist.
   (`FloodingRouter.cpp:133`). Plus the one-connection cap above. It does not
   scale and defeats the reason firmware broadcasts.
 
-**Recommendation.** Ship A. The protocol is already unified and the bridge seam
-already exists; the remaining work is proving the full iOS→bridge→firmware chain
-end-to-end and picking the bridge role deliberately (any Android node, or a
-dedicated one). Treat B as a genuine enhancement for direct iOS↔radio, but only
+**Recommendation.** Ship A. The protocol is already unified, the bridge seam
+already exists, and **the full iOS→bridge→firmware chain is now proven on the
+bench** (2026-09-02, see below) — the remaining work is picking the bridge role
+deliberately (any Android node, or a dedicated one) and a soak. Treat B as a
+genuine enhancement for direct iOS↔radio, but only
 worth taking to the firmware once the single-connection limit and the ext-adv
 collision are addressed there — and even then it serves one phone per radio, so
 it complements the bridge rather than replacing it. This is an org/firmware
@@ -138,9 +139,21 @@ decision, not something more client-side work settles.
    listen to the firmware mesh directly, the firmware frames must become
    connectable and carry a service UUID — which collides with the advertisement
    budget above.
-2. **The bridge chain is unproven end-to-end.** Each hop works; the composition
-   (iOS GATT → Android dual-transport → ext-adv → firmware `BLE mesh RX`) has not
-   been run as one path.
+2. **The bridge chain is proven end-to-end** (2026-09-02, no Mac in the path).
+   iPad (GATT central) wrote `GattProbePacket` to a Pixel 6a running both
+   transports — GATT peripheral in, connectionless advertisement out, the bridge
+   — which re-advertised each whole reassembled frame, and the v3 firmware
+   (BLE-mesh mode, wifi off) logged `BLE mesh RX from=0x000a11ce id=0x0badf00d
+   len=85` fifteen times. The `len=85` is the proof it came through the chain: a
+   direct Pixel advertisement in the same rig is `len=31` (a hand-built probe),
+   and 85 bytes is `GattProbePacket`, which only the iPad sends and only over
+   GATT. Nothing advertised directly during the run, so an 85-byte frame at the
+   radio can only have arrived iPad-GATT → Pixel-reassemble → Pixel-advertise →
+   firmware. Harness: `node-transport-ble`'s `BridgeChainTest` (the Pixel
+   bridge), `tools/gatt-probe-ios` (the iPad central), and a pyserial capture of
+   the v3 console. What is still unproven is a sustained soak and a return path
+   (firmware → bridge → iOS), and the bridge here is an explicit `collect →
+   advertise` loop standing in for `MeshNode.broadcast`'s fan-out.
 3. **ESP32 mesh RX stability.** The spike documents `BLE_MESH_TX_ONLY` as an
    isolation switch for an ESP32 receive-path fault; treat esp32 mesh receive as
    not-yet-proven-stable.
