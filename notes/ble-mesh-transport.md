@@ -19,9 +19,19 @@ client app participating as a node with no radio attached.
 > - **The node is a full node:** PKI direct messages (X25519 → AES-256-CCM,
 >   acked by a bench radio) and a proper relay (contention window, cancel on
 >   overhear, `next_hop`) are built and verified on the air.
-> - Still genuinely open: the on-air framing still uses the SIG test company ID,
->   and the iOS GATT connection goes quiet after its first moments (a lifetime
->   bug, not a write-path one).
+> - **iOS GATT survives a reconnect** now (2026-09-02). The "goes quiet" was a
+>   dead reconnect path — the central reconnected a stale cached peripheral —
+>   fixed by forgetting the peer on disconnect and rescanning, verified by
+>   relaunching an iPad app instance under a connected Mac central and watching
+>   the iPad receive again. The shared peer lifecycle now lives in commonMain
+>   (`GattPeerTable` + `GattLinkBase`) so the two platform links cannot drift.
+> - **Android ↔ iOS GATT is proven directly, no Mac in the path** (Pixel 6a ↔
+>   iPad, both directions).
+> - Still genuinely open: the on-air framing still uses the SIG test company ID;
+>   a multi-minute iOS soak and the app backgrounded are unproven; and the
+>   cross-platform interoperability question is answered in the next section —
+>   the short version is that no single BLE medium spans every platform, and the
+>   unification is at the frame layer, not the radio.
 
 Short version: **it works.** Two boards of different families exchange mesh
 frames over BLE 5 extended advertisements, a Kotlin library decodes and decrypts
@@ -31,6 +41,115 @@ lives on `spike/ble-mesh-transport`; the client is the standalone repo
 
 Firmware spike branch: `firmware` → `spike/ble-mesh-transport`
 (worktree `firmware/.claude/worktrees/spike-ble-mesh-transport`).
+
+---
+
+## Complete cross-platform interoperability — the honest ceiling
+
+The recurring ask is one BLE meshing approach that Android, iOS, macOS and the
+esp32/nRF52 firmware nodes can all use together. The honest answer, grounded in
+each platform's BLE stack:
+
+**There is no single BLE medium every platform can transmit on. That is a
+platform constraint, not a gap in this design.** BLE offers two meshing shapes
+and each platform can only do a subset:
+
+| Platform | Connectionless ext-adv (the firmware mesh) | Connection-oriented GATT dual-role (the phone mesh) |
+| --- | --- | --- |
+| esp32-C3/S3, nRF52840 firmware | TX + RX — this is what the spike does | not a mesh peer (see below) |
+| Android | TX + RX (`startAdvertisingSet`, legacy off) | TX + RX (central *and* peripheral) |
+| iOS / macOS | **neither, in practice** | TX + RX — proven, both directions |
+| JVM/Linux | neither today (BlueZ would give both) | neither today |
+
+The iOS row is the crux. `CBPeripheralManager.startAdvertising` accepts only a
+local name and service UUIDs, so an iPhone **cannot put a `MeshPacket` on the air
+as an advertisement at all** — no amount of library work lifts it. The only
+connectionless iOS-to-iOS channel is the ~16-byte "overflow area" of hashed
+service UUIDs, which no other platform can decode. And iOS **receive** of the
+firmware mesh is no better than TX in the field: the spike's frames are
+*non-connectable manufacturer-data* extended advertisements, and a backgrounded
+iPhone suppresses non-connectable advertisements entirely and only surfaces
+connectable ones that match a service-UUID filter. So iOS cannot join the
+connectionless mesh even as a listener once the screen is off. Its only real BLE
+mesh participation is GATT.
+
+**So the unification lives at the frame layer, not the radio layer.** One
+protocol — the encrypted `MeshPacket` and our framing — carried over two media,
+with lossless bridging between them. That bridge already exists: `FrameAdapter`
+is a per-medium `toCanonical`/`fromCanonical` seam, so a node carrying both
+transports re-frames a packet from one medium onto the other without loss. Every
+platform is a full node in the *protocol*; the *medium* each uses is dictated by
+its BLE stack; the media meet at any dual-transport node. Read "a solution we all
+can use" as **already-mostly-built at the frame layer**, not as a single radio
+mode that does not and cannot exist.
+
+### The options, and why the recommendation is the hybrid
+
+- **A — Hybrid + bridge (shipped, recommended).** Phones mesh over GATT
+  (Android, iOS, macOS all full peers, proven). Firmware and long range use
+  connectionless advertisements + LoRa. A dual-transport node — Android does
+  both media natively — bridges the two via `FrameAdapter`. Every platform is a
+  node; iOS reaches the firmware/LoRa mesh *through* a bridge. No firmware change.
+  Open gap: the end-to-end path iOS → GATT → Android-bridge → advertisement →
+  firmware is designed and each hop is proven, but the whole chain is not yet run
+  as one test.
+
+- **B — Firmware gains a connectable mesh-peer GATT mode (future, gated).** Not
+  "add a GATT server" — the firmware already runs a connectable GATT server (the
+  PhoneAPI, service `6ba1b218-…`), and iOS already exchanges `MeshPacket`s with a
+  radio over it. But that path is a *star*: one phone as the radio's owner
+  (ToRadio/FromRadio), not a neighbour in the mesh. Turning it into a mesh-peer
+  mode — the radio relays for a connected phone instead of serving it — is the
+  only thing that would let iOS reach a radio *directly* over BLE. It is gated on
+  two hard firmware ceilings, so it is not a near-term answer:
+  - **One concurrent connection.** Both stacks are built for a single peripheral
+    link (ESP32 `CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1`; nRF52 Bluefruit default
+    `(1,0)`). A phone on a mesh service excludes the control-app phone, and a
+    radio could serve exactly one mesh phone at a time.
+  - **No advertisement space, and a host-global ext-adv collision.** The
+    connectable advert is already full with one 128-bit UUID (the device name is
+    displaced to the scan response), so a second mesh UUID does not fit without
+    extended advertising — and enabling ext-adv on NimBLE is host-global, which
+    drags the whole phone-facing stack onto the extended API (documented at
+    `NimbleBluetooth.cpp:850-861`). iOS background discovery needs that service
+    UUID, so this is a real blocker, not cosmetic.
+
+- **C — Everyone on GATT, firmware included (rejected).** Firmware-to-firmware
+  GATT meshing throws away the two properties the advertisement mesh exists for:
+  the one-to-many shape (one TX reaches every neighbour, versus N connection
+  writes) and the overhear that makes flood suppression *possible*
+  (`FloodingRouter.cpp:133`). Plus the one-connection cap above. It does not
+  scale and defeats the reason firmware broadcasts.
+
+**Recommendation.** Ship A. The protocol is already unified and the bridge seam
+already exists; the remaining work is proving the full iOS→bridge→firmware chain
+end-to-end and picking the bridge role deliberately (any Android node, or a
+dedicated one). Treat B as a genuine enhancement for direct iOS↔radio, but only
+worth taking to the firmware once the single-connection limit and the ext-adv
+collision are addressed there — and even then it serves one phone per radio, so
+it complements the bridge rather than replacing it. This is an org/firmware
+decision, not something more client-side work settles.
+
+### Concrete gates before any of this is called "done"
+
+1. **iOS advertisement RX is foreground-only and macOS-class.** The earlier
+   receive proof was a *Mac* decrypting a firmware advert; a backgrounded iPhone
+   will not see non-connectable manufacturer-data frames. If iOS is ever meant to
+   listen to the firmware mesh directly, the firmware frames must become
+   connectable and carry a service UUID — which collides with the advertisement
+   budget above.
+2. **The bridge chain is unproven end-to-end.** Each hop works; the composition
+   (iOS GATT → Android dual-transport → ext-adv → firmware `BLE mesh RX`) has not
+   been run as one path.
+3. **ESP32 mesh RX stability.** The spike documents `BLE_MESH_TX_ONLY` as an
+   isolation switch for an ESP32 receive-path fault; treat esp32 mesh receive as
+   not-yet-proven-stable.
+4. **RX reach by chip.** nRF52 mesh *receive* is gated behind a central link that
+   only the rak4631 variant enables (a re-based linker script); other nRF52
+   boards are advertise-only. Classic ESP32 (BLE 4.2) cannot carry a mesh frame
+   at all — ext-adv is C3/S3/nRF52840-class only.
+5. **The SIG test company ID (`0xFFFF`) is still the framing** on the
+   advertisement side, unresolved on both firmware and client.
 
 ---
 
