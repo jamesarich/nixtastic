@@ -436,5 +436,13 @@ expect 'firmware-native-tests-need-docker ~ firmware-native-tests-on-macos|firmw
 [ -f "$store/memory/firmware-native-tests-on-macos.md" ] && [ -f "$store/memory/firmware-native-tests-need-docker.md" ] \
   || { echo "T19: an overlap pair was merged or dropped"; exit 1; }
 
+echo "--- T20: a new worktree is linked to the store before its first session"
+run "$worktree" kzstd feat/mem
+expect 'memory +linked'
+wt="$root/kzstd/.claude/worktrees/feat-mem"
+[ "$(readlink "$projects/$(slug "$wt")/memory")" = "$store/memory" ] \
+  || { echo "T20: worktree slug not linked at creation"; exit 1; }
+run "$worktree" --remove kzstd feat-mem
+
 echo "all tests passed"
 touch "$out"

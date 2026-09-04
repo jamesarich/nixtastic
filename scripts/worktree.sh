@@ -152,9 +152,23 @@ elif write_mcp_json "$wt" "$root"; then
   mcp="written (approve once via /mcp)"
 fi
 
+# Its own cwd is its own Claude Code project, so without this the first
+# session here starts with no memory and every later one keeps its own
+# blind store — the android/=2-memories hole, once per branch. The
+# projects/ dir does not exist until a session writes it, hence mkdir in
+# memory_link. Design: notes/agent-memory-sync.md.
+mem=""
+if [ -d "$(memory_store)/.git" ]; then
+  s=$(slug_of "$wt") && mem=$(memory_link "$(claude_projects_dir)/$s" "$(memory_store)/memory")
+fi
+
 echo "  created  $wt"
 echo "  envrc    ${envrc_file#"$wt"/}"
 [ -n "$mcp" ] && echo "  mcp      .mcp.json $mcp"
+case "$mem" in
+  linked) echo "  memory   linked -> $(memory_store)/memory" ;;
+  warn*)  echo "  memory   WARN ${mem#*$'\t'}" ;;
+esac
 echo "  branch   $branch"
 echo "  shell    .#$shell"
 echo ""
