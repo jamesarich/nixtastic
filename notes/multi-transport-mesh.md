@@ -435,3 +435,33 @@ The original prompt was "drop the advertisement transport." The nuanced answer:
 
 Full research with citations: `scratchpad/ble-gatt-mesh-findings.md` (session
 2026-09-03).
+
+## LoRa transport spike (parallel, `meshtastic-node-kmp` `feat/lora-transport`)
+
+Kicked off 2026-09-03 as a background workflow: a `node-transport-lora` KMP
+module (CH341A USB-SPI bridge → SX1262, Android + JVM), one protocol shared with
+every bearer. **State: module written, compiles, 62/66 JVM unit tests pass —
+UNCOMMITTED in the worktree** (`node-transport-lora/` + a `settings.gradle.kts`
+include; backup at the session scratchpad `lora-module-backup.tgz`). The workflow
+was interrupted (usage limit) before its own verify/fix loop closed, so it never
+committed. 29 files: commonMain (framing, airtime, channel-plan, modem-preset,
+region, transport, CH341 protocol, SX1262 driver, SPI/USB seam), androidMain
+(USB-host backend), jvmMain stub, 8 test files.
+
+**4 failing JVM tests to resolve before it's green (do NOT commit until then):**
+1. + 2. `Sx1262DriverTest` (both, same assertion) — `SetDioIrqParams` (op 0x08)
+   DIO1 mask: driver emits `0x0201` (TX_DONE+TIMEOUT), test vector expects
+   `0x0001`. **Impl matches RadioLib `startTransmit` (global+DIO1 = TX_DONE|TIMEOUT)
+   and the test's own name — the test vector is wrong.** One shared setup helper,
+   so one fix clears both. Verify against firmware RadioLib before editing.
+3. `LoraAirtimeTest` "10 percent duty cycle" — the duty gate is correct/inclusive;
+   the test trips the *separate* channel-util gate (a synthetic 359 s airtime =
+   598% of the 60 s window). **Test-design issue, not a boundary bug** — intent
+   call needed (realistic input, or isolate the duty gate).
+4. `Ch341BridgeTest` "readAll" — throws `UsbIoException: empty status reply`; not
+   yet root-caused (fake status-reply setup vs the bridge read loop).
+
+Resume: fix the four (a fresh workflow verify/fix pass, or by hand), re-run
+`direnv exec <wt> ~/.claude/bin/gradle-queue -- :node-transport-lora:jvmTest`,
+then `:monitor-android:assembleDebug`, and commit sentence-style on the branch.
+Hardware (Pixel 6a + Meshtadpole stick) is a later, separate on-device step.
