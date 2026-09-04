@@ -99,18 +99,21 @@ All commits below are **local, not pushed**.
     - The mesh characteristic itself is open (plain WRITE/WRITE_NR/NOTIFY, no
       `_ENC`/`_AUTHEN`, unlike the phone-API's secured chars), so the value path
       is not the blocker; the failure is at connection/encryption establishment.
-    - **Leading hypotheses (for a deliberate session, not 5am remote poking):**
-      (a) a stale/failed bond on the Pixel for `34:B7:DA:62:18:C5` that adb
-      `cmd bluetooth_manager unpair` could not clear (unsupported) — forget the
-      device in Settings and retry NO_PIN clean; (b) the client lib
-      (`node-transport-ble-gatt` Android) requests bond/encryption on connect or
-      the CCCD subscribe triggers it — it should connect + subscribe on an
-      unencrypted link and tolerate a device that also hosts secured phone-API
-      chars; (c) DUAL-role contention (the app runs a GATT server too) or general
-      connect instability (`status=133`), related to the already-logged
-      DUAL-role-arbitration tuning item. Coexisting an unauthenticated mesh-peer
-      service with a PIN-paired phone-API on one GATT server is the real design
-      question to settle.
+    - **ROOT CAUSE (researched 2026-09-04, see
+      [`ble-gatt-pairing-research.md`](./ble-gatt-pairing-research.md)): most
+      likely a stale bond on the Pixel, NOT our firmware.** Our mesh characteristic
+      + CCCD are correctly open (a CCCD inherits ENC only if the characteristic
+      carries an ENC flag — ours does not; confirmed against NimBLE `ble_gatts.c`),
+      and the firmware's ENC_CHANGE handler only logs, never disconnects — so the
+      teardown is Android-side. A phone that ever bonded this node (from the early
+      PIN-mode attempts) auto-encrypts every later connect from its stored LTK; the
+      node has no matching key, encryption fails (status 5), Android drops (status
+      22). This matches the connect→discover→drop loop and why NO_PIN did not help.
+      **Fastest unblock: forget the v3 on the Pixel (Settings → Bluetooth →
+      Forget), then retry.** Client fixes (TRANSPORT_LE, MTU-before-discover,
+      removeBond+refresh, subscribe watchdog) and the `sm_bonding=0`-in-NO_PIN
+      firmware option are ranked in the research note. Template: `bitleproject/bitle`
+      (ESP32/NimBLE bitchat, our exact stack, zero security config).
     - **Repro:** v3 flashed with `3022a3776`, `enabled_protocols=7`, WiFi off;
       Pixel 6a `org.meshtastic.node.monitor` DUAL. Watch v3 console (DTR/RTS off)
       for `BLE GATT mesh RX ... peer=` (never seen) and the app rx counter.
