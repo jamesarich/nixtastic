@@ -133,3 +133,57 @@ measurement: the direction of the first SMP frame** (btsnoop on the phone, or lo
 `removeBond`/`refresh` on the client is still harmless (no-op with no bond) and
 still worth it for the stale-GATT-cache case; `connectGatt(TRANSPORT_LE)` is worth
 it unconditionally for the status=133 instability.
+
+## RESOLVED on the bench (2026-09-04): pairing wall fixed; egress bug found + isolated
+
+Walked the whole thing to ground on the heltec-v3 + a Mac BLE central (bleak).
+
+**1. Pairing wall — root cause + FIX (committed `6c1c7feba`).** The node was the
+one initiating the failed pairing: even in NO_PIN the firmware called
+`setAuthenticationMode(bonding=true,…)`, so it advertised the SMP bonding bit and
+a central "just works"-paired on connect; that pairing failed and the ACL dropped
+before the (open) mesh characteristic could be used. Fix: `setAuthenticationMode(false,false,false)`
+in the NO_PIN branch only (PIN modes untouched). **Verified:** after the fix the
+`"BLE encryption change without encrypted link"` line is gone (0 occurrences) and
+a clean central connects with no pairing.
+
+**2. Stale central-side bonds are a real, separate gotcha.** The Mac refused the
+first connect with CoreBluetooth `Code=14 "Peer removed pairing information"` — a
+*central* holding a bond the node has wiped. On the Mac it cleared itself when the
+node's RPA rotated (next connect succeeded). The Pixel showed the equivalent
+`BOND_BONDING → failure → Remove from storage` loop. Lesson: any central that ever
+bonded this node in a PIN mode must forget it (or the client must `removeBond`).
+
+**3. Connect + subscribe PROVEN (Mac, bleak, no pairing).** A clean central:
+discovers the mesh service, finds the characteristic (`write / write-no-rsp /
+notify`), and `start_notify` (CCCD write) **succeeds**. So the GATT-permission
+design is correct end to end.
+
+**4. Egress bug — ISOLATED (not yet fixed).** With a Mac subscribed and the v3
+originating packets, **0 notifications arrive.** Diagnostics (spike commit
+`55ee523b2`, REVERT later) show exactly why:
+- `onSend` fires for every originated packet (transport registry is correct) —
+  `BLE GATT mesh: onSend queued id=… len=…`.
+- `pumpTx` runs but always `peers=0/0`.
+- **`onSubscribe` / `onWrite` NEVER fire**, and the central's connection logs as a
+  generic `BLE incoming connection` (the phone-API path), never my instance-2
+  `peer conn`. So no peer is ever registered, so `platformPeers()==0`.
+- **Root cause:** the central connects via the **phone-API advertising instance
+  (0)**, not the mesh instance (2). Both instances' GAP callbacks chain to the
+  shared `nimbleServerGapEvent`, so a CCCD subscribe *should* dispatch to the mesh
+  characteristic — but Meshtastic's phone-API notifies its own characteristics
+  blindly and **never depends on `onSubscribe`**, so that server subscribe-dispatch
+  path is effectively unused/unexercised, and the mesh-peer transport is the first
+  code to rely on it. Net: `ESP32BLEGattMesh` registers peers only via
+  `onSubscribe` (and `onWrite`), neither of which fires for these connections.
+
+**FIX DIRECTION (next session):** stop gating peer registration on `onSubscribe`.
+Register a mesh peer on **connect** — hook `NimbleBluetoothServerCallback::onConnect`
+(fires for every connection regardless of advertising instance, the same place
+`onDisconnect` is already chained) — and/or on the first `onWrite`. Then notify all
+connected mesh-service links and let NimBLE drop notifies to any that haven't
+enabled their CCCD (`ble_gatts_notify_custom` is a no-op for an unsubscribed conn).
+Re-check the `viaMeshAdv` / no-echo-to-arrival-peer bookkeeping under that model.
+Then re-run the Mac bleak `gatt_listen.py` (subscribe, then `send_text` from the
+v3) — a notify arriving there is the proof. Bench v3 currently runs
+`2.8.0.6c1c7fe` + the diag probes, config `enabled_protocols=7`, WiFi off, NO_PIN.
