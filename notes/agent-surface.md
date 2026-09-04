@@ -474,9 +474,11 @@ in the non-interactive session, though its SessionStart hook still ran); the
 headers helper printed `{}` because `gh auth token` reads the macOS keychain,
 which is locked for a non-GUI ssh session; consequently whether
 `plugin:nixtastic:github` connects there (`claude mcp list` over ssh showed
-only the user-scope `github` entry connected). Once the plugin server is seen
-connected in a GUI session, `claude mcp remove -s user github` clears the
-doctor warning.
+only the user-scope `github` entry connected). Resolved the same evening in a GUI
+session: after `claude mcp remove -s user github`, `/mcp` listed
+`plugin:nixtastic:github · ✔ connected · 28 tools`, so the keychain-backed
+`headersHelper` works on macOS when a GUI session owns the keychain, and the
+shadowing follow-up below is confirmed as the cause of its earlier absence.
 
 Unverified on both machines: whether a session launched from the Claude
 Desktop app (160 of the laptop's 244 sessions) loads plugin hooks. Check: age
