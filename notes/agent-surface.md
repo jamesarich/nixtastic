@@ -410,5 +410,23 @@ last 2026-08-15), meshtastic-sdk 2/94, meshtastic 0/180. Only `apple` has the
 `speckit-*` skills checked in; the other three carry constitution and
 templates only.
 
-**Acceptance runs.** Appended per machine when the rollout lands; until then
-this section records design-time evidence only.
+**Acceptance runs.**
+
+*james-pc, 2026-09-04.* First `nix run .#sync` after landing: `rendered 6
+forwarder(s)`, `retired .claude/skills`, `register added+installed`, `hooks
+migrated 2 user-scope entr(ies)`, `queue linked`. `doctor`: all five plugin
+lines ok, `agent extras 4 other plugin(s), 0 user skill(s)`, all clear. A fresh
+`claude -p` listed all ten `nixtastic:` skills (six forwarders — five android,
+one apple; the three bundled meshtastic-mcp skills; `meshtastic-cross-repo`).
+Asked, without file access, which skill fits "bump the protobufs pin everywhere
+and land it in firmware, python, android and apple", it answered
+`nixtastic:meshtastic-cross-repo`. `claude mcp list` showed
+`plugin:nixtastic:github … ✔ Connected` with the `headersHelper` form, so the
+`${GITHUB_MCP_TOKEN}` fallback was not needed; the helper prints
+`{"Authorization":"Bearer gho_…"}` and no file carries the token. The plugin's
+SessionStart hook was proven live, not assumed: with the store's `FETCH_HEAD`
+aged ten minutes, one fresh `claude -p` advanced it. Both migrated hook entries
+are in `settings.json.nixtastic-bak-plugin`; herdr and paseo entries are
+untouched. The cross-repo dry run against the bootloader-quirks feature was
+not executed at rollout (a nested fifteen-minute session was declined); it
+runs on the first real cross-repo change and gets recorded here then.
