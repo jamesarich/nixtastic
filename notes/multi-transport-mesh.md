@@ -80,44 +80,35 @@ All commits below are **local, not pushed**.
     `BLE GATT mesh: mesh-peer service registered`,
     `advertising the mesh-peer service on instance 2`, full node operation, zero
     OOM / `Memory Capacity Exceeded` / crash at the 2-connection config.
-  - **NOT yet proven — bench debugging 2026-09-04 found a BLE-pairing wall.**
-    With the Pixel unlocked and the `node-kmp monitor` app foregrounded (DUAL),
-    the app **connects to the v3 and completes GATT service discovery repeatedly**
-    (`BLE GATT mesh: peer conn 3 connected`; app-side `onSearchComplete status 0`),
-    but the link is torn down before any frame crosses — app sees GATT
-    `status=8/22/133`, v3 logs `BLE encryption change without encrypted link;
-    ignoring` then `BLE disconnected`. **rx/tx/peers stayed 0 on both sides.**
-    - The v3 uses PIN pairing by default (`bluetooth.fixed_pin`, mode RANDOM_PIN)
-      and the firmware configures global BLE bonding. Android tries to bond on the
-      connection and the bond fails (`ACTION_PAIRING_REQUEST` for `🌵_18c4`, then
-      `Detect bonding failure` / `Remove from storage`, looping).
-    - **Setting the v3 to `NO_PIN` (verified applied — no `random passkey` at boot)
-      did NOT fix it:** the `encryption change without encrypted link` drop still
-      happens even though in NO_PIN nothing on the v3 requires encryption. So the
-      PIN mode is not the (only) cause — Android still initiates encryption/bond on
-      connect and it fails on this ESP32 build.
-    - The mesh characteristic itself is open (plain WRITE/WRITE_NR/NOTIFY, no
-      `_ENC`/`_AUTHEN`, unlike the phone-API's secured chars), so the value path
-      is not the blocker; the failure is at connection/encryption establishment.
-    - **ROOT CAUSE (researched 2026-09-04, see
-      [`ble-gatt-pairing-research.md`](./ble-gatt-pairing-research.md)): most
-      likely a stale bond on the Pixel, NOT our firmware.** Our mesh characteristic
-      + CCCD are correctly open (a CCCD inherits ENC only if the characteristic
-      carries an ENC flag — ours does not; confirmed against NimBLE `ble_gatts.c`),
-      and the firmware's ENC_CHANGE handler only logs, never disconnects — so the
-      teardown is Android-side. A phone that ever bonded this node (from the early
-      PIN-mode attempts) auto-encrypts every later connect from its stored LTK; the
-      node has no matching key, encryption fails (status 5), Android drops (status
-      22). This matches the connect→discover→drop loop and why NO_PIN did not help.
-      **Fastest unblock: forget the v3 on the Pixel (Settings → Bluetooth →
-      Forget), then retry.** Client fixes (TRANSPORT_LE, MTU-before-discover,
-      removeBond+refresh, subscribe watchdog) and the `sm_bonding=0`-in-NO_PIN
-      firmware option are ranked in the research note. Template: `bitleproject/bitle`
-      (ESP32/NimBLE bitchat, our exact stack, zero security config).
-    - **Repro:** v3 flashed with `3022a3776`, `enabled_protocols=7`, WiFi off;
-      Pixel 6a `org.meshtastic.node.monitor` DUAL. Watch v3 console (DTR/RTS off)
-      for `BLE GATT mesh RX ... peer=` (never seen) and the app rx counter.
-  - **Still to gate:** ESP32-C3 (single-core, tighter RAM — the likely-fail
+  - **PROVEN end to end 2026-09-04.** An Android client (`node-kmp monitor`)
+    subscribed to the mesh-peer service **receives mesh frames over BLE GATT** -
+    the app's rx counter advanced with a frame from the v3's own node number
+    (`!d1d90f21`) plus relayed LoRa traffic. Getting there fixed five real bugs,
+    all committed on `spike/ble-mesh-transport`:
+    1. `6c1c7feba` - the node initiated BLE bonding even in NO_PIN, which failed
+       and tore the link down before subscribe. Fixed with
+       `setAuthenticationMode(false,false,false)` in the NO_PIN branch.
+    2. Peers were registered only from `onSubscribe`/`onWrite`, which never fire
+       for a central that connects via the phone-API advertising instance.
+       Register every link from the server's `onConnect` (fires for all
+       instances). (`668645fde`)
+    3. The characteristic value handle never resolved (`getHandle()==0xFFFF`): the
+       wrapper resolves handles only inside `BLEServer::start()`, triggered by its
+       `BLEAdvertising::start()`, which this firmware bypasses (raw
+       `ble_gap_ext_adv`). Fixed by forcing `server->start()` after registering
+       the service. (`668645fde`)
+    4. Notifications used raw NimBLE `ble_gatts_notify_custom` with an esp_gatts
+       handle - returns success, delivers nothing. Switched to the wrapper's
+       `BLECharacteristic::notify()` (the phone-API `fromNum` path). (`668645fde`)
+    5. Stale central-side bonds (Mac `Peer removed pairing info`, Pixel bond loop)
+       must be cleared on the central; a BT toggle / RPA rotation does it.
+    - Bench note: bleak on macOS is a **false negative** here (subscribes fine,
+      never surfaces the notification); the real Android client receives.
+  - **Remaining (spike → production):** revert the verbose diag logs; `notify()`
+    currently broadcasts to all subscribers rather than excluding the arrival peer
+    (dedup covers it, but per-peer targeting is the correct fix); a subscribe
+    watchdog + DUAL-role arbitration per the research note.
+  - **Still to gate:**  - **Still to gate:** ESP32-C3 (single-core, tighter RAM — the likely-fail
     candidate) and nRF52 (`Bluefruit.begin(2,0)` + linker RAM); neither board is
     on the bench, both unbuilt.
   - **Current v3 bench state (left test-ready 2026-09-04):**
