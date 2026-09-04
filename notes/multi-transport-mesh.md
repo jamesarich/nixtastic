@@ -528,3 +528,35 @@ the bench (LoRa + a Pixel 6a `node-kmp monitor` GATT peer):
 
 **Bench cleanup still owed on the v3:** `network.wifi_enabled=true`,
 `enabled_protocols` 7→3, `bluetooth.mode=RANDOM_PIN`, reboot.
+
+## Desktop UDP monitor added — four bearers meshing (2026-09-04)
+
+Started the `:monitor` Compose desktop app on the Mac (`direnv exec
+meshtastic-node-kmp gradle-queue -- :monitor:run`). Its transport is
+`UdpMulticastTransport` (239.0.0.69:4403, matching the firmware's
+`UdpMulticastHandler`). Enabled the v3's WiFi (`network.wifi_enabled=true`, stored
+PSK untouched); it came up on 192.168.1.180 with `UDP multicast already running`,
+same /24 as the Mac (192.168.1.138), so multicast bridges.
+
+Live result — the v3 bridges **LoRa + BLE-advertisement + BLE-GATT + UDP** at once:
+- **Desktop (UDP node `!a6e88506`):** rx 7, tx 5, **peers(1) `!d1d90f21` (the v3)**.
+  Receives the LoRa node `!3061b02e` bridged onto UDP and the v3's own frames;
+  sends its own probes (the Send-test button works via cliclick at logical
+  1500,971 - the desktop app can transmit where Android's Compose button ignores
+  synthetic taps).
+- **Pixel (BLE-GATT node `!6337995d`):** rx 11, tx 3. Decodes a position and a
+  text ("probe from !b28c3748") plus opaque channel-50 frames; auto-sends its own
+  probes (BLE-GATT **ingress** confirmed - tx advances).
+- A LoRa node's frame (hop>0) reaches **both** monitors across two different
+  bearers - the "one protocol, many bearers" bridge, with (from,id) dedup.
+- The monitors do not relay each other's own probes: those carry hop_limit 0
+  (RelayPolicy.Island), so the v3 accepts them locally but does not re-flood -
+  correct mesh behaviour, not a transport failure.
+
+**Follow-up finding:** the Pixel logs `rx: dropped !00000000 id=0 (MALFORMED)`
+paired with each valid LoRa-bridged frame - a spurious empty/duplicate frame
+reaches the GATT peer alongside the good one (likely the same packet arriving via
+two internal paths). The valid frames get through; worth chasing before PR.
+
+**Bench cleanup still owed on the v3:** `enabled_protocols` 7→3,
+`bluetooth.mode=RANDOM_PIN`, reboot. (WiFi now intentionally on for the UDP node.)
