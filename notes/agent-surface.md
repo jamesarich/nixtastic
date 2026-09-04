@@ -433,3 +433,31 @@ are in `settings.json.nixtastic-bak-plugin`; herdr and paseo entries are
 untouched. The cross-repo dry run against the bootloader-quirks feature was
 not executed at rollout (a nested fifteen-minute session was declined); it
 runs on the first real cross-repo change and gets recorded here then.
+
+*MacBook Air, 2026-09-04, over ssh from the desktop (login shell,
+`MESHTASTIC_WORKSPACE` exported by hand).* `git pull --ff-only` to `e8d1785`,
+then `nix run .#sync`: `rendered 6 forwarder(s)`, `retired .claude/skills`,
+`register added+installed`, `hooks migrated 4 user-scope entr(ies)` (the two
+memory hooks and the two guards; herdr and six paseo entries untouched, backup
+in `settings.json.nixtastic-bak-plugin`), `queue linked
+backup=~/.claude/bin/gradle-queue.pre-plugin`. `doctor`: five plugin lines ok
+except `WARN github mcp registered in user scope too`, as designed; `agent
+extras 8 other plugin(s), 20 user skill(s)`; memory lines unchanged. The plugin
+SessionStart hook was proven the same way as on the desktop: an aged
+`FETCH_HEAD` advanced after one `claude -p`, with no user-scope memory hook left
+to have done it.
+
+Unverified over ssh, to be checked in a GUI session on the laptop: the skill
+list probe (`claude -p` reported "OAuth session expired" for the work account
+in the non-interactive session, though its SessionStart hook still ran); the
+headers helper printed `{}` because `gh auth token` reads the macOS keychain,
+which is locked for a non-GUI ssh session; consequently whether
+`plugin:nixtastic:github` connects there (`claude mcp list` over ssh showed
+only the user-scope `github` entry connected). Once the plugin server is seen
+connected in a GUI session, `claude mcp remove -s user github` clears the
+doctor warning.
+
+Unverified on both machines: whether a session launched from the Claude
+Desktop app (160 of the laptop's 244 sessions) loads plugin hooks. Check: age
+the store's `FETCH_HEAD` by ten minutes, open one Desktop-app session in the
+workspace, `stat` it again.
