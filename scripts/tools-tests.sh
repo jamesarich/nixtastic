@@ -483,5 +483,31 @@ printf -- '---\nname: from-the-laptop\ndescription: "x"\nmetadata:\n  type: proj
 run "$root/bin/nixtastic-memory-hook" start
 [ -f "$store/memory/from-the-laptop.md" ] || { echo "T21: start hook did not pull"; exit 1; }
 
+echo "--- T22: doctor — store, links, hooks, state, age"
+run_lax "$doctor"
+expect 'ok +memory links'
+expect 'ok +memory hooks'
+expect 'ok +memory store'
+# Unlinked slug is named by its label, not its 80-character slug.
+rm "$projects/$(slug "$root/kzstd")/memory"
+run_lax "$doctor"
+expect 'FAIL +memory links +1 of [0-9]+ unlinked: kzstd'
+run "$sync"
+# Unpushed commits and dirty files are reported, with the fix.
+echo more >> "$store/memory/from-a-session.md"
+run_lax "$doctor"
+expect 'WARN +memory store .*1 uncommitted'
+run "$root/bin/nixtastic-memory-hook" stop
+# Age: a memory last modified years ago, and one with no date at all.
+printf -- '---\nname: old\ndescription: "x"\nmetadata:\n  type: project\n  modified: 2020-01-01T00:00:00Z\n---\nbody\n' > "$store/memory/old.md"
+run_lax "$doctor"
+expect 'WARN +memory age +1 not updated since'
+expect 'undated'
+# Store missing entirely is a FAIL with the fix.
+mv "$store" "$store.away"
+run_lax "$doctor"
+expect 'FAIL +memory store +not cloned'
+mv "$store.away" "$store"
+
 echo "all tests passed"
 touch "$out"

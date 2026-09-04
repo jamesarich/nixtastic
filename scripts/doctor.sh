@@ -327,6 +327,78 @@ if [ -s "$agent_exp" ]; then
   fi
 fi
 
+
+# --- memory store --------------------------------------------
+# Design: notes/agent-memory-sync.md. Each failure here is silent in
+# exactly the way this file exists to catch: the session just starts
+# without its memory, or with a store the other machine never sees. The
+# link check is also the only thing that notices if a Claude Code upgrade
+# ever replaces memory/ instead of writing into it — run doctor after one.
+mstore=$(memory_store)
+if [ ! -d "$mstore/.git" ]; then
+  bad "memory store" "not cloned at $mstore"
+  fix "nix run .#sync"
+else
+  m_total=0; m_unlinked=""
+  while IFS=$'\t' read -r pdir label; do
+    [ -n "$pdir" ] || continue
+    m_total=$((m_total + 1))
+    if [ ! -L "$pdir/memory" ] || [ "$(readlink "$pdir/memory")" != "$mstore/memory" ]; then
+      m_unlinked="$m_unlinked $label"
+    fi
+  done <<< "$(memory_slug_dirs "$root")"
+  if [ -n "$m_unlinked" ]; then
+    bad "memory links" "$(echo "$m_unlinked" | wc -w) of $m_total unlinked:$m_unlinked"
+    fix "nix run .#sync"
+  else
+    ok "memory links" "$m_total slugs -> $mstore/memory"
+  fi
+
+  mcfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
+  if grep -q nixtastic-memory-hook "$mcfg" 2>/dev/null && [ -x "$root/bin/nixtastic-memory-hook" ]; then
+    ok "memory hooks" "SessionStart pulls, Stop pushes"
+  else
+    warn "memory hooks" "not in $mcfg — sessions neither pull nor push"
+    fix "nix run .#sync -- --install-hooks"
+  fi
+
+  m_dirty=$(git -C "$mstore" status --porcelain 2>/dev/null | wc -l)
+  m_count=$(find "$mstore/memory" -maxdepth 1 -name '*.md' ! -name MEMORY.md 2>/dev/null | wc -l)
+  if [ -e "$mstore/.git/MERGE_HEAD" ]; then
+    bad "memory store" "merge in progress — sessions would load conflict markers"
+    fix "git -C $mstore merge --abort && nix run .#sync -- --memory-only"
+  else
+    m_ahead=$(git -C "$mstore" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)
+    m_behind=$(git -C "$mstore" rev-list --count 'HEAD..@{u}' 2>/dev/null || echo 0)
+    if [ "$m_ahead" -gt 0 ] && [ "$m_behind" -gt 0 ]; then
+      warn "memory store" "diverged +$m_ahead/-$m_behind"
+      fix "nix run .#sync -- --memory-only   (pulls with the union merge, then pushes)"
+    elif [ "$m_ahead" -gt 0 ] || [ "$m_dirty" -gt 0 ]; then
+      warn "memory store" "$m_ahead unpushed, $m_dirty uncommitted"
+      fix "nix run .#sync -- --memory-only"
+    else
+      ok "memory store" "clean, pushed ($m_count memories)"
+    fi
+  fi
+
+  # Frontmatter `modified:`, not mtime — the laptop's 2026-08-15 migration
+  # reset every mtime. A signal, not a reaper: nothing here deletes.
+  m_cutoff=$(date -u -d '90 days ago' +%Y-%m-%d)
+  m_stale=0; m_undated=0
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    m_mod=$(sed -n 's/^  modified: *\([0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\).*/\1/p' "$f" | head -1)
+    if [ -z "$m_mod" ]; then m_undated=$((m_undated + 1))
+    elif [[ "$m_mod" < "$m_cutoff" ]]; then m_stale=$((m_stale + 1)); fi
+  done <<< "$(find "$mstore/memory" -maxdepth 1 -name '*.md' ! -name MEMORY.md 2>/dev/null)"
+  if [ "$m_stale" -gt 0 ] || [ "$m_undated" -gt 0 ]; then
+    warn "memory age" "$m_stale not updated since $m_cutoff, $m_undated undated"
+    fix "review them; a wrong memory is worse than a missing one — delete it"
+  else
+    ok "memory age" "all $m_count updated within 90 days"
+  fi
+fi
+
 echo ""
 if [ "$fails" -gt 0 ]; then
   printf '  %s failure(s), %s warning(s)\n\n' "$fails" "$warns"
