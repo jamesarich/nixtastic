@@ -1147,9 +1147,16 @@
               # aggregation compares copies against their sources.
               pkgs.diffutils
               pkgs.gnused
+              # memory.sh: gawk renders MEMORY.md and the overlap report in one
+              # process each; sed is the slug. Undeclared they resolve off the
+              # ambient PATH and vanish in the sandbox (brief's findutils story).
+              pkgs.gawk
             ];
             runtimeEnv = toolEnv;
-            text = builtins.readFile ./scripts/lib.sh + builtins.readFile ./scripts/sync.sh;
+            text =
+              builtins.readFile ./scripts/lib.sh
+              + builtins.readFile ./scripts/memory.sh
+              + builtins.readFile ./scripts/sync.sh;
           };
 
           # nix run .#bootstrap-sdk — reconcile $ANDROID_HOME against
@@ -1211,9 +1218,17 @@
               pkgs.git
               pkgs.coreutils
               pkgs.jq
+              # memory.sh: gawk renders MEMORY.md and the overlap report in one
+              # process each; sed is the slug. Undeclared they resolve off the
+              # ambient PATH and vanish in the sandbox (brief's findutils story).
+              pkgs.gawk
+              pkgs.gnused
             ];
             runtimeEnv = toolEnv;
-            text = builtins.readFile ./scripts/lib.sh + builtins.readFile ./scripts/worktree.sh;
+            text =
+              builtins.readFile ./scripts/lib.sh
+              + builtins.readFile ./scripts/memory.sh
+              + builtins.readFile ./scripts/worktree.sh;
           };
 
           #########################################################
@@ -1238,6 +1253,10 @@
               pkgs.jq
               pkgs.diffutils
               pkgs.gnused
+              # memory.sh: gawk renders MEMORY.md and the overlap report in one
+              # process each; sed is the slug. Undeclared they resolve off the
+              # ambient PATH and vanish in the sandbox (brief's findutils story).
+              pkgs.gawk
             ];
             runtimeEnv = {
               NIXTASTIC_REPOS_TSV = reposTsv;
@@ -1250,7 +1269,10 @@
             # aggregated subagent copies and doctor verifies them, so both
             # need agent_pairs. One definition of where a copy belongs, or
             # the two drift and doctor blesses files sync would not write.
-            text = builtins.readFile ./scripts/lib.sh + builtins.readFile ./scripts/doctor.sh;
+            text =
+              builtins.readFile ./scripts/lib.sh
+              + builtins.readFile ./scripts/memory.sh
+              + builtins.readFile ./scripts/doctor.sh;
           };
         in
         {

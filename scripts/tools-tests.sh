@@ -338,5 +338,22 @@ run_lax "$doctor"
 refuse 'firmware/\.envrc\('
 (cd "$root/firmware" && git checkout -q HEAD~1 -- .envrc && git commit -qam "restore use nix" && git push -q)
 
+echo "--- T17: sync --slug reproduces Claude Code's project slug"
+# Vectors lifted from the remember plugin's docs/slug-vectors.json
+# (cygpath-agnostic, ASCII). Non-ASCII is refused, not guessed: Claude
+# Code slugs one dash per code point and the workspace never needs it.
+run "$sync" --slug /home/u/p
+expect '^-home-u-p$'
+run "$sync" --slug /Users/f/Documents/dvsi
+expect '^-Users-f-Documents-dvsi$'
+run "$sync" --slug //server/share/project
+expect '^--server-share-project$'
+run "$sync" --slug /tmp/x/C:/y
+expect '^-tmp-x-C--y$'
+run "$sync" --slug "$root/android/.claude/worktrees/feat-thing"
+expect "^$(printf '%s' "$root" | sed 's/[^a-zA-Z0-9]/-/g')-android--claude-worktrees-feat-thing\$"
+run_lax "$sync" --slug /tmp/café
+expect 'non-ASCII'
+
 echo "all tests passed"
 touch "$out"

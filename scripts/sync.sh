@@ -18,6 +18,12 @@
 #   --main     switch each repo to its DEFAULT branch first,
 #              then pull. Implies --pull. Refuses to switch a
 #              repo whose tracked files are modified.
+# --slug <path>: print the Claude Code project slug for a path and exit.
+# Not a mode — a lookup, for humans asking "which projects/ dir is mine?"
+if [ "${1:-}" = --slug ]; then
+  slug_of "${2:?usage: --slug <absolute path>}"
+  exit
+fi
 pull=false
 main=false
 for arg in "$@"; do
