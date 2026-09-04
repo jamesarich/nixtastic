@@ -69,7 +69,7 @@ expect '^--server-share-project$'
 run "$sync" --slug /tmp/x/C:/y
 expect '^-tmp-x-C--y$'
 run "$sync" --slug "$root/android/.claude/worktrees/feat-thing"
-expect -- "^$(printf '%s' "$root" | sed 's/[^a-zA-Z0-9]/-/g')-android--claude-worktrees-feat-thing\$"
+expect "^$(printf '%s' "$root" | sed 's/[^a-zA-Z0-9]/-/g')-android--claude-worktrees-feat-thing\$"
 run_lax "$sync" --slug /tmp/café
 expect 'non-ASCII'
 ```
@@ -234,7 +234,7 @@ printf -- '---\nname: only-here\ndescription: "lives on this machine"\nmetadata:
 printf -- '---\nname: dup\ndescription: "loser"\nmetadata:\n  type: project\n---\nLOSER\n' > "$pre/memory/dup.md"
 printf -- '---\nname: dup\ndescription: "winner"\nmetadata:\n  type: project\n---\nWINNER\n' > "$store/memory/dup.md"
 run "$sync"
-expect 'memory .*1 imported'
+expect '[^0-9]1 imported'
 expect 'kept.*dup\.md'
 grep -q WINNER "$store/memory/dup.md" || { echo "T18: store file was clobbered"; exit 1; }
 [ -f "$store/memory/only-here.md" ] || { echo "T18: new file not imported"; exit 1; }
@@ -365,7 +365,7 @@ memory_pass() {
     total=$((total + 1))
     out=$(memory_link "$pdir" "$st/memory")
     case "$out" in
-      warn*)     echo "  WARN      ${out#warn	}" ;;
+      warn*)     echo "  WARN      ${out#*$'\t'}" ;;
       linked)    newly=$((newly + 1)) ;;
       imported*) n=$(printf '%s' "$out" | cut -f2); k=$(printf '%s' "$out" | cut -f3)
                  imported=$((imported + n)); newly=$((newly + 1))
@@ -495,7 +495,13 @@ memory_render_index() {
       ENDFILE { if (!done) emit() }
     ' | sort -t "$(printf '\t')" -k1,1n -k2,2 | cut -f3-
   } > "$1/MEMORY.md.new"
-  mv "$1/MEMORY.md.new" "$1/MEMORY.md"
+  # Replace only on difference: an unchanged store keeps its inode and
+  # mtime, so nothing here churns a commit or trips the idempotence test.
+  if cmp -s "$1/MEMORY.md.new" "$1/MEMORY.md"; then
+    rm -f "$1/MEMORY.md.new"
+  else
+    mv "$1/MEMORY.md.new" "$1/MEMORY.md"
+  fi
 }
 
 # Pairs of memory names sharing two or more keyword stems, where at least
@@ -539,7 +545,7 @@ memory_overlaps() {
     before=$(find "$st/memory" -maxdepth 1 -name '*.md' -exec basename {} \; | sort)
     out=$(memory_link "$pdir" "$st/memory")
     case "$out" in
-      warn*)     echo "  WARN      ${out#warn	}" ;;
+      warn*)     echo "  WARN      ${out#*$'\t'}" ;;
       linked)    newly=$((newly + 1)) ;;
       imported*) n=$(printf '%s' "$out" | cut -f2); k=$(printf '%s' "$out" | cut -f3)
                  imported=$((imported + n)); newly=$((newly + 1))
@@ -629,7 +635,7 @@ And after `[ -n "$mcp" ] && echo "  mcp      .mcp.json $mcp"`:
 ```bash
 case "$mem" in
   linked) echo "  memory   linked -> $(memory_store)/memory" ;;
-  warn*)  echo "  memory   WARN ${mem#warn	}" ;;
+  warn*)  echo "  memory   WARN ${mem#*$'\t'}" ;;
 esac
 ```
 
@@ -1003,7 +1009,7 @@ if [ "$memory_only" = true ]; then
 fi
 ```
 
-`memory_pass` is defined later in the file than this call. Move the whole `memory_pass() { … }` definition (Task 2/3/5) up to just below `write_envrc()`, leaving only the `memory_pass` *call* where it was.
+`memory_pass` is defined later in the file than this call. Move the whole `memory_pass() { … }` definition (Task 2/3/5) up to just below `write_envrc()`, leaving only the `memory_pass` *call* where it was. It then sits above the arg loop that sets `hooks` and `memory_only` — that is fine and must stay so: a function body reads variables when it *runs*, not when it is defined, and both calls happen after the loop. Do not move the flags up with it.
 
 - [ ] **Step 4: Docs**
 
