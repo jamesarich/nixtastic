@@ -163,7 +163,8 @@ Gains one pass, after the `.envrc` pass:
     memory   21 slugs linked, 0 imported
 
 `--memory-only` re-links without the full fetch, for fast recovery after
-worktree churn. `--install-hooks` writes the two hooks described below.
+worktree churn. The two hooks described below ship in the `nixtastic` plugin
+since [agent-surface.md](./agent-surface.md); `--install-hooks` is retired.
 
 ### `nix run .#doctor`
 
@@ -228,9 +229,9 @@ repeated (parallel sessions); and `ConnectTimeout=3` / `http.lowSpeedTime=3`
 cap a stalled link so an offline laptop never waits out the hook timeout.
 Measured after: 13 ms per turn.
 
-Both machines need the hooks, so `--install-hooks` runs on each. This is the
-half of the deliverable that lives outside the workspace repo, and `doctor` is
-what keeps it honest.
+Both machines need the hooks. They were first installed per machine with
+`--install-hooks`; since [agent-surface.md](./agent-surface.md) they ship in
+the plugin `sync` installs, and `doctor` is what keeps it honest.
 
 ## Conflicts
 
@@ -353,15 +354,7 @@ Steps 1–4 are an afternoon. Step 5 is twenty minutes.
 
 Tracked here so they are not silently folded into this work.
 
-- **Agent-surface consolidation.** The two machines share exactly one plugin
-  (`i-have-adhd`). The desktop has `superpowers` and `remember`; the laptop has
-  `craft`, `datadog`, `firebase`, three LSP plugins, and 20 user skills the
-  desktop has none of. Three process layers also genuinely conflict —
-  `superpowers:brainstorming` wants `docs/superpowers/specs/`, Spec Kit's
-  constitution (225 files across `android`, `apple`, `meshtastic-sdk`,
-  `meshtastic`) outranks other agent docs and wants its own lifecycle, and this
-  repo's convention is `notes/`. No arbiter exists. Needs its own brainstorm;
-  it will reuse this repo and this transport.
+- **Agent-surface consolidation.** Done — [agent-surface.md](./agent-surface.md).
 - **Workspace directory name.** The laptop uses `~/nixtastic`, the desktop
   `~/meshtastic`. Aligning them does *not* help the slug problem (`/home` vs
   `/Users`), so it is cosmetics — but `~/meshtastic/meshtastic` reads badly, and

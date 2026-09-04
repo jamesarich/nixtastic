@@ -116,9 +116,8 @@ meshtastic/                        workspace repo, tracked
     .claude-plugin/plugin.json     name "nixtastic"; version written by sync
     skills/
       meshtastic-cross-repo/       the process layer (below)
-      meshtastic-device-ops/       moved from .claude/skills/
-      meshtastic-e2e/              moved
-      meshtastic-org-knowledge/    moved
+      (meshtastic-device-ops, -e2e, -org-knowledge are copied at render from
+       meshtastic-mcp/src/meshtastic_mcp/skills/, the source the root copies came from)
     hooks/hooks.json               memory hooks + two guards, ${CLAUDE_PLUGIN_ROOT} paths
     hooks/*.sh                     guard scripts
     bin/gradle-queue               plugin bin/ is on the Bash PATH while enabled
@@ -127,8 +126,9 @@ meshtastic/                        workspace repo, tracked
   .cache/agent-marketplace/        rendered by sync, gitignored
     .claude-plugin/marketplace.json
     nixtastic/                     copy of plugin/ plus generated:
-      skills/<repo>-<skill>/       forwarders, one per repo skill found
-      hooks/nixtastic-memory-hook  rendered per machine (bakes in the workspace path)
+      skills/<repo>-<skill>/       forwarders, one per repo skill found (speckit-* skipped)
+      skills/meshtastic-*/         the three bundled meshtastic-mcp skills
+      hooks/nixtastic-memory-hook  copied from bin/, which memory_pass writes per machine
 ```
 
 `.claude/skills/` at the workspace root goes away: plugin skills are visible
@@ -144,6 +144,9 @@ body names the absolute target directory — the harness announces a skill's
 base directory when it loads normally, and a forwarder loses that, so the
 target's `references/` and scripts would otherwise resolve wrong — and says to
 run `just brief <repo>` first, then read and follow the target `SKILL.md`.
+
+Forwarders skip `speckit-*` (decision 3: nine descriptions per session for an
+unused lifecycle).
 
 ## The process layer: `meshtastic-cross-repo`
 
@@ -196,7 +199,7 @@ description of it, is the pass criterion.
 
 | event | matcher | script | origin |
 | --- | --- | --- | --- |
-| SessionStart | | `hooks/nixtastic-memory-hook start` | rendered by `sync`, into the plugin instead of `bin/` |
+| SessionStart | | `hooks/nixtastic-memory-hook start` | copied by `sync` from `bin/nixtastic-memory-hook`, which `memory_pass` writes |
 | Stop | | `hooks/nixtastic-memory-hook stop` | same |
 | PreToolUse | `Edit\|Write\|MultiEdit` | `hooks/block-main-checkout-edits.sh` | laptop `~/.claude/hooks`, now tracked |
 | PreToolUse | `Bash` | `hooks/gradle-queue-guard.sh` | same |

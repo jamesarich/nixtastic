@@ -114,9 +114,10 @@ and the invariants a KMP library here must hold — are in
 
 ## Spec Kit
 
-`android`, `apple`, `meshtastic-sdk` and `meshtastic` use it. Their
-`.specify/memory/constitution.md` (8–12 KB) **outranks** other agent docs, and
-work is expected to flow through the spec lifecycle rather than ad-hoc edits.
+`android`, `apple`, `meshtastic-sdk` and `meshtastic` carry it. Their
+`.specify/memory/constitution.md` (8–12 KB) **outranks** other agent docs —
+read it. The specify→plan→tasks lifecycle is not used in practice (measured
+2026-09, `notes/agent-surface.md`); do not create its files.
 
 `apple/CLAUDE.md` is Spec Kit-managed and **dynamic** — regenerated to point at
 the active `specs/<feature>/plan.md`. Read it to find the live plan; never
@@ -181,15 +182,14 @@ finds — run it before diagnosing by hand.
   subagent" works verbatim from here. `doctor` reports missing or stale
   copies; two repos sharing a name resolve by filesystem order, so `sync`
   warns rather than picking silently.
-- **Per-repo *skills* are not aggregated — launch with `bin/claude-ws
-  <repo>`.** A skill is a directory whose name is its identity, so it cannot
-  be copied without forking it; `--add-dir` is the only supported way to load
-  one in place, and it has no `settings.json` equivalent. `sync` generates the
-  launcher: leading repo names become `--add-dir`, everything after the first
-  non-repo argument goes to `claude` untouched. Name only the repo you need —
-  `--add-dir` also loads that repo's `CLAUDE.md`, which is exactly what the
-  router design above avoids. So: subagents work from a bare `claude`, skills
-  need the launcher.
+- **Per-repo *skills* reach every session as forwarders.** A skill directory's
+  name is its identity, so repo skills cannot be copied like subagents. The
+  `nixtastic` plugin that `.#sync` renders into `.cache/agent-marketplace/`
+  and installs ships one forwarder per repo skill, `nixtastic:<repo>-<skill>`,
+  whose body points at the real `SKILL.md`; it also carries the three bundled
+  meshtastic-mcp skills, `meshtastic-cross-repo`, the worktree and Gradle
+  guards, the memory hooks and the GitHub MCP. `bin/claude-ws <repo>` (`--add-dir`,
+  loads that repo's `CLAUDE.md` too) remains for skills that must run in place.
 - **The direnv hook fires only in interactive shells** — scripts and agent
   subshells get no repo environment, so Gradle silently runs unpinned. From
   non-interactive contexts use `direnv exec <repo-or-worktree> <cmd>`.
@@ -292,9 +292,8 @@ finds — run it before diagnosing by hand.
   `~/.claude/projects/<slug>/memory` and never see what the root session
   learned. `.#sync` links every slug it owns into one private store
   (`~/.nixtastic-agent`, repo `jamesarich/nixtastic-agent`), `.#worktree`
-  links at creation, and two user-scope hooks (`.#sync -- --install-hooks`,
-  once per machine) pull at `SessionStart` and push at `Stop`. `doctor`
-  reports an unlinked slug, missing hooks, an unpushed store, and memories
+  links at creation, and the `nixtastic` plugin's hooks pull at `SessionStart`
+  and push at `Stop`. `doctor` reports an unlinked slug, an unpushed store, and memories
   not touched in 90 days. A memory true on one machine only (the bench,
   `/dev/serial`, Xcode) gets `machine: james-pc` or `machine: darwin` under
   its `metadata:`; `sync` renders that into the index line, where selection

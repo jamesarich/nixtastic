@@ -528,6 +528,50 @@ claim with an expiry date.
 
 ---
 
+## Agent surface
+
+### One plugin, rendered locally, never in the memory store
+
+`plugin/` is the hand-written source; `.#sync` renders it plus generated
+forwarders, the bundled meshtastic-mcp skills and the per-machine memory hook
+into `.cache/agent-marketplace/`, and registers that directory as a local
+marketplace. Everything in the render is derived from this repo and the local
+checkouts, so it never crosses machines — rendering it into `~/.nixtastic-agent`
+would have two machines pushing different forwarder sets to one tracked path
+and breaking the memory push. Memory is state; the plugin is a build artefact.
+
+### Forwarders, not symlinks
+
+A skill's directory name is its identity and `code-review` exists in three
+repos, so per-repo skills cannot be copied or linked into one tree. Each
+forwarder is one paragraph: the target's own description (so the model selects
+it on the same words), the absolute target directory (a forwarder loses the
+base-directory announcement the harness makes for a normally loaded skill, so
+`references/` would otherwise resolve wrong), and "run `just brief <repo>`
+first". `speckit-*` skills are skipped: nine descriptions per session for a
+lifecycle that is not used.
+
+### Subagents stay at the root
+
+Plugin agent naming is undocumented; bare-name dispatch of `gradle-runner`
+from `android/CLAUDE.md` is what works, measured on both machines, so the
+`.claude/agents/` copies are unchanged.
+
+### The version is a content hash, the CLI owns install state
+
+Directory-source plugins are copied to `~/.claude/plugins/cache`, and the docs
+are silent on when source edits show (a spike saw them live). `sync` therefore
+bumps `version` when the input hash changes and runs `claude plugin update`,
+the documented path. Hooks never hot-swap: restart after a hook change.
+
+### Guards encode workspace rules, tested now
+
+The worktree edit guard and the Gradle queue guard came from one machine's
+`~/.claude/hooks`, untested. They ship in the plugin with decision tests
+(`tools-tests.sh` T29/T30). The queue script is linked at
+`~/.claude/bin/gradle-queue` because the upstream android agent probes that
+exact path.
+
 ## Git across repos
 
 ### Default branches differ
@@ -627,9 +671,9 @@ the registration; `sync` prints the command when it is missing.
 
 The same stable-path shape carries `bin/nixtastic-memory-hook`: the
 `SessionStart`/`Stop` hook body that keeps Claude's memory store
-(`~/.nixtastic-agent`) pulled and pushed. User-scope `settings.json` names the
-path once (`.#sync -- --install-hooks`, merged with `jq`, never overwritten);
-`sync` rewrites the contents every run. Design and the reason the store is a
+(`~/.nixtastic-agent`) pulled and pushed. The `nixtastic` plugin's `hooks.json`
+names it under `${CLAUDE_PLUGIN_ROOT}` (see Agent surface below); `sync`
+rewrites the contents every run and re-renders the plugin. Design and the reason the store is a
 symlink target rather than a synced directory: `notes/agent-memory-sync.md`.
 
 Three consequences worth knowing:
