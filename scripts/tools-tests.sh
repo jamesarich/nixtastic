@@ -63,6 +63,16 @@ for r in $repos; do
   )
 done
 
+# The memory store: a private GitHub repo in real life, a local bare here.
+# Cloning an EMPTY bare is deliberate — that is what the first machine
+# sees, and the first push has to set upstream itself.
+git init -q --bare -b main "$origins/nixtastic-agent.git"
+export NIXTASTIC_MEMORY_REMOTE="$origins/nixtastic-agent.git"
+export NIXTASTIC_MEMORY_STORE="$HOME/.nixtastic-agent"
+store="$NIXTASTIC_MEMORY_STORE"
+projects="$HOME/.claude/projects"
+slug() { printf '%s' "$1" | sed 's/[^a-zA-Z0-9]/-/g'; }
+
 res=""
 run() { res="$("$@" 2>&1)" || { echo "COMMAND FAILED: $*"; printf '%s\n' "$res"; exit 1; }; }
 expect() { printf '%s\n' "$res" | grep -qE -- "$1" || { echo "EXPECT FAILED: $1"; printf '%s\n' "$res"; exit 1; }; }
@@ -354,6 +364,44 @@ run "$sync" --slug "$root/android/.claude/worktrees/feat-thing"
 expect "^$(printf '%s' "$root" | sed 's/[^a-zA-Z0-9]/-/g')-android--claude-worktrees-feat-thing\$"
 run_lax "$sync" --slug /tmp/café
 expect 'non-ASCII'
+
+echo "--- T18: memory pass — clone, link every slug, import without clobbering, idempotent"
+# T1 already ran sync, so the store is cloned and the root + repos are
+# linked. Assert that state rather than re-deriving it.
+[ -d "$store/.git" ] || { echo "T18: store not cloned"; exit 1; }
+[ "$(readlink "$projects/$(slug "$root")/memory")" = "$store/memory" ] \
+  || { echo "T18: root slug not linked"; exit 1; }
+[ "$(readlink "$projects/$(slug "$root/kzstd")/memory")" = "$store/memory" ] \
+  || { echo "T18: repo slug not linked"; exit 1; }
+grep -qx 'MEMORY.md merge=union' "$store/.gitattributes" || { echo "T18: no union merge attribute"; exit 1; }
+# A pre-existing real memory dir is imported: new files copied, a
+# same-named file KEPT in the store and the loser left beside the link.
+pre="$projects/$(slug "$root/android")"
+rm -rf "$pre/memory"; mkdir -p "$pre/memory"
+printf -- '---\nname: only-here\ndescription: "lives on this machine"\nmetadata:\n  type: project\n---\nbody\n' > "$pre/memory/only-here.md"
+printf -- '---\nname: dup\ndescription: "loser"\nmetadata:\n  type: project\n---\nLOSER\n' > "$pre/memory/dup.md"
+printf -- '---\nname: dup\ndescription: "winner"\nmetadata:\n  type: project\n---\nWINNER\n' > "$store/memory/dup.md"
+run "$sync"
+expect '[^0-9]1 imported'
+expect 'kept.*dup\.md'
+grep -q WINNER "$store/memory/dup.md" || { echo "T18: store file was clobbered"; exit 1; }
+[ -f "$store/memory/only-here.md" ] || { echo "T18: new file not imported"; exit 1; }
+[ -f "$pre/memory.pre-sync/dup.md" ] || { echo "T18: loser not preserved beside the link"; exit 1; }
+[ "$(readlink "$pre/memory")" = "$store/memory" ] || { echo "T18: android slug not linked after import"; exit 1; }
+# The import is committed and pushed, so the other machine can pull it.
+git -C "$origins/nixtastic-agent.git" log --oneline | grep -q 'memory: import' || { echo "T18: import not pushed"; exit 1; }
+# Idempotent: a second run imports nothing and touches no mtime.
+before=$(ls -l --time-style=full-iso "$store/memory")
+run "$sync"
+refuse 'imported [1-9]'
+[ "$before" = "$(ls -l --time-style=full-iso "$store/memory")" ] || { echo "T18: second run changed mtimes"; exit 1; }
+# A symlink pointing somewhere ELSE is not ours: warned, never replaced.
+other="$projects/$(slug "$root/api")"
+rm -rf "$other/memory"; mkdir -p "$other" "$HOME/elsewhere"; ln -s "$HOME/elsewhere" "$other/memory"
+run "$sync"
+expect 'WARN .*elsewhere'
+[ "$(readlink "$other/memory")" = "$HOME/elsewhere" ] || { echo "T18: foreign symlink replaced"; exit 1; }
+rm "$other/memory"
 
 echo "all tests passed"
 touch "$out"

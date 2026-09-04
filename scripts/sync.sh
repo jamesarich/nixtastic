@@ -406,6 +406,65 @@ if [ -n "$skill_repos" ]; then
     "$root" "$first"
 fi
 
+
+# --- memory: one store, every slug a symlink into it -------------------
+# Design and measurements: notes/agent-memory-sync.md. The order is pull →
+# link/import → render → commit → push, so a run on either machine both
+# takes the other's memories and hands over its own. Every git step past
+# the clone is best-effort: no network is a report line, not a failure.
+memory_pass() {
+  st=$(memory_store)
+  if [ ! -d "$st/.git" ]; then
+    if git clone --quiet "$(memory_remote)" "$st" 2>/dev/null; then
+      echo "  memory    cloned $st"
+    else
+      echo "  memory    no store at $st and clone failed — pass skipped"
+      echo "            (private repo: needs git access to $(memory_remote))"
+      return 0
+    fi
+  fi
+  mkdir -p "$st/memory"
+  # Seed the two repo-level files once; never clobber a hand edit.
+  [ -e "$st/.gitattributes" ] || echo 'MEMORY.md merge=union' > "$st/.gitattributes"
+  [ -e "$st/.gitignore" ] || printf '*.jsonl\n.credentials.json\n' > "$st/.gitignore"
+  # A merge left behind by a killed hook would hand the next session a
+  # MEMORY.md full of conflict markers. Abort it; doctor reports diverged.
+  [ -e "$st/.git/MERGE_HEAD" ] && git -C "$st" merge --abort >/dev/null 2>&1
+  git -C "$st" pull --no-rebase --autostash --quiet >/dev/null 2>&1 || true
+
+  total=0; newly=0; imported=0; kept=""
+  while IFS=$'\t' read -r pdir label; do
+    [ -n "$pdir" ] || continue
+    total=$((total + 1))
+    out=$(memory_link "$pdir" "$st/memory")
+    case "$out" in
+      warn*)     echo "  WARN      ${out#*$'\t'}" ;;
+      linked)    newly=$((newly + 1)) ;;
+      imported*) n=$(printf '%s' "$out" | cut -f2); k=$(printf '%s' "$out" | cut -f3)
+                 imported=$((imported + n)); newly=$((newly + 1))
+                 [ -n "$k" ] && kept="$kept $label:{$k}" ;;
+    esac
+  done <<< "$(memory_slug_dirs "$root")"
+
+  count=$(find "$st/memory" -maxdepth 1 -name '*.md' ! -name MEMORY.md | wc -l)
+  printf '  memory    %s slugs -> %s/memory  (%s memories, %s newly linked, %s imported)\n' \
+    "$total" "$st" "$count" "$newly" "$imported"
+  [ -n "$kept" ] && echo "            kept in store, originals beside each link as memory.pre-sync/:$kept"
+
+  git -C "$st" add -A >/dev/null 2>&1 || true
+  if ! git -C "$st" diff --cached --quiet 2>/dev/null; then
+    git -C "$st" commit --quiet -m "memory: import $imported from $(hostname -s 2>/dev/null || echo host)" >/dev/null 2>&1 || true
+    # -u every time: the first push into an empty remote has no upstream,
+    # and repeating it later is harmless.
+    if git -C "$st" push --quiet -u origin HEAD >/dev/null 2>&1; then
+      echo "            committed and pushed"
+    else
+      echo "            committed; push failed (offline?) — doctor will report unpushed"
+    fi
+  fi
+}
+memory_pass
+
 if write_mcp_json "$root" "$root"; then
   echo "  .mcp.json written — meshtastic-mcp server for this workspace"
   # A project-scope server is approved once per machine, the
