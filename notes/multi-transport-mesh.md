@@ -438,30 +438,37 @@ Full research with citations: `scratchpad/ble-gatt-mesh-findings.md` (session
 
 ## LoRa transport spike (parallel, `meshtastic-node-kmp` `feat/lora-transport`)
 
-Kicked off 2026-09-03 as a background workflow: a `node-transport-lora` KMP
-module (CH341A USB-SPI bridge → SX1262, Android + JVM), one protocol shared with
-every bearer. **State: module written, compiles, 62/66 JVM unit tests pass —
-UNCOMMITTED in the worktree** (`node-transport-lora/` + a `settings.gradle.kts`
-include; backup at the session scratchpad `lora-module-backup.tgz`). The workflow
-was interrupted (usage limit) before its own verify/fix loop closed, so it never
-committed. 29 files: commonMain (framing, airtime, channel-plan, modem-preset,
-region, transport, CH341 protocol, SX1262 driver, SPI/USB seam), androidMain
-(USB-host backend), jvmMain stub, 8 test files.
+Kicked off 2026-09-03 as a background workflow (research → design → adversary →
+implement → verify): a `node-transport-lora` KMP module (CH341A USB-SPI bridge →
+SX1262, Android + JVM), one protocol shared with every bearer. **State: COMMITTED
+on `feat/lora-transport`, tests green.** 10 commits on top of `main` (`8520a42`),
+tip `17c6444`, 56 files +5333/−38, tree clean, **not pushed**; primary checkout
+`main` untouched.
 
-**4 failing JVM tests to resolve before it's green (do NOT commit until then):**
-1. + 2. `Sx1262DriverTest` (both, same assertion) — `SetDioIrqParams` (op 0x08)
-   DIO1 mask: driver emits `0x0201` (TX_DONE+TIMEOUT), test vector expects
-   `0x0001`. **Impl matches RadioLib `startTransmit` (global+DIO1 = TX_DONE|TIMEOUT)
-   and the test's own name — the test vector is wrong.** One shared setup helper,
-   so one fix clears both. Verify against firmware RadioLib before editing.
-3. `LoraAirtimeTest` "10 percent duty cycle" — the duty gate is correct/inclusive;
-   the test trips the *separate* channel-util gate (a synthetic 359 s airtime =
-   598% of the 60 s window). **Test-design issue, not a boundary bug** — intent
-   call needed (realistic input, or isolate the duty gate).
-4. `Ch341BridgeTest` "readAll" — throws `UsbIoException: empty status reply`; not
-   yet root-caused (fake status-reply setup vs the bridge read loop).
+- **Independently re-verified 2026-09-04** (forced `--rerun-tasks`, not cached):
+  `:node-transport-lora:jvmTest` **83/83**, `:node-transport-lora:testAndroidHostTest`
+  **83/83**, 0 failures; `detekt` + `apiCheck` clean; `:monitor-android` debug APK
+  built (~16 MB). The 4 failures seen in a mid-flight snapshot were the ones this
+  note previously listed — the implementer fixed all four exactly as diagnosed
+  (the SX1262 DIO1 mask stays `0x0201` = TX_DONE|TIMEOUT per RadioLib, the test
+  vector was corrected; the airtime test now judges at t=61 s and a new test pins
+  that our own TX counts toward channel-util).
+- Module shape: commonMain (`spi/SpiBus`, `ch341/*`, `sx1262/*`, framing, modem
+  presets, region table, channel-slot plan, airtime gates, config, transport
+  actor loop), androidMain (USB-host backend + `usb_device_filter.xml`), jvmMain
+  stub, commonTest (byte-exact CH341/SX1262/framing/preset/airtime/transport),
+  androidDeviceTest (on-device bring-up tests, not run), monitor wiring + docs.
 
-Resume: fix the four (a fresh workflow verify/fix pass, or by hand), re-run
-`direnv exec <wt> ~/.claude/bin/gradle-queue -- :node-transport-lora:jvmTest`,
-then `:monitor-android:assembleDebug`, and commit sentence-style on the branch.
-Hardware (Pixel 6a + Meshtadpole stick) is a later, separate on-device step.
+**Caveats (do not overstate):**
+- The workflow's **independent code-review agent never ran** (`verify:review-1`
+  hit the session limit). Tests + lint are green and I re-ran them, but no
+  adversarial second-pass review of the code has happened — worth one before a PR.
+- **No hardware.** Nothing has touched a Meshtadpole; the Android USB path compiles
+  into the APK but is unexercised. Pin map, TCXO/DIO2 switch, CH341 SPI clock, and
+  whether a Pixel 6a OTG port sustains 10/22 dBm are the open on-device checks.
+- Two small node-core deferrals noted by the implementer: `InboundFrame.snr`
+  (needs a native klib dump regen; SNR currently on `LoraTransport.lastReception`)
+  and `:monitor:detekt` not in the gate.
+
+Resume: an adversarial code review, then the on-device bring-up (Pixel 6a +
+Meshtadpole stick), then push / PR.
