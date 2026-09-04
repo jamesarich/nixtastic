@@ -196,7 +196,7 @@ existing herdr and paseo entries are preserved untouched.
 | Hook | Action | Timeout |
 | --- | --- | --- |
 | `SessionStart` | `flock` → `git pull --no-rebase --autostash \|\| true` | 10s |
-| `Stop` | `flock` → `add -A`, `commit`, `pull --no-rebase`, `sort -u` on `MEMORY.md`, `push` — all `\|\| true` | 15s |
+| `Stop` | `flock` → `add -A`, `commit`, `pull --no-rebase`, dedupe `MEMORY.md`, `push` — all `\|\| true` | 15s |
 
 `--no-rebase`, not `--rebase`, and the distinction is load-bearing: a merge
 driver only runs during a *merge*. Under `pull --rebase` git replays commits one
@@ -223,9 +223,11 @@ handled declaratively:
 
     MEMORY.md merge=union
 
-Union merge keeps both sides' lines; the `Stop` hook then normalises with
-`sort -u`. Two machines each appending a pointer therefore resolves with no
-human in the loop.
+Union merge keeps both sides' lines; the `Stop` hook then drops repeated lines
+(`awk '!seen[$0]++'`). Two machines each appending a pointer therefore resolves
+with no human in the loop. Not `sort -u`: that would undo the type ordering the
+index is rendered in. The hook drops repeated lines and keeps their order;
+`sync` re-renders properly on its next run.
 
 The full regeneration from frontmatter is a **`sync` step, not a hook step** —
 it runs once at install and after any import. The hooks only ever `sort -u`, so

@@ -18,6 +18,8 @@
 #   --main     switch each repo to its DEFAULT branch first,
 #              then pull. Implies --pull. Refuses to switch a
 #              repo whose tracked files are modified.
+#   --install-hooks  register the memory hooks in user-scope settings.json
+#   --slug <path>    print a Claude Code project slug and exit
 # --slug <path>: print the Claude Code project slug for a path and exit.
 # Not a mode — a lookup, for humans asking "which projects/ dir is mine?"
 if [ "${1:-}" = --slug ]; then
@@ -26,10 +28,12 @@ if [ "${1:-}" = --slug ]; then
 fi
 pull=false
 main=false
+hooks=false
 for arg in "$@"; do
   case "$arg" in
     --pull) pull=true ;;
     --main) main=true; pull=true ;;
+    --install-hooks) hooks=true ;;
     *) echo "unknown option: $arg" ; exit 1 ;;
   esac
 done
@@ -475,6 +479,21 @@ memory_pass() {
     else
       echo "            committed; push failed (offline?) — doctor will report unpushed"
     fi
+  fi
+
+  # The hook script is rewritten every pass (stable path, fresh store
+  # path); the settings.json entry is written only on request, because
+  # editing a user-global file is consent the user gives once.
+  write_memory_hook "$root"
+  if [ "$hooks" = true ]; then
+    if install_memory_hooks "$root"; then
+      echo "            hooks installed in ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json (backup: settings.json.nixtastic-bak)"
+    else
+      echo "            hooks already installed"
+    fi
+  elif ! grep -q nixtastic-memory-hook "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" 2>/dev/null; then
+    echo "            no hooks yet — sessions will not pull or push until, once per machine:"
+    echo "                nix run .#sync -- --install-hooks"
   fi
 }
 memory_pass

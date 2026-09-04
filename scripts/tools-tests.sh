@@ -444,5 +444,44 @@ wt="$root/kzstd/.claude/worktrees/feat-mem"
   || { echo "T20: worktree slug not linked at creation"; exit 1; }
 run "$worktree" --remove kzstd feat-mem
 
+echo "--- T21: hooks — merged into settings.json once, existing entries kept; the hook commits, pushes, and respects the lock"
+cfg="$HOME/.claude/settings.json"
+mkdir -p "$HOME/.claude"
+cat > "$cfg" <<'EOF'
+{ "model": "opus", "hooks": { "SessionStart": [ { "matcher": "*", "hooks": [ { "type": "command", "command": "herdr session", "timeout": 10 } ] } ] } }
+EOF
+run "$sync" --install-hooks
+expect 'hooks installed'
+[ -f "$cfg.nixtastic-bak" ] || { echo "T21: no backup"; exit 1; }
+[ "$(jq -r .model "$cfg")" = opus ] || { echo "T21: unrelated setting lost"; exit 1; }
+[ "$(jq '.hooks.SessionStart | length' "$cfg")" = 2 ] || { echo "T21: herdr entry lost or ours missing"; exit 1; }
+jq -e '.hooks.SessionStart[0].hooks[0].command == "herdr session"' "$cfg" >/dev/null || { echo "T21: existing hook rewritten"; exit 1; }
+jq -e '.hooks.Stop[0].hooks[0].command | test("nixtastic-memory-hook.* stop$")' "$cfg" >/dev/null || { echo "T21: stop hook missing"; exit 1; }
+[ -x "$root/bin/nixtastic-memory-hook" ] || { echo "T21: hook script missing"; exit 1; }
+run "$sync" --install-hooks
+expect 'hooks already installed'
+[ "$(jq '.hooks.SessionStart | length' "$cfg")" = 2 ] || { echo "T21: second install duplicated the entry"; exit 1; }
+# The hook: a memory written through the link is committed and pushed.
+printf -- '---\nname: from-a-session\ndescription: "x"\nmetadata:\n  type: project\n---\nbody\n' > "$projects/$(slug "$root")/memory/from-a-session.md"
+printf -- '- [dup line](from-a-session.md) — x\n- [dup line](from-a-session.md) — x\n' >> "$store/memory/MEMORY.md"
+run "$root/bin/nixtastic-memory-hook" stop
+git -C "$origins/nixtastic-agent.git" log --oneline | grep -q 'memory: ' || { echo "T21: hook did not push"; exit 1; }
+[ "$(grep -c 'dup line' "$store/memory/MEMORY.md")" = 1 ] || { echo "T21: union duplicate not collapsed"; exit 1; }
+# A held lock means another session is mid-push: exit 0, do nothing.
+mkdir "$store/.git/nixtastic-hook.lock"
+echo more >> "$store/memory/from-a-session.md"
+run "$root/bin/nixtastic-memory-hook" stop
+[ -n "$(git -C "$store" status --porcelain)" ] || { echo "T21: hook ignored the lock"; exit 1; }
+rmdir "$store/.git/nixtastic-hook.lock"
+run "$root/bin/nixtastic-memory-hook" stop
+[ -z "$(git -C "$store" status --porcelain)" ] || { echo "T21: hook did not commit after lock release"; exit 1; }
+# start pulls: a commit made on the "other machine" arrives.
+other="$HOME/other-machine"
+git clone -q "$origins/nixtastic-agent.git" "$other"
+printf -- '---\nname: from-the-laptop\ndescription: "x"\nmetadata:\n  type: project\n---\nbody\n' > "$other/memory/from-the-laptop.md"
+(cd "$other" && git add -A && git commit -qm "memory: laptop" && git push -q)
+run "$root/bin/nixtastic-memory-hook" start
+[ -f "$store/memory/from-the-laptop.md" ] || { echo "T21: start hook did not pull"; exit 1; }
+
 echo "all tests passed"
 touch "$out"
