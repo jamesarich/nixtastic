@@ -56,30 +56,37 @@ advertisement was dark because the firmware conflated "wrote the CCCD" with
 "arrived on the mesh advertising set", and the iPad held the radio's single mesh
 slot. Everything below is what remains.
 
-**Three physical prerequisites, none of which an agent can do:**
+**Verified on the Pixel already** (it was unlocked; see the plan doc's last
+section for the exact readings): `GattLinkStatus` and its `GATT:` line — which
+**confirmed the client half of the diagnosis**, showing the only GATT central to
+be a resolvable-private (Apple) address with `notify=enabled` while `gatt` rx sat
+at 0, and zero public-address connections in logcat; the scan-failure fault
+(`SCAN_FAILED_APPLICATION_REGISTRATION_FAILED` with the adapter off); and
+`MeshEvent.Sent` (`tx[gatt,ble-adv,udp] text id=… to=!ffffffff`). Two claims were
+*retracted* in the same session — the `ACCESS_LOCAL_NETWORK` root cause and the
+scope of `TransportFailed`; both are in the traps list below.
 
-1. **Unlock the Pixel.** The monitor is installed and running behind the
-   keyguard (`wm dismiss-keyguard` is refused; a lock is set), so no dashboard
-   can be read.
-2. **Attach the V3 to USB and approve a flash** of spike `7153c78`. Its console
-   is also the only way to confirm the inferred radio-side cause — grep it for
-   `advertising the mesh-peer service on instance 2` vs `peer slot held by conn N`.
-3. **Quit the iPad's monitor, or set its GATT role to `peripheral only`.**
+**What still needs the bench, and an agent cannot do:**
+
+1. **Attach the V3 to USB and approve a flash** of spike `7153c78`. Its console is
+   the only way to confirm the *radio-side* half of the diagnosis — grep for
+   `advertising the mesh-peer service on instance 2` vs `peer slot held by conn N`
+   — and the fix is unproven until then.
+2. **Quit the iPad's monitor, or set its GATT role to `peripheral only`.**
    `BLE_GATT_MESH_MAX_LINKS` is 1: whichever central connects first holds the
-   radio's mesh slot, and the other phone can never find it — fix or no fix.
+   radio's mesh slot, and the other phone can never find it — fix or no fix. The
+   iPad currently holds it, which is exactly what the verified `GATT:` line shows.
 
-**Then, in order:** install the rebuilt APK; the `GATT:` line and the
-`gatt links: …` log entry should name the V3's public MAC as a central with
-`notify=enabled` (compare against the V3 console's own `BLE incoming connection`
-line). `notify=pending` that never turns `enabled`, or `notify=refused`, is the
-subscribe failing and now says so. Then the goal: the `gatt` row's rx advances and
-the log shows `rx[gatt] …` from the V3's node number. Finally change a knob to
-force a node rebuild and confirm the link comes back — previously it never did.
-Only after that: push node-kmp and the spike branch.
+**Then:** the `GATT:` line should name the V3's *public* MAC as a central with
+`notify=enabled` (compare against the V3 console's `BLE incoming connection`), the
+`gatt` row's rx should advance, and the log should show `rx[gatt] …` from the V3's
+node number. Finally change a knob to force a node rebuild and confirm the link
+comes back — previously it never did. Only after that: push node-kmp and the spike
+branch.
 
-**Also unverified on-device** from the same batch: the `failed` column (`! n` in
-red) on a bearer whose receive path dies, `transport[udp] FAILED: …`, and the
-`tx[…] text id=…` line replacing the old stats diff.
+**Still unverified on-device:** the `failed` column lighting up at all (no way was
+found to make a bearer *throw* on this device — see the traps), and
+`transport[udp] FAILED: …`.
 
 ## Next steps, in order
 
@@ -147,13 +154,17 @@ red) on a bearer whose receive path dies, `transport[udp] FAILED: …`, and the
 
 ## Traps that cost hours (don't re-pay them)
 
-- **Android 17 + targetSdk 37: no `ACCESS_LOCAL_NETWORK` grant → UDP is silently
-  dead** (rx 0, sends fail, no error anywhere). Before debugging a socket:
-  `adb shell dumpsys package <pkg> | grep LOCAL_NETWORK`; debug builds take
-  `pm grant`. INTERNET + a MulticastLock are not enough.
-- **`MeshNode.events` swallows a transport that fails to open** (`incoming().catch {}`),
-  so "broken" reads as "idle". `TransportFailed` is landing via the workflow; until
-  it does, a bearer at 0/0 while a sibling on the same medium flows is *broken*.
+- **Local-network protection is gated on a compat change, not on targetSdk 37.**
+  `adb shell dumpsys platform_compat | grep RESTRICT_LOCAL_NETWORK` reads
+  `disabled` on this Pixel (Android 17), and UDP works with
+  `ACCESS_LOCAL_NETWORK` revoked. Hold the permission anyway, but **do not
+  diagnose with it** — I recorded it as the cause of a dead `udp` bearer on
+  2026-09-04 and the revoke test disproved it. What fixed that bearer is still
+  unknown.
+- **On Android a dead bearer is a callback, not a throw.** With Bluetooth off, the
+  BLE transports do not throw (`onScanFailed` instead), so the `failed` column
+  stays 0 and a dead row is identical to an idle one. `failures == 0` is not
+  health; the `GATT:` line's `fault:` is what actually reports it.
 - **A constant identity seed makes every device the same node**; same-id nodes
   drop each other's frames as "heard myself", silently. Per-install identity
   (`platformNodeSeed()`) — and one desktop instance at a time.

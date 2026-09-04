@@ -22,9 +22,10 @@ origin, not pushed** (`3022a3776` … `ea24b26d5`).
   into every platform; `c31095b` UDP given an Android target; `755e346`
   per-transport rx/tx/relayed counters, `via`-tagged events, transport on/off
   toggles and a tuning panel for every lever (relay policy included — the
-  monitor node had been an island until then); `1b1d68a` the Android 17
-  `ACCESS_LOCAL_NETWORK` grant, without which UDP is silently dead; `8427db6`
-  the desktop uber jar. Details in the 2026-09-04 section at the end. The
+  monitor node had been an island until then); `1b1d68a` the
+  `ACCESS_LOCAL_NETWORK` grant (whose commit message calls it the fix for a dead
+  UDP bearer — **wrong**, see the correction at the end); `8427db6` the desktop
+  uber jar; `393384b` the corrections. Details in the 2026-09-04 section at the end. The
   original GATT work, on `feat/ble-gatt-transport` (since merged):
   - `fb5a3ab` — don't echo a relay back to the sending peer (origin token
     threaded `InboundFrame.source` → `exclude`); validate-before-relay confirmed.
@@ -682,12 +683,14 @@ probe — while the Pixel's own `udp` tx was 0, so the only path was Pixel
 **The bug the instrumentation found, and a claim retracted:** "Android runs all
 four transports" was wired-but-dead for UDP — `udp 0/0` on the Pixel while the
 desktop on the same /24 heard everything, and a probe left as `tx[gatt,ble-adv]`.
-Root cause: Android 17 local-network protection for a targetSdk-37 app; without
-the `ACCESS_LOCAL_NETWORK` runtime grant the OS drops multicast and refuses sends
-**silently**. `1b1d68a` declares and requests it; after the grant `udp` went
-0/0 → 9 rx / 1 tx within a minute. It hid for hours because `MeshNode.events`
-does `transport.incoming().catch { }` — a transport that fails to open is
-indistinguishable from an idle one. Being fixed (below).
+I attributed that to Android 17 local-network protection and added the
+`ACCESS_LOCAL_NETWORK` grant (`1b1d68a`), after which `udp` went 0/0 → 9 rx / 1
+tx. **That attribution was wrong** — see the correction at the end of this
+document; the permission is right to hold but is not what fixed it, and what did
+is still unexplained. It hid for hours because `MeshNode.events` does
+`transport.incoming().catch { }`, so a transport that fails to open is
+indistinguishable from an idle one — which the next section makes visible, though
+less than it first appeared.
 
 **Desktop launch:** `:monitor:run` never exits and pins a shared gradle-queue
 slot; `createDistributable` needs jpackage and fails under the Nix shell. The
@@ -795,8 +798,48 @@ exactly where it could be tested. Both directions were **narrowed** by `9f54363`
 fixing them properly needs conn-handle-aware session tracking and a PIN-mode
 bench, so it is written down rather than changed blind.
 
-**Owed before this can be believed:** none of the firmware change is flashed and
-none of the client change is verified on-device. The three bench asks are the
-Pixel unlocked, the V3 on USB with flash approval, and the iPad's monitor quit or
-set `peripheral only` — otherwise it keeps the radio's single mesh slot and the
-Pixel can never find it, fix or no fix.
+## On-device verification, and two claims retracted (2026-09-04, Pixel unlocked)
+
+With the Pixel unlocked, the new diagnostics answered the GATT question in one
+reading — and then contradicted two things this document previously asserted.
+
+**Verified on the Pixel (Android 17, node `!6337995d`):**
+
+- **`GattLinkStatus`, and with it the diagnosis.** The status strip read
+  `GATT: central=[5C:88:1F:79:AB:E1(ready,notify=enabled,chunk=20)] connecting=[]
+  subscribers=[]` while `gatt` rx stayed 0. So **the subscribe succeeded** and the
+  peer simply sends nothing — and `5C` has top bits `01`, a *resolvable private
+  address*, which the V3 cannot have (it advertises `BLE_OWN_ADDR_PUBLIC`).
+  logcat showed **zero** public-address connections and an `iPad` in the
+  environment. That is the diagnosis confirmed from the client side without
+  flashing anything: the Pixel's GATT peer is the iPad, not the radio.
+- **Scan-failure reporting.** With Bluetooth switched off the line became
+  `fault: scan failed: SCAN_FAILED_APPLICATION_REGISTRATION_FAILED (2)` — silent
+  before `3e49c60`.
+- **`MeshEvent.Sent`.** `tx queued: probe from !6337995d` then
+  `tx[gatt,ble-adv,udp] text id=3283296145 to=!ffffffff`, tx counter 1. Note
+  `gatt` is in the carried list: the write to the iPad is accepted while rx is 0.
+
+**Retracted — `ACCESS_LOCAL_NETWORK` was not the UDP fix.** `dumpsys
+platform_compat` on this Pixel reports `ChangeId(365139289;
+name=RESTRICT_LOCAL_NETWORK; disabled)`: local-network protection **is not
+enforced here**. With the permission revoked and the app relaunched, `udp` still
+showed rx 1 / tx 1 and appeared in `tx[gatt,ble-adv,udp]`. So the grant is
+forward-looking correctness for when that compat change flips on, and the udp 0/0
+this morning remains **unexplained** — the reinstall-and-relaunch that came with
+the permission is the untested confound. Check enforcement before blaming it:
+`adb shell dumpsys platform_compat | grep RESTRICT_LOCAL_NETWORK`.
+
+**Retracted — `TransportFailed` covers much less than claimed.** It fires only on
+an exception out of a bearer's flow. With Bluetooth off, neither BLE bearer threw
+(the failure arrived as `onScanFailed`), so `failures` stayed 0 and both rows read
+`rx 0 tx 0` — indistinguishable from idle, the very confusion it was added to
+remove. Android reports most bearer failures through callbacks, so there it is a
+backstop, not the signal; the transport's own `lastFault` is what caught this.
+`failures == 0` must not be read as healthy. Corrected in `393384b`.
+
+**Still owed:** no firmware change is flashed, so the radio-side half of the
+diagnosis (instance 2 dark because the slot was held) is still inferred, and the
+fix is unproven. That needs the V3 on USB with flash approval, and the iPad's
+monitor quit or set `peripheral only` — otherwise it keeps the radio's single mesh
+slot and the Pixel can never find it, fix or no fix.
