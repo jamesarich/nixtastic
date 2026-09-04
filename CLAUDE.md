@@ -295,4 +295,7 @@ finds — run it before diagnosing by hand.
   links at creation, and two user-scope hooks (`.#sync -- --install-hooks`,
   once per machine) pull at `SessionStart` and push at `Stop`. `doctor`
   reports an unlinked slug, missing hooks, an unpushed store, and memories
-  not touched in 90 days. Design: [`notes/agent-memory-sync.md`](./notes/agent-memory-sync.md).
+  not touched in 90 days. A memory true on one machine only (the bench,
+  `/dev/serial`, Xcode) gets `machine: james-pc` or `machine: darwin` under
+  its `metadata:`; `sync` renders that into the index line, where selection
+  happens. Design: [`notes/agent-memory-sync.md`](./notes/agent-memory-sync.md).

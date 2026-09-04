@@ -389,7 +389,9 @@ grep -q WINNER "$store/memory/dup.md" || { echo "T18: store file was clobbered";
 [ -f "$pre/memory.pre-sync/dup.md" ] || { echo "T18: loser not preserved beside the link"; exit 1; }
 [ "$(readlink "$pre/memory")" = "$store/memory" ] || { echo "T18: android slug not linked after import"; exit 1; }
 # The import is committed and pushed, so the other machine can pull it.
-git -C "$origins/nixtastic-agent.git" log --oneline | grep -q 'memory: import' || { echo "T18: import not pushed"; exit 1; }
+# Not grep -q: it closes the pipe on the first match and pipefail then
+# reports git log's SIGPIPE as a failure — a race that flips as the log grows.
+git -C "$origins/nixtastic-agent.git" log --oneline | grep 'memory: import' >/dev/null || { echo "T18: import not pushed"; exit 1; }
 # Idempotent: a second run imports nothing and touches no mtime.
 before=$(ls -l --time-style=full-iso "$store/memory")
 run "$sync"
@@ -428,6 +430,17 @@ grep -q '^- \[Quoted desc\](quoted-desc.md) — says "hi" to you$' "$idx" \
 cp "$idx" "$HOME/idx.before"
 run "$sync"
 cmp -s "$idx" "$HOME/idx.before" || { echo "T19: re-render is not byte-identical"; exit 1; }
+# A session appends its own line with a hand-written title (the harness
+# instruction says to). The title is the retrieval key, so it is kept; the
+# hook is still the frontmatter description; the appended line is folded.
+printf -- '- [Alpha, by hand](alpha-project.md) — a hook someone typed\n' >> "$idx"
+run "$sync"
+grep -q '^- \[Alpha, by hand\](alpha-project.md) — another project fact$' "$idx" \
+  || { echo "T19: hand title lost on re-render"; cat "$idx"; exit 1; }
+[ "$(grep -c 'alpha-project.md' "$idx")" = 1 ] || { echo "T19: appended line not folded"; exit 1; }
+cp "$idx" "$HOME/idx.before2"
+run "$sync"
+cmp -s "$idx" "$HOME/idx.before2" || { echo "T19: re-render with a hand title is not byte-stable"; exit 1; }
 # Overlap hint on import: two stems shared, reported, never merged.
 pre="$projects/$(slug "$root/firmware")"
 rm -rf "$pre/memory"; mkdir -p "$pre/memory"
@@ -469,8 +482,8 @@ expect 'hooks already installed'
 printf -- '---\nname: from-a-session\ndescription: "x"\nmetadata:\n  type: project\n---\nbody\n' > "$projects/$(slug "$root")/memory/from-a-session.md"
 printf -- '- [dup line](from-a-session.md) — x\n- [dup line](from-a-session.md) — x\n' >> "$store/memory/MEMORY.md"
 run "$root/bin/nixtastic-memory-hook" stop
-git -C "$origins/nixtastic-agent.git" log --oneline | grep -q 'memory: ' || {
-  echo "T21: hook did not push"; echo "--- origin log:"; git -C "$origins/nixtastic-agent.git" log --oneline --all | head -5
+git -C "$origins/nixtastic-agent.git" log --oneline | grep 'memory: ' >/dev/null || {
+  echo "T21: hook did not push"; echo "--- origin log:"; git -C "$origins/nixtastic-agent.git" log --oneline --all -5
   echo "--- store:"; git -C "$store" status -sb | head -3; git -C "$store" log --oneline -3; ls -d "$store/.git/nixtastic-hook.lock" 2>/dev/null; exit 1; }
 [ "$(grep -c 'dup line' "$store/memory/MEMORY.md")" = 1 ] || { echo "T21: union duplicate not collapsed"; exit 1; }
 # A held lock means another session is mid-push: exit 0, do nothing.
@@ -516,6 +529,9 @@ echo more >> "$store/memory/from-a-session.md"
 run_lax "$doctor"
 expect 'WARN +memory store .*1 uncommitted'
 run "$root/bin/nixtastic-memory-hook" stop
+# Undated alone is not stale: it must not warn forever.
+run_lax "$doctor"
+expect 'ok +memory age .*undated'
 # Age: a memory last modified years ago, and one with no date at all.
 printf -- '---\nname: old\ndescription: "x"\nmetadata:\n  type: project\n  modified: 2020-01-01T00:00:00Z\n---\nbody\n' > "$store/memory/old.md"
 run_lax "$doctor"

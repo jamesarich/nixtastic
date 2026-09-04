@@ -391,11 +391,13 @@ else
     if [ -z "$m_mod" ]; then m_undated=$((m_undated + 1))
     elif [[ "$m_mod" < "$m_cutoff" ]]; then m_stale=$((m_stale + 1)); fi
   done <<< "$(find "$mstore/memory" -maxdepth 1 -name '*.md' ! -name MEMORY.md 2>/dev/null)"
-  if [ "$m_stale" -gt 0 ] || [ "$m_undated" -gt 0 ]; then
-    warn "memory age" "$m_stale not updated since $m_cutoff, $m_undated undated"
+  # Undated is reported, never warned: pre-rollout files carry no modified:
+  # line and never will, and a warning that cannot clear is noise.
+  if [ "$m_stale" -gt 0 ]; then
+    warn "memory age" "$m_stale not updated since $m_cutoff ($m_undated undated)"
     fix "review them; a wrong memory is worse than a missing one — delete it"
   else
-    ok "memory age" "all $m_count updated within 90 days"
+    ok "memory age" "none older than 90 days ($m_undated undated of $m_count)"
   fi
 fi
 

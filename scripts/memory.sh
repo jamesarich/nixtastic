@@ -105,6 +105,12 @@ memory_link() {
 # alphabetical within each, the machine tag inline where one is set.
 # Deterministic, so re-rendering an unchanged store is byte-identical and
 # never churns a commit. $1 = the memory dir.
+#
+# Titles are harvested from the EXISTING index before it is replaced: a
+# session appends its own line with a hand-written title (the harness says
+# to), and a hand title is a better retrieval key than one derived from the
+# filename. Last occurrence wins, so a fresh append beats an old render;
+# the hook is always the frontmatter description.
 # SC2016: the $0 and $1 inside the quotes are awk's fields, and must reach
 # awk unexpanded.
 # shellcheck disable=SC2016
@@ -112,13 +118,16 @@ memory_link() {
 # reaching it literally by design — the same disable lib.sh uses for jq.
 # shellcheck disable=SC2016
 memory_render_index() {
+  hand=$(mktemp)
+  [ -f "$1/MEMORY.md" ] && sed -n 's/^- \[\([^]]*\)\](\([^)]*\)\.md).*/\2\t\1/p' "$1/MEMORY.md" > "$hand"
   {
     echo '# Memory'
     echo
-    find "$1" -maxdepth 1 -name '*.md' ! -name MEMORY.md -print0 | sort -z | xargs -0 gawk '
+    find "$1" -maxdepth 1 -name '*.md' ! -name MEMORY.md -print0 | sort -z | xargs -0 gawk -v handf="$hand" '
+      BEGIN { while ((getline l < handf) > 0) { i = index(l, "\t"); hand[substr(l, 1, i - 1)] = substr(l, i + 1) } }
       # A quoted YAML scalar escapes its inner quotes; the index shows them bare.
       function val(s) { sub(/^[^:]*:[ \t]*/, "", s); gsub(/^"|"$/, "", s); gsub(/\\"/, "\"", s); return s }
-      function title(s,  t) { t = s; gsub(/[-_]+/, " ", t); return toupper(substr(t, 1, 1)) substr(t, 2) }
+      function title(s,  t) { if (s in hand) return hand[s]; t = s; gsub(/[-_]+/, " ", t); return toupper(substr(t, 1, 1)) substr(t, 2) }
       function emit(  stem, rank, tag) {
         stem = FILENAME; sub(/.*\//, "", stem); sub(/\.md$/, "", stem)
         rank = (type == "user") ? 0 : (type == "feedback") ? 1 : (type == "reference") ? 2 : (type == "project") ? 3 : 4
@@ -134,6 +143,7 @@ memory_render_index() {
       ENDFILE { if (!done) emit() }
     ' | sort -t "$(printf '\t')" -k1,1n -k2,2 | cut -f3-
   } > "$1/MEMORY.md.new"
+  rm -f "$hand"
   # Replace only on difference: an unchanged store keeps its inode and
   # mtime, so nothing here churns a commit or trips the idempotence test.
   if cmp -s "$1/MEMORY.md.new" "$1/MEMORY.md"; then
