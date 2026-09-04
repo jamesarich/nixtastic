@@ -563,6 +563,9 @@ for f in android-code-review android-baseline apple-code-review apple-marketing;
   [ -f "$p/skills/$f/SKILL.md" ] || { echo "T24: forwarder $f missing"; ls "$p/skills"; exit 1; }
 done
 [ ! -e "$p/skills/apple-speckit-plan" ] || { echo "T24: speckit forwarded"; exit 1; }
+[ -f "$p/skills/meshtastic-cross-repo/SKILL.md" ] || { echo "T24: cross-repo skill missing from render"; exit 1; }
+grep -q '^name: meshtastic-cross-repo$' "$p/skills/meshtastic-cross-repo/SKILL.md" || { echo "T24: cross-repo name"; exit 1; }
+[ -f "$p/skills/meshtastic-cross-repo/references/umbrella-template.md" ] || { echo "T24: umbrella template missing"; exit 1; }
 grep -q '^name: android-code-review$' "$p/skills/android-code-review/SKILL.md" || { echo "T24: forwarder name"; exit 1; }
 grep -q '^description: "\[android\] Review android the repo way"$' "$p/skills/android-code-review/SKILL.md" || { echo "T24: forwarder description"; cat "$p/skills/android-code-review/SKILL.md"; exit 1; }
 grep -qF "$root/android/.claude/skills/code-review" "$p/skills/android-code-review/SKILL.md" || { echo "T24: forwarder lacks absolute target"; exit 1; }
