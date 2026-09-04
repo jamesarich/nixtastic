@@ -116,11 +116,31 @@ runs on every later sync, so the migration path is the steady-state path and
 gets the same test coverage. It is idempotent: a second run reports `0
 imported` and changes no mtimes.
 
-`MEMORY.md` is regenerated after any import by reading each memory's `name:` and
-`description:` frontmatter and emitting one sorted pointer line each. It is a
-derived file: 282 memory files in, one generated index out. No machine's
+`MEMORY.md` is regenerated after any import by reading each memory's `name:`,
+`description:` and `metadata:` frontmatter and emitting one pointer line each.
+It is a derived file: 282 memory files in, one generated index out. No machine's
 existing `MEMORY.md` is imported — they are all superseded by the regenerated
 one.
+
+The index is the **retrieval key**, not a table of contents. A second probe
+(see [Evidence](#evidence)) showed that memory bodies are fetched on demand,
+selected from their index line alone. So the index is written for selection:
+
+- **Ordered by type, not alphabet:** `user` → `feedback` → `reference` →
+  `project`, alphabetical within each. The merged set is 71 % `project`
+  (perishable) and 1 % `user` + 16 % `feedback` (the memories that change
+  behaviour every session). Alphabetical order would scatter the 47 durable
+  ones among 199 perishable ones; type order front-loads them where a skim
+  survives.
+- **Machine tag rendered inline** when present:
+  `- [Power-cycle with uhubctl](f.md) — [james-pc] cycle wedged bench radios…`.
+  A tag that lives only in file frontmatter is read *after* the selection it
+  was meant to inform.
+- **Cross-store topic overlaps printed at import.** Filenames never collide
+  (measured); facts can. `sync` lists pairs of imported names sharing two or
+  more keyword stems for a five-minute human pass. It never merges them
+  itself — of the nine pairs found, one is a true duplicate and the rest are
+  distinct facts that happen to share words.
 
 **Legacy stores are excluded, not imported.** `-Users-james-StudioProjects-*`
 on the laptop are strict subsets of the corresponding `-Users-james-nixtastic-*`
@@ -142,7 +162,7 @@ worktree churn. `--install-hooks` writes the two hooks described below.
 
 ### `nix run .#doctor`
 
-Four checks, in the established `ok`/`warn`/`bad` + `fix` idiom:
+Five checks, in the established `ok`/`warn`/`bad` + `fix` idiom:
 
 | Check | Failure | `fix` |
 | --- | --- | --- |
@@ -150,6 +170,14 @@ Four checks, in the established `ok`/`warn`/`bad` + `fix` idiom:
 | every slug linked | `bad "memory links" "3 unlinked: android, firmware, pr-7020"` | `nix run .#sync` |
 | hooks registered | `warn "memory hooks" "not in ~/.claude/settings.json"` | `nix run .#sync --install-hooks` |
 | store state | `warn "memory store" "7 commits unpushed"` / `"diverged"` | `git -C ~/.nixtastic-agent push` |
+| staleness | `warn "memory age" "37 memories not updated since 2026-07"` | review; delete what is wrong |
+
+The staleness line reads frontmatter `modified:` — file mtimes are useless
+here, the 2026-08-15 laptop migration reset every one — and reports the count
+older than 90 days. It is a visibility signal, not a reaper. Nothing in this
+design deletes a memory; the convention that wrong memories get deleted needs
+a prompt, and this is it. 93 of the laptop's 240 carry no `modified:` at all
+and are reported as their own bucket.
 
 ### `nix run .#worktree`
 
@@ -235,7 +263,14 @@ Applied at import by filename heuristic — `ios-*`, `xcodebuild-*`, `*-macos*`
 → `darwin`; `uhubctl-*`, `rak-bench-*`, `tadpole-*`, `*-pio-*` → `james-pc` —
 and corrected as encountered thereafter. 282 files are not hand-audited. The tag
 is advisory: it tells a session to check before acting, and no filtering
-machinery is built.
+machinery is built. It is rendered into the `MEMORY.md` line (above) because
+that is where selection happens.
+
+The case that shows why: `firmware-native-tests-need-docker` (desktop) and
+`firmware-native-tests-on-macos` (laptop) share a conclusion — use
+`bin/test-native-docker.sh` — for different reasons that are each true on
+exactly one machine. They are not a duplicate to merge; they are two tagged
+memories that coexist.
 
 ## Never synced
 
@@ -258,6 +293,9 @@ Fixtures in `tools-tests.sh`:
    survives; the incoming one is skipped and named in the output.
 4. **Link-in-place** — a slug already symlinked is left alone, not re-created.
 5. **Worktree** — `worktree.sh` creates the link before any session exists.
+6. **Index rendering** — a fixture store with one memory of each type and one
+   tagged memory renders in type order with the tag inline; a re-render of an
+   unchanged store is byte-identical.
 
 Gate is the existing one, `just check`: `nix flake check --all-systems
 --no-build`, then `nix flake check`.
@@ -326,6 +364,32 @@ The canary existed only inside the symlinked store's `MEMORY.md`. Claude Code
 follows a symlinked `memory/` directory for the session-start read. This is the
 assumption the entire design rests on, which is why it was tested before the
 design was written rather than after.
+
+**Probe 2 — memory bodies are retrieved on demand.** The first probe put the
+canary in both the index and the memory file, so it proved only that the index
+loads. The second put a different canary **only in a memory file body**, behind
+a neutral index line:
+
+    - [Bench relay part number](bench-relay-partno.md) — the part number for the bench relay board
+
+    $ claude -p 'What is the bench relay board part number?'
+    FROBOZZ-9284-QQ
+
+The body was fetched, selected from the index line alone. This is why the index
+is designed as a retrieval key above.
+
+**Quality against the memory conventions**, measured on the desktop store: 40
+of 40 `MEMORY.md` lines conform to `- [Title](file.md) — hook`; 32 of 35
+`feedback`/`project` memories carry `**Why:**`; 421 `[[links]]` across the 282
+files with 9 distinct dangling targets (2 %). Merging does **not** repair the
+dangling ones — each desktop dangler was checked against the laptop and none
+exist there. They are missing memories, not split ones.
+
+**Topic overlap across machines.** Nine pairs share two or more filename
+stems. Read in full, one is a genuine duplicate
+(`commontest-names-no-commas` / `ios-rejects-commas-in-test-names`, the same
+fact recorded a day apart on each machine under different `type:` values); the
+other eight are distinct facts. Hence: report, never auto-merge.
 
 **Counts.** Measured 2026-09-04 by listing every memory file individually across
 all workspace slugs on both machines, then deduplicating once at the end:
