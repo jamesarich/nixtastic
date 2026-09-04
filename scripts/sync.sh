@@ -433,23 +433,37 @@ memory_pass() {
   git -C "$st" pull --no-rebase --autostash --quiet >/dev/null 2>&1 || true
 
   total=0; newly=0; imported=0; kept=""
+  newnames=$(mktemp)
   while IFS=$'\t' read -r pdir label; do
     [ -n "$pdir" ] || continue
     total=$((total + 1))
+    # Names present AFTER the link that were absent BEFORE are the imports.
+    before=$(find "$st/memory" -maxdepth 1 -name '*.md' -exec basename {} \; | sort)
     out=$(memory_link "$pdir" "$st/memory")
     case "$out" in
       warn*)     echo "  WARN      ${out#*$'\t'}" ;;
       linked)    newly=$((newly + 1)) ;;
       imported*) n=$(printf '%s' "$out" | cut -f2); k=$(printf '%s' "$out" | cut -f3)
                  imported=$((imported + n)); newly=$((newly + 1))
-                 [ -n "$k" ] && kept="$kept $label:{$k}" ;;
+                 [ -n "$k" ] && kept="$kept $label:{$k}"
+                 find "$st/memory" -maxdepth 1 -name '*.md' -exec basename {} \; | sort |
+                   comm -13 <(printf '%s\n' "$before") - >> "$newnames" ;;
     esac
   done <<< "$(memory_slug_dirs "$root")"
 
+  memory_render_index "$st/memory"
   count=$(find "$st/memory" -maxdepth 1 -name '*.md' ! -name MEMORY.md | wc -l)
   printf '  memory    %s slugs -> %s/memory  (%s memories, %s newly linked, %s imported)\n' \
     "$total" "$st" "$count" "$newly" "$imported"
   [ -n "$kept" ] && echo "            kept in store, originals beside each link as memory.pre-sync/:$kept"
+  if [ -s "$newnames" ]; then
+    ov=$(memory_overlaps "$st/memory" "$newnames")
+    if [ -n "$ov" ]; then
+      echo "            overlap — same topic on both machines? read both, merge by hand if so:"
+      printf '%s\n' "$ov"
+    fi
+  fi
+  rm -f "$newnames"
 
   git -C "$st" add -A >/dev/null 2>&1 || true
   if ! git -C "$st" diff --cached --quiet 2>/dev/null; then

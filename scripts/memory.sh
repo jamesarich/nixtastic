@@ -97,3 +97,79 @@ memory_link() {
     echo linked
   fi
 }
+
+# MEMORY.md, derived from frontmatter. The index is the RETRIEVAL KEY — a
+# probe showed memory bodies are fetched on demand, selected from their
+# index line alone — so it is written for selection: user → feedback →
+# reference → project (durable first; the merged set is 71 % project),
+# alphabetical within each, the machine tag inline where one is set.
+# Deterministic, so re-rendering an unchanged store is byte-identical and
+# never churns a commit. $1 = the memory dir.
+# SC2016: the $0 and $1 inside the quotes are awk's fields, and must reach
+# awk unexpanded.
+# shellcheck disable=SC2016
+# SC2016 for the function: the $0 and $[0-9] in the awk program are awk's,
+# reaching it literally by design — the same disable lib.sh uses for jq.
+# shellcheck disable=SC2016
+memory_render_index() {
+  {
+    echo '# Memory'
+    echo
+    find "$1" -maxdepth 1 -name '*.md' ! -name MEMORY.md -print0 | sort -z | xargs -0 gawk '
+      function val(s) { sub(/^[^:]*:[ \t]*/, "", s); gsub(/^"|"$/, "", s); return s }
+      function title(s,  t) { t = s; gsub(/[-_]+/, " ", t); return toupper(substr(t, 1, 1)) substr(t, 2) }
+      function emit(  stem, rank, tag) {
+        stem = FILENAME; sub(/.*\//, "", stem); sub(/\.md$/, "", stem)
+        rank = (type == "user") ? 0 : (type == "feedback") ? 1 : (type == "reference") ? 2 : (type == "project") ? 3 : 4
+        tag = (mach != "") ? "[" mach "] " : ""
+        printf "%d\t%s\t- [%s](%s.md) — %s%s\n", rank, stem, title(stem), stem, tag, desc
+      }
+      BEGINFILE { inFm = 0; done = 0; type = ""; desc = ""; mach = "" }
+      FNR == 1 && $0 == "---" { inFm = 1; next }
+      inFm && $0 == "---"     { emit(); done = 1; nextfile }
+      inFm && /^description:/ { desc = val($0) }
+      inFm && /^  type:/      { type = val($0) }
+      inFm && /^  machine:/   { mach = val($0) }
+      ENDFILE { if (!done) emit() }
+    ' | sort -t "$(printf '\t')" -k1,1n -k2,2 | cut -f3-
+  } > "$1/MEMORY.md.new"
+  # Replace only on difference: an unchanged store keeps its inode and
+  # mtime, so nothing here churns a commit or trips the idempotence test.
+  if cmp -s "$1/MEMORY.md.new" "$1/MEMORY.md"; then
+    rm -f "$1/MEMORY.md.new"
+  else
+    mv "$1/MEMORY.md.new" "$1/MEMORY.md"
+  fi
+}
+
+# Pairs of memory names sharing two or more keyword stems, where at least
+# one side was just imported — a hint for a five-minute human pass, never
+# an auto-merge: measured, nine such pairs held ONE true duplicate. One
+# gawk process, because n² over a few hundred names is nothing to awk and
+# minutes to a bash loop. $1 = memory dir, $2 = file of imported basenames.
+# SC2016: the $0 and $1 inside the quotes are awk's fields, and must reach
+# awk unexpanded.
+# shellcheck disable=SC2016
+# SC2016 for the function: the $0 and $[0-9] in the awk program are awk's,
+# reaching it literally by design — the same disable lib.sh uses for jq.
+# shellcheck disable=SC2016
+memory_overlaps() {
+  find "$1" -maxdepth 1 -name '*.md' ! -name MEMORY.md -exec basename {} .md \; | sort |
+  gawk -v newf="$2" '
+    BEGIN {
+      while ((getline l < newf) > 0) { sub(/\.md$/, "", l); isnew[l] = 1 }
+      n = split("the and not for with are its from into", s, " "); for (i = 1; i <= n; i++) stop[s[i]] = 1
+    }
+    {
+      names[NR] = $0
+      n = split($0, t, /[-_]/)
+      for (i = 1; i <= n; i++) if (length(t[i]) > 3 && !(t[i] in stop)) toks[NR][t[i]] = 1
+    }
+    END {
+      for (a = 1; a <= NR; a++) for (b = a + 1; b <= NR; b++) {
+        if (!(names[a] in isnew) && !(names[b] in isnew)) continue
+        c = 0; for (k in toks[a]) if (k in toks[b]) c++
+        if (c >= 2) print "              " names[a] " ~ " names[b]
+      }
+    }'
+}

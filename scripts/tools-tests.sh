@@ -403,5 +403,38 @@ expect 'WARN .*elsewhere'
 [ "$(readlink "$other/memory")" = "$HOME/elsewhere" ] || { echo "T18: foreign symlink replaced"; exit 1; }
 rm "$other/memory"
 
+echo "--- T19: MEMORY.md is rendered by type with the machine tag inline, and is byte-stable"
+rm -f "$store"/memory/*.md
+mk() { printf -- '---\nname: %s\ndescription: "%s"\nmetadata:\n  type: %s\n%s---\nbody\n' "$1" "$2" "$3" "${4:-}" > "$store/memory/$1.md"; }
+mk zeta-project   "a project fact"            project
+mk alpha-project  "another project fact"      project
+mk some-feedback  "how James wants it done"   feedback
+mk who-james-is   "the operator"              user
+mk bench-serials  "bench USB serials"         reference "  machine: james-pc
+"
+run "$sync"
+idx="$store/memory/MEMORY.md"
+head -1 "$idx" | grep -qx '# Memory' || { echo "T19: no header"; exit 1; }
+# Order: user, feedback, reference, project; alphabetical within.
+want='who-james-is some-feedback bench-serials alpha-project zeta-project'
+got=$(sed -n 's/^- \[[^]]*\](\([^)]*\)\.md).*/\1/p' "$idx" | tr '\n' ' ' | sed 's/ $//')
+[ "$got" = "$want" ] || { echo "T19: order was: $got"; exit 1; }
+grep -q '^- \[Bench serials\](bench-serials.md) — \[james-pc\] bench USB serials$' "$idx" \
+  || { echo "T19: tag not inline / title not derived"; cat "$idx"; exit 1; }
+cp "$idx" "$HOME/idx.before"
+run "$sync"
+cmp -s "$idx" "$HOME/idx.before" || { echo "T19: re-render is not byte-identical"; exit 1; }
+# Overlap hint on import: two stems shared, reported, never merged.
+pre="$projects/$(slug "$root/firmware")"
+rm -rf "$pre/memory"; mkdir -p "$pre/memory"
+mk2() { printf -- '---\nname: %s\ndescription: "x"\nmetadata:\n  type: project\n---\nbody\n' "$1" > "$pre/memory/$1.md"; }
+mk2 firmware-native-tests-on-macos
+printf -- '---\nname: firmware-native-tests-need-docker\ndescription: "x"\nmetadata:\n  type: project\n---\nbody\n' > "$store/memory/firmware-native-tests-need-docker.md"
+run "$sync"
+expect 'overlap'
+expect 'firmware-native-tests-need-docker ~ firmware-native-tests-on-macos|firmware-native-tests-on-macos ~ firmware-native-tests-need-docker'
+[ -f "$store/memory/firmware-native-tests-on-macos.md" ] && [ -f "$store/memory/firmware-native-tests-need-docker.md" ] \
+  || { echo "T19: an overlap pair was merged or dropped"; exit 1; }
+
 echo "all tests passed"
 touch "$out"
