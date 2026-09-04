@@ -80,17 +80,47 @@ All commits below are **local, not pushed**.
     `BLE GATT mesh: mesh-peer service registered`,
     `advertising the mesh-peer service on instance 2`, full node operation, zero
     OOM / `Memory Capacity Exceeded` / crash at the 2-connection config.
-  - **NOT yet proven (bench-gated):** a phone connecting as a mesh peer and a
-    frame crossing device→phone. Blocked 2026-09-03 on the **Pixel's secure
-    lockscreen** — with the screen locked its monitor Activity is paused, so it
-    never scans/connects; `wm dismiss-keyguard` is refused (a lock is set).
-    Needs a physical unlock with the `node-kmp monitor` app foregrounded.
+  - **NOT yet proven — bench debugging 2026-09-04 found a BLE-pairing wall.**
+    With the Pixel unlocked and the `node-kmp monitor` app foregrounded (DUAL),
+    the app **connects to the v3 and completes GATT service discovery repeatedly**
+    (`BLE GATT mesh: peer conn 3 connected`; app-side `onSearchComplete status 0`),
+    but the link is torn down before any frame crosses — app sees GATT
+    `status=8/22/133`, v3 logs `BLE encryption change without encrypted link;
+    ignoring` then `BLE disconnected`. **rx/tx/peers stayed 0 on both sides.**
+    - The v3 uses PIN pairing by default (`bluetooth.fixed_pin`, mode RANDOM_PIN)
+      and the firmware configures global BLE bonding. Android tries to bond on the
+      connection and the bond fails (`ACTION_PAIRING_REQUEST` for `🌵_18c4`, then
+      `Detect bonding failure` / `Remove from storage`, looping).
+    - **Setting the v3 to `NO_PIN` (verified applied — no `random passkey` at boot)
+      did NOT fix it:** the `encryption change without encrypted link` drop still
+      happens even though in NO_PIN nothing on the v3 requires encryption. So the
+      PIN mode is not the (only) cause — Android still initiates encryption/bond on
+      connect and it fails on this ESP32 build.
+    - The mesh characteristic itself is open (plain WRITE/WRITE_NR/NOTIFY, no
+      `_ENC`/`_AUTHEN`, unlike the phone-API's secured chars), so the value path
+      is not the blocker; the failure is at connection/encryption establishment.
+    - **Leading hypotheses (for a deliberate session, not 5am remote poking):**
+      (a) a stale/failed bond on the Pixel for `34:B7:DA:62:18:C5` that adb
+      `cmd bluetooth_manager unpair` could not clear (unsupported) — forget the
+      device in Settings and retry NO_PIN clean; (b) the client lib
+      (`node-transport-ble-gatt` Android) requests bond/encryption on connect or
+      the CCCD subscribe triggers it — it should connect + subscribe on an
+      unencrypted link and tolerate a device that also hosts secured phone-API
+      chars; (c) DUAL-role contention (the app runs a GATT server too) or general
+      connect instability (`status=133`), related to the already-logged
+      DUAL-role-arbitration tuning item. Coexisting an unauthenticated mesh-peer
+      service with a PIN-paired phone-API on one GATT server is the real design
+      question to settle.
+    - **Repro:** v3 flashed with `3022a3776`, `enabled_protocols=7`, WiFi off;
+      Pixel 6a `org.meshtastic.node.monitor` DUAL. Watch v3 console (DTR/RTS off)
+      for `BLE GATT mesh RX ... peer=` (never seen) and the app rx counter.
   - **Still to gate:** ESP32-C3 (single-core, tighter RAM — the likely-fail
     candidate) and nRF52 (`Bluefruit.begin(2,0)` + linker RAM); neither board is
     on the bench, both unbuilt.
-  - **Bench cleanup owed on the v3:** restore `network.wifi_enabled=true` +
-    reboot, and revert `network.enabled_protocols` 7→3, once the frame-crossing
-    test is done.
+  - **Current v3 bench state (left test-ready 2026-09-04):**
+    `enabled_protocols=7`, `network.wifi_enabled=false`, `bluetooth.mode=NO_PIN`
+    (user's original was `RANDOM_PIN`). **Cleanup owed once done:** restore
+    `wifi_enabled=true`, `enabled_protocols=3`, `bluetooth.mode=RANDOM_PIN`, reboot.
 - **Phase 4 — future** (Wi-Fi Aware, anti-entropy sync).
 
 ---
