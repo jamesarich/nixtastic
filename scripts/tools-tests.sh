@@ -509,5 +509,11 @@ run_lax "$doctor"
 expect 'FAIL +memory store +not cloned'
 mv "$store.away" "$store"
 
+echo "--- T23: --memory-only runs the memory pass and nothing else"
+run "$sync" --memory-only
+expect 'memory .*slugs ->'
+refuse 'current +kzstd'
+refuse 'clone '
+
 echo "all tests passed"
 touch "$out"

@@ -287,3 +287,12 @@ finds — run it before diagnosing by hand.
   pyserial directly (`~/.platformio/penv/bin/python`).
 - **`nix flake check` only evaluates shells** — passing eval does not mean a
   repo builds.
+- **Memory is per-slug and the slug is your absolute cwd** — so `android/`,
+  every worktree, and the other machine each start with an empty
+  `~/.claude/projects/<slug>/memory` and never see what the root session
+  learned. `.#sync` links every slug it owns into one private store
+  (`~/.nixtastic-agent`, repo `jamesarich/nixtastic-agent`), `.#worktree`
+  links at creation, and two user-scope hooks (`.#sync -- --install-hooks`,
+  once per machine) pull at `SessionStart` and push at `Stop`. `doctor`
+  reports an unlinked slug, missing hooks, an unpushed store, and memories
+  not touched in 90 days. Design: [`notes/agent-memory-sync.md`](./notes/agent-memory-sync.md).

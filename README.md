@@ -68,6 +68,9 @@ printf '.envrc\n.direnv/\n.envrc-workspace\n' >> ~/.config/git/ignore
 
 # 5. Clone every repo and give each one its shell
 nix run .#sync          # then run the `direnv allow` lines it prints
+nix run .#sync -- --install-hooks   # once per machine: the two hooks that keep
+                                    # ~/.nixtastic-agent (Claude's memory, shared
+                                    # across machines) pulled and pushed
 
 # 6. Android SDK packages — works from NOTHING on x86_64-linux and
 #    Apple silicon (the pinned android-cli bootstraps the SDK itself);
@@ -314,6 +317,8 @@ repo builds.
 | `nix run .#sync` | fetch all, report drift. Read-only *for git*; writes missing `.envrc` files (and repairs generated ones naming a renamed shell), always regenerates `.mcp.json`, and adopts worktrees it didn't create. Bare `nix run .` is the same thing. |
 | `nix run .#sync -- --pull` | fast-forward where safe |
 | `nix run .#sync -- --main` | switch each repo to its default branch, then pull |
+| `nix run .#sync -- --memory-only` | just the memory store: pull, link every slug, push. After worktree churn, or when `doctor` says unpushed |
+| `nix run .#sync -- --install-hooks` | register the memory hooks in user-scope `settings.json`, once per machine. `doctor` tells you if you forgot |
 | `nix run .#brief -- <repo>` | orient: branch, shell, docs to read, PRs |
 | `nix run .#worktree -- <repo> <branch>` | worktree with the correct shell |
 | `nix run .#worktree -- --list \| --remove \| --prune` | manage worktrees across all repos |

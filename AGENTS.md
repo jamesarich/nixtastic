@@ -625,6 +625,13 @@ store. Where a project `.mcp.json` defines the same server name, project
 scope wins, so behaviour at the workspace root is unchanged. `doctor` checks
 the registration; `sync` prints the command when it is missing.
 
+The same stable-path shape carries `bin/nixtastic-memory-hook`: the
+`SessionStart`/`Stop` hook body that keeps Claude's memory store
+(`~/.nixtastic-agent`) pulled and pushed. User-scope `settings.json` names the
+path once (`.#sync -- --install-hooks`, merged with `jq`, never overwritten);
+`sync` rewrites the contents every run. Design and the reason the store is a
+symlink target rather than a synced directory: `notes/agent-memory-sync.md`.
+
 Three consequences worth knowing:
 
 - **It names store paths** — `uv`, the interpreter, and the loader path are
