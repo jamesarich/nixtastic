@@ -116,8 +116,13 @@ runs on every later sync, so the migration path is the steady-state path and
 gets the same test coverage. It is idempotent: a second run reports `0
 imported` and changes no mtimes.
 
-`MEMORY.md` is regenerated after any import by reading each memory's `name:`,
+`MEMORY.md` is regenerated after any import by reading each memory's
 `description:` and `metadata:` frontmatter and emitting one pointer line each.
+The **title** is harvested from the existing index first, last occurrence
+winning, and derived from the filename only when no line for that file exists:
+a session appends its own hand-written line (the harness says to), and a hand
+title is a better retrieval key than `Ble ota test on battery not usb`. The
+198 hand titles from the pre-rollout indexes were seeded back this way.
 It is a derived file: 282 memory files in, one generated index out. No machine's
 existing `MEMORY.md` is imported — they are all superseded by the regenerated
 one.
@@ -170,14 +175,15 @@ Five checks, in the established `ok`/`warn`/`bad` + `fix` idiom:
 | every slug linked | `bad "memory links" "3 unlinked: android, firmware, pr-7020"` | `nix run .#sync` |
 | hooks registered | `warn "memory hooks" "not in ~/.claude/settings.json"` | `nix run .#sync --install-hooks` |
 | store state | `warn "memory store" "7 commits unpushed"` / `"diverged"` | `git -C ~/.nixtastic-agent push` |
-| staleness | `warn "memory age" "37 memories not updated since 2026-07"` | review; delete what is wrong |
+| staleness | `warn "memory age" "37 not updated since 2026-06-06 (113 undated)"` | review; delete what is wrong |
 
 The staleness line reads frontmatter `modified:` — file mtimes are useless
 here, the 2026-08-15 laptop migration reset every one — and reports the count
 older than 90 days. It is a visibility signal, not a reaper. Nothing in this
 design deletes a memory; the convention that wrong memories get deleted needs
-a prompt, and this is it. 93 of the laptop's 240 carry no `modified:` at all
-and are reported as their own bucket.
+a prompt, and this is it. 113 memories carry no `modified:` at all and never
+will; they are counted in the `ok` line, never warned about — a warning that
+cannot clear is noise.
 
 ### `nix run .#worktree`
 
@@ -210,6 +216,17 @@ session; every step is `|| true` behind a timeout.
 
 The `flock` covers `SessionStart` as well as `Stop`. Two sessions starting at
 the same moment on one machine would otherwise both pull into the same store.
+
+**Friction fixes, 2026-09-04 (same day, after an afternoon of use).** The
+hook as first shipped cost 1.1 s of GitHub round-trips at the end of *every*
+turn, in *every* project on the machine — `Stop` fires per turn and the
+registration is user-scope. Four cheap exits now come before any network,
+in this order: a cwd whose slug is not linked into the store (read from the
+JSON Claude Code hands the hook on stdin) leaves at once; a clean store
+leaves before the lock; a `SessionStart` pull under two minutes old is not
+repeated (parallel sessions); and `ConnectTimeout=3` / `http.lowSpeedTime=3`
+cap a stalled link so an offline laptop never waits out the hook timeout.
+Measured after: 13 ms per turn.
 
 Both machines need the hooks, so `--install-hooks` runs on each. This is the
 half of the deliverable that lives outside the workspace repo, and `doctor` is
