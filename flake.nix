@@ -1262,6 +1262,7 @@
             ];
             runtimeEnv = {
               NIXTASTIC_REPOS_TSV = reposTsv;
+              NIXTASTIC_PLUGIN_SRC = "${./plugin}";
               # The shells that actually exist, so a generated .envrc
               # naming a renamed one is reported as such, not as mere
               # disagreement with the table.

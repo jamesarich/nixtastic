@@ -653,5 +653,35 @@ jq '.plugins["nixtastic@nixtastic"][0].version = "0.1.0"' "$HOME/.claude/plugins
 run "$sync"
 expect 'plugin +register +skipped .*claude plugin update'
 
+echo "--- T28: doctor — plugin render, install, hooks, queue, github mcp, extras"
+run_lax "$doctor"
+expect 'ok +plugin render'
+expect 'WARN +plugin install .*0\.1\.0'
+expect 'ok +plugin hooks'
+expect 'ok +gradle queue'
+expect 'ok +github mcp'
+expect 'agent extras'
+refuse 'agent skills'
+# Stale render after a source edit.
+printf -- '---\nname: baseline\ndescription: changed again\n---\nbody\n' > "$root/android/.claude/skills/baseline/SKILL.md"
+run_lax "$doctor"
+expect 'WARN +plugin render +stale'
+run "$sync"
+# Duplicate hook: a user-scope entry with a plugin hook's basename.
+jq '.hooks.Stop = [{matcher: "", hooks: [{type: "command", command: "/elsewhere/nixtastic-memory-hook stop"}]}]' "$cfg" > "$HOME/c" && mv "$HOME/c" "$cfg"
+run_lax "$doctor"
+expect 'WARN +plugin hooks .*nixtastic-memory-hook'
+jq 'del(.hooks.Stop)' "$cfg" > "$HOME/c" && mv "$HOME/c" "$cfg"
+# GitHub registered twice: user scope too.
+echo '{"mcpServers":{"github":{"type":"http","url":"x"}}}' > "$HOME/.claude.json"
+run_lax "$doctor"
+expect 'WARN +github mcp .*user scope'
+rm "$HOME/.claude.json"
+# Queue symlink gone.
+rm "$HOME/.claude/bin/gradle-queue"
+run_lax "$doctor"
+expect 'WARN +gradle queue'
+run "$sync"
+
 echo "all tests passed"
 touch "$out"

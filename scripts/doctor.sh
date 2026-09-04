@@ -293,12 +293,71 @@ else
   fix "claude mcp add --scope user meshtastic -- $launcher"
 fi
 
-if [ -d "$root/.claude/skills/meshtastic-device-ops" ]; then
-  ok "agent skills" "$root/.claude/skills"
+# --- the plugin -----------------------------------------
+# Rendered locally, installed by the CLI; every step here can be stale
+# without an error anywhere else.
+rd=$(plugin_render_dir "$root"); pname=$(plugin_name)
+pj="$rd/$pname/.claude-plugin/plugin.json"
+if [ ! -f "$pj" ]; then
+  warn "plugin render" "not rendered"
+  fix "nix run .#sync"
+elif [ "$(cat "$rd/.hash" 2>/dev/null)" != "$(plugin_input_hash "$root")" ]; then
+  warn "plugin render" "stale — plugin/ or a repo skill changed since"
+  fix "nix run .#sync"
 else
-  warn "agent skills" "bundled skills not installed"
-  fix "(cd $root/meshtastic-mcp && uv run meshtastic-mcp skills install --dest $root/.claude/skills)"
+  ok "plugin render" "$rd  ($(find "$rd/$pname/skills" -mindepth 1 -maxdepth 1 -type d | wc -l) skills)"
 fi
+rv=$(jq -r .version "$pj" 2>/dev/null || true)
+iv=$(plugin_installed_version)
+mk=$(jq -r --arg k "$pname" '.[$k].source.path // empty' "$(plugin_config_dir)/plugins/known_marketplaces.json" 2>/dev/null || true)
+if ! plugin_marketplace_known; then
+  warn "plugin install" "marketplace not registered"
+  fix "claude plugin marketplace add $rd && claude plugin install $pname@$pname"
+elif [ "$mk" != "$rd" ]; then
+  warn "plugin install" "marketplace points at $mk, render is $rd"
+  fix "claude plugin marketplace remove $pname && nix run .#sync"
+elif [ -z "$iv" ]; then
+  warn "plugin install" "not installed"
+  fix "claude plugin install $pname@$pname"
+elif [ "$iv" != "$rv" ]; then
+  warn "plugin install" "installed $iv, rendered $rv"
+  fix "claude plugin update $pname@$pname   (sync does this when claude is on PATH)"
+else
+  ok "plugin install" "$pname@$pname $iv"
+fi
+cfg="$(plugin_config_dir)/settings.json"
+dup=""
+if [ -f "$cfg" ]; then
+  for h in $NIXTASTIC_PLUGIN_HOOK_NAMES; do
+    if jq -e --arg h "$h" '[.hooks // {} | .[] | .[] | .hooks[]? | select(.command | test($h))] | length > 0' "$cfg" >/dev/null 2>&1; then
+      dup="$dup $h"
+    fi
+  done
+fi
+if [ -n "$dup" ]; then
+  warn "plugin hooks" "also in user-scope settings.json — fire twice:$dup"
+  fix "nix run .#sync   (migrates them once the plugin is installed)"
+else
+  ok "plugin hooks" "plugin only, no user-scope duplicate"
+fi
+q="$(plugin_config_dir)/bin/gradle-queue"
+if [ -L "$q" ] && [ -x "$(readlink "$q")" ]; then
+  ok "gradle queue" "$q"
+else
+  warn "gradle queue" "no symlink at $q"
+  fix "nix run .#sync"
+fi
+if jq -e '.mcpServers.github' "$HOME/.claude.json" >/dev/null 2>&1; then
+  warn "github mcp" "registered in user scope too — the plugin ships it; tools appear twice"
+  fix "claude mcp remove -s user github"
+else
+  ok "github mcp" "plugin only"
+fi
+# Informational: what this machine has that the core does not.
+np=$(jq -r '.enabledPlugins // {} | to_entries[] | select(.value) | .key' "$cfg" 2>/dev/null | grep -vc "^$pname@" || true)
+ns=0
+[ -d "$(plugin_config_dir)/skills" ] && ns=$(find "$(plugin_config_dir)/skills" -mindepth 1 -maxdepth 1 | wc -l)
+printf '  info  %-18s %s other plugin(s), %s user skill(s) outside the core\n' "agent extras" "$np" "$ns"
 
 # Repo subagents are copied to the root because a root-rooted session cannot
 # see them where they live (rationale with agent_pairs in lib.sh). A stale or
