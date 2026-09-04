@@ -42,7 +42,7 @@ been skipped in practice, which is why `.#brief` exists.
 | `meshtastic-sdk` | KMP client SDK | Kotlin MP | `.#kotlin` | `main` | Conventional | `AGENTS.md`, `GOVERNANCE.md`, `CODEOWNERS`, Spec Kit |
 | `MQTTastic-Client-KMP` | MQTT 5 client lib | Kotlin MP | `.#kotlin` | `main` | Conventional | `AGENTS.md` |
 | `kzstd` | zstd codec lib | Kotlin MP | `.#kotlin` | `main` | Conventional | `AGENTS.md` |
-| `meshtastic-node-kmp` | client-side mesh **node** (own keys + crypto) — **private**, CI off | Kotlin MP | `.#kotlin` | `main` | sentence-style | `README.md` |
+| `meshtastic-node-kmp` | client-side mesh **node** (own keys + crypto) — **private**, CI off | Kotlin MP | `.#kotlin` | `main` | sentence-style | `AGENTS.md`, `README.md` |
 | `TAKPacket-SDK` | CoT ↔ TAKPacketV2, 5 languages | Kotlin MP (+ swift/py/ts/c#) | `.#kotlin` | `main` | imperative, detailed body | `CLAUDE.md` (24 KB) |
 | `gradle-flatpak-sources` | Flathub manifest plugin | Kotlin / Gradle | `.#kotlin` | `main` | Conventional | → [`notes/gradle-flatpak-sources.md`](./notes/gradle-flatpak-sources.md) |
 | `meshtastic-mcp` | MCP server + agent skills | Python / uv | `.#python` | `master` | Conventional | `AGENTS.md`, `CONVENTIONS.md`, `llms.txt`, cursor + windsurf rules |

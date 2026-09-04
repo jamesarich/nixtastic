@@ -10,12 +10,22 @@ The ask that started this: *"holistically leverage / interoperate / bridge
 between all transports available on each device — LoRa, UDP, BLE-adv, BLE-GATT,
 Wi-Fi, MQTT — extend the mesh via as many transports as possible."*
 
-## Implementation status (updated 2026-09-03)
+## Implementation status (updated 2026-09-04)
 
-All commits below are **local, not pushed**.
+`meshtastic-node-kmp` `main` is **pushed** through `8427db6` (and the docs commit
+after it). The `firmware` `spike/ble-mesh-transport` branch is **ahead 5 of
+origin, not pushed** (`3022a3776` … `ea24b26d5`).
 
-- **Phase 1 (client) — the automatable part is done, green.** On
-  `meshtastic-node-kmp` `feat/ble-gatt-transport`:
+- **Phase 1 (client) — done, green, and since 2026-09-04 a four-bearer node with
+  per-bearer instrumentation.** Everything is on `meshtastic-node-kmp` `main`.
+  The 2026-09-04 layer: `ed37488` LoRa transport merged; `5a0d690` BLE-adv wired
+  into every platform; `c31095b` UDP given an Android target; `755e346`
+  per-transport rx/tx/relayed counters, `via`-tagged events, transport on/off
+  toggles and a tuning panel for every lever (relay policy included — the
+  monitor node had been an island until then); `1b1d68a` the Android 17
+  `ACCESS_LOCAL_NETWORK` grant, without which UDP is silently dead; `8427db6`
+  the desktop uber jar. Details in the 2026-09-04 section at the end. The
+  original GATT work, on `feat/ble-gatt-transport` (since merged):
   - `fb5a3ab` — don't echo a relay back to the sending peer (origin token
     threaded `InboundFrame.source` → `exclude`); validate-before-relay confirmed.
   - `4009b05` — per-peer whole-packet delivery accounting.
@@ -104,17 +114,26 @@ All commits below are **local, not pushed**.
        must be cleared on the central; a BT toggle / RPA rotation does it.
     - Bench note: bleak on macOS is a **false negative** here (subscribes fine,
       never surfaces the notification); the real Android client receives.
-  - **Remaining (spike → production):** revert the verbose diag logs; `notify()`
-    currently broadcasts to all subscribers rather than excluding the arrival peer
-    (dedup covers it, but per-peer targeting is the correct fix); a subscribe
-    watchdog + DUAL-role arbitration per the research note.
-  - **Still to gate:**  - **Still to gate:** ESP32-C3 (single-core, tighter RAM — the likely-fail
+  - **Remaining (spike → production):** the diag-log revert and per-peer notify
+    targeting are **done** in `ea24b26d5` (notifies go per connection with
+    `ble_gatts_notify_custom`, skipping the arrival peer; the spike diagnostics
+    dropped). Still open: a subscribe watchdog + DUAL-role arbitration per the
+    research note, and **the notify direction is not delivering in the
+    four-transport monitor** — the Pixel's `gatt` rx stays 0 while its writes
+    (originations and relays) are accepted (2026-09-04). The
+    `tackle-monitor-findings` workflow is root-causing it: CCCD/subscribe on the
+    Android client, the firmware's per-peer `subscribed` gate, BLE-adv coexistence
+    on one adapter, NO_PIN encryption on the CCCD, and the monitor's
+    rebuild-on-tune lifecycle are the hypotheses.
+  - **Still to gate:** ESP32-C3 (single-core, tighter RAM — the likely-fail
     candidate) and nRF52 (`Bluefruit.begin(2,0)` + linker RAM); neither board is
     on the bench, both unbuilt.
-  - **Current v3 bench state (left test-ready 2026-09-04):**
-    `enabled_protocols=7`, `network.wifi_enabled=false`, `bluetooth.mode=NO_PIN`
-    (user's original was `RANDOM_PIN`). **Cleanup owed once done:** restore
-    `wifi_enabled=true`, `enabled_protocols=3`, `bluetooth.mode=RANDOM_PIN`, reboot.
+  - **Current v3 bench state (2026-09-04, evening):** `enabled_protocols=7`,
+    `network.wifi_enabled=true` (turned back on so it is the UDP peer; reachable
+    at 192.168.1.180, **no USB serial attached**), `bluetooth.mode=NO_PIN` (the
+    user's original was `RANDOM_PIN`). On this S3 build WiFi, BLE and LoRa run
+    together. **Cleanup owed once the GATT investigation is done:**
+    `enabled_protocols=3`, `bluetooth.mode=RANDOM_PIN`, reboot; WiFi stays on.
 - **Phase 4 — future** (Wi-Fi Aware, anti-entropy sync).
 
 ---
@@ -609,7 +628,84 @@ Ran the transmit test with its safety flag:
   a look but not a functional fault.
 
 **Net: the LoRa-via-Meshtadpole transport works on Android hardware, both
-directions.** Remaining polish before a PR: the probe test's stale-claim
-(`claimInterface refused` when run after the listen test), the post-TX bulk-IN
-retry, and wiring the transport into the monitor app UI (currently only the
-device tests exercise it).
+directions.** Since then: merged to `main` (`ed37488`) and wired into the monitor
+(`9bdb634`), where its status line reads e.g. `906.875 MHz rx-only 23/0 -8 dBm
+6.0 dB` and it carried 29 rx in one bench sitting. Still open: the probe test's
+stale claim (`claimInterface refused` when run after the listen test — the same
+wedge shows in the monitor as `SX1262 command 0x80 failed, status 0xf7` retrying
+forever until a reinstall/replug) and the post-TX bulk-IN retry.
+
+## Monitor instrumentation: per-bearer stats, tagged traffic, toggles, tuning (2026-09-04)
+
+With four bearers in one node, `opaque from !3061b02e` said nothing useful — the
+same frame arrives on several media and nothing showed which. `755e346` makes the
+bearer visible end to end:
+
+- `MeshTransport.name` (`udp`, `ble-adv`, `gatt`, `lora`); every rx-derived
+  `MeshEvent` carries `via`; `Relayed.via` lists the bearers a relay went back out
+  on; `MeshNode.transportStats` is a `StateFlow` of rx/tx/relayed per bearer, rx
+  counted **before** dedup (three media = three rx, one event). `broadcast()`
+  returns the carrying bearers' names instead of a Boolean.
+- The monitor: a transports card — one row per bearer the platform can build, an
+  on/off chip, live counters; an unticked transport is never handed to the node.
+  A collapsible tuning panel behind one `TransportTuning` bundle: relay on/off +
+  hop limit + contention slot; GATT role; LoRa region / preset / tx power /
+  relay-on-air / rx-only / rx-boost / airtime / slot# / MHz override; UDP group /
+  port. Chips apply at once; typed values stage, then apply together (a rebuild
+  per keystroke would churn the LoRa USB claim). Log lines lead with direction and
+  bearer: `rx[lora] …`, `tx[gatt,ble-adv,udp] …`, `relay[gatt,ble-adv] …`.
+- **The monitor node had been `RelayPolicy.Island` (the library default) since it
+  was written and never relayed anything.** The relay chip is the first time it
+  bridges.
+
+**Proven live on the Pixel (Android 17):**
+
+```
+tx[gatt,ble-adv,udp]  probe from !6337995d
+rx[lora]              opaque from !3061b02e (chan #50)
+relay[gatt,ble-adv]   !3061b02e id=1188083055 hops=3
+rx[ble-adv] / rx[udp] / rx[lora]  dropped !3061b02e id=… (DUPLICATE)   ← one frame, three bearers
+relay suppressed !d1d90f21 (beaten by 101)                             ← cancel-on-overhear
+```
+
+Counters at one point: `lora 23/0/0 · ble-adv 15/1/0 · udp 9/1/0 · gatt 0/1/0`
+(LoRa rx-only under `UNSET`). A real over-air peer was learned (`!d1d90f21 🌵`).
+`relayed` mostly stays 0 alongside `relay suppressed` lines — that is correct: a
+nearer node wins the contention race; the `relay[gatt,ble-adv]` line is one the
+Pixel won.
+
+**Three nodes, three bearers:** the desktop monitor (`!a6e88506`, UDP only)
+logged `rx[udp] text chan from !6337995d: probe from !6337995d` — the Pixel's
+probe — while the Pixel's own `udp` tx was 0, so the only path was Pixel
+→GATT/BLE-adv→ V3 →UDP→ desktop.
+
+**The bug the instrumentation found, and a claim retracted:** "Android runs all
+four transports" was wired-but-dead for UDP — `udp 0/0` on the Pixel while the
+desktop on the same /24 heard everything, and a probe left as `tx[gatt,ble-adv]`.
+Root cause: Android 17 local-network protection for a targetSdk-37 app; without
+the `ACCESS_LOCAL_NETWORK` runtime grant the OS drops multicast and refuses sends
+**silently**. `1b1d68a` declares and requests it; after the grant `udp` went
+0/0 → 9 rx / 1 tx within a minute. It hid for hours because `MeshNode.events`
+does `transport.incoming().catch { }` — a transport that fails to open is
+indistinguishable from an idle one. Being fixed (below).
+
+**Desktop launch:** `:monitor:run` never exits and pins a shared gradle-queue
+slot; `createDistributable` needs jpackage and fails under the Nix shell. The
+uber jar (`:monitor:packageUberJarForCurrentOS` → `java -jar …/MeshMonitor-*.jar`)
+is the one-command launch — once BouncyCastle's signed `META-INF/*.SF|DSA` are
+stripped (`8427db6`). That exclude first did nothing because under Gradle 9
+`org.gradle.jvm.tasks.Jar` is not a subtype of `org.gradle.api.tasks.bundling.Jar`
+(memory `gradle9-jar-task-type-split`).
+
+**In flight — the `tackle-monitor-findings` workflow** (six agents: GATT
+diagnosis ∥ event-model implementer → GATT fix → correctness / concurrency /
+tests review lenses; agents commit to node-kmp `main`, nobody pushes):
+
+1. **`gatt` rx = 0** on the Pixel while gatt tx works (3 sends incl. 2 relays
+   accepted) — the V3 is not notifying that connection, although it did during
+   the Phase 3 proof (before BLE-adv ran in the same app, and before the monitor
+   began rebuilding the node on every tuning change).
+2. **`MeshEvent.TransportFailed`** + a `failures` counter, so a dead transport
+   can never again pass as idle.
+3. **`MeshEvent.Sent`** for originations, replacing the stats diff behind
+   `tx[…]`.
