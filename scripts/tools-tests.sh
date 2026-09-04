@@ -686,5 +686,32 @@ run_lax "$doctor"
 expect 'WARN +gradle queue'
 run "$sync"
 
+echo "--- T29: gradle guard — raw gradlew denied, queued/bypass/introspection allowed, heredoc mention allowed, --stop denied"
+gg="$pluginSrc/hooks/gradle-queue-guard.sh"
+# Silence is allow: a guard that has nothing to say prints nothing.
+decision() { out=$(cat); if [ -z "$out" ]; then echo allow; else printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // "allow"'; fi; }
+decide() { printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(jq -Rn --arg c "$1" '$c')" | bash "$gg" | decision; }
+[ "$(decide './gradlew assembleDebug')" = deny ]  || { echo "T29: raw gradlew allowed"; exit 1; }
+[ "$(decide 'cd android && ./gradlew test')" = deny ] || { echo "T29: prefixed gradlew allowed"; exit 1; }
+[ "$(decide '~/.claude/bin/gradle-queue -- ./gradlew test')" = allow ] || { echo "T29: queued denied"; exit 1; }
+[ "$(decide 'GRADLE_QUEUE_BYPASS=1 ./gradlew test')" = allow ] || { echo "T29: bypass denied"; exit 1; }
+[ "$(decide './gradlew --version')" = allow ] || { echo "T29: --version denied"; exit 1; }
+[ "$(decide './gradlew --stop')" = deny ] || { echo "T29: --stop allowed"; exit 1; }
+[ "$(decide $'git commit -F - <<EOF\nmention ./gradlew in a message\nEOF')" = allow ] || { echo "T29: heredoc mention denied"; exit 1; }
+[ "$(decide 'ls')" = allow ] || { echo "T29: unrelated command denied"; exit 1; }
+printf '{"tool_name":"Bash","tool_input":{"command":"./gradlew build"}}' | bash "$gg" | jq -r .hookSpecificOutput.permissionDecisionReason | grep -q 'gradle-queue -- build' || { echo "T29: denial does not name the replacement"; exit 1; }
+
+echo "--- T30: worktree guard — cross-tree edit denied, in-tree and outside allowed, main checkout no-op"
+wg="$pluginSrc/hooks/block-main-checkout-edits.sh"
+edit() { printf '{"tool_name":"Edit","cwd":%s,"tool_input":{"file_path":%s}}' "$(jq -Rn --arg c "$1" '$c')" "$(jq -Rn --arg c "$2" '$c')" | bash "$wg" | decision; }
+git -C "$root/kzstd" worktree add -q "$root/kzstd/.claude/worktrees/guard" -b guard
+wt="$root/kzstd/.claude/worktrees/guard"
+[ "$(edit "$wt" "$root/kzstd/tracked.txt")" = deny ]  || { echo "T30: main-checkout edit from worktree allowed"; exit 1; }
+[ "$(edit "$wt" "$wt/tracked.txt")" = allow ]         || { echo "T30: in-worktree edit denied"; exit 1; }
+[ "$(edit "$wt" "tracked.txt")" = allow ]             || { echo "T30: relative in-worktree edit denied"; exit 1; }
+[ "$(edit "$wt" "$HOME/elsewhere.md")" = allow ]      || { echo "T30: outside edit denied"; exit 1; }
+[ "$(edit "$root/kzstd" "$root/kzstd/tracked.txt")" = allow ] || { echo "T30: main checkout session blocked"; exit 1; }
+git -C "$root/kzstd" worktree remove --force "$wt"; git -C "$root/kzstd" branch -D guard -q
+
 echo "all tests passed"
 touch "$out"
