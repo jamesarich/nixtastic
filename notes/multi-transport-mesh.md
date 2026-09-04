@@ -838,8 +838,91 @@ remove. Android reports most bearer failures through callbacks, so there it is a
 backstop, not the signal; the transport's own `lastFault` is what caught this.
 `failures == 0` must not be read as healthy. Corrected in `393384b`.
 
-**Still owed:** no firmware change is flashed, so the radio-side half of the
-diagnosis (instance 2 dark because the slot was held) is still inferred, and the
-fix is unproven. That needs the V3 on USB with flash approval, and the iPad's
-monitor quit or set `peripheral only` — otherwise it keeps the radio's single mesh
-slot and the Pixel can never find it, fix or no fix.
+## The bench session that answered it (2026-09-04, evening) — and three wrong turns
+
+With the V3 on USB, the iPad plugged in and the Pixel on wifi-adb, the whole GATT
+question resolved. Read the wrong turns as well as the result: each one was a
+confident conclusion from partial evidence, and the bench refuted all three.
+
+### PROVEN: Android ↔ the firmware's mesh-peer service, both directions
+
+- **Radio → phone.** `rx[gatt] dropped !3061b02e id=31180880 (DUPLICATE)` landing
+  210 ms after the same frame arrived on LoRa — the V3 relaying the WisMesh
+  Pocket's traffic to the phone over the mesh-peer notify path, deduped against
+  the other bearers. Counter reached `gatt 15 rx`.
+- **Phone → radio.** `BLE GATT mesh RX from=0x6337995d to=0xffffffff len=45` then
+  `Received text msg from=0x6337995d, msg=probe from !6337995d`, for **six
+  consecutive sends** with the node reaching 93 s uptime.
+- The client's own new link line proves the peer is the radio and not another
+  phone: `GATT: central=[34:B7:DA:62:18:C5(ready,notify=enabled,chunk=514)]` —
+  `34:B7:DA` is an Espressif OUI, top address bits `00` = public.
+- Firmware-side, `9f54363`'s fix is visible working: `conn 3 subscribed (via
+  mesh-peer advertisement)` and, on a link that landed on instance 0 instead,
+  `conn 1 subscribed (via phone-API advertisement)` — `subscribed` set,
+  `viaMeshAdv` left alone, which is exactly the conflation that commit removed.
+
+### BLOCKED: any Apple node against this firmware
+
+The iPad, on a fresh build, cannot connect at all: **the V3's BLE controller
+asserts ~200 ms after an Apple central connects**, before service discovery or the
+CCCD write, and reboots. 13 attempts, 13 crashes, `writes=0`. Decoded from 22
+captured backtraces (`addr2line` against the flashed ELF), 11 sharing one
+signature:
+
+```
+r_llc_rem_phy_upd_proc_continue_eco
+f_ll_phy_update_ind_handler / ll_phy_update_ind_handler_hack
+r_lld_llcp_rx_ind_handler_hack / r_ke_task_schedule_hack
+```
+
+That is the controller's **remote-PHY-update** procedure, inside Espressif's own
+errata routines, and it matches the `BLE assert lld_con.c 3397` printed alongside.
+Apple centrals request a PHY update immediately on connecting; Android does not —
+that is the entire difference, and why the Pixel is unaffected. Untried
+mitigation: pin the link to 1M PHY (`ble_gap_set_prefer_le_phy` on connect) or
+refuse 2M in the controller's sdkconfig.
+
+### NOT POSSIBLE: the desktop monitor over GATT
+
+`GattLink.jvm.kt` is `UnsupportedGattLink` — `canTransmit = false`, an empty
+inbound flow. The JVM has no BLE, so the desktop dashboard shows a `gatt` row that
+can never move. macOS *does* have a real CoreBluetooth path through
+`appleMain`/`macosArm64` (what `GattLiveTest` uses), but the Compose desktop app
+is a JVM target and never reaches it. Desktop's testable bearer is UDP, which
+needs the V3's WiFi on — and that turns BLE off, so the two cannot be tested in
+one sitting.
+
+### The three wrong turns
+
+1. **"gatt rx = 0 is a firmware slot-conflation bug."** The client-side evidence
+   was right (the Pixel's only GATT peer was the iPad; zero public-address
+   connections) but the cause was mine: **I had turned the V3's WiFi on that
+   morning to make it a UDP peer, and on ESP32 that disables BLE entirely.** The
+   V3 had had no BLE for hours. This document had asserted "on this S3 build WiFi,
+   BLE and LoRa run together" as fact; the README documents the exclusivity.
+2. **"The fragment burst at chunk=20 is crashing the radio."** The MTU findings
+   are real — Android never called `requestMtu`, and `GattPeerTable.ready()`
+   clobbered the negotiated value back to the floor, so every packet fragmented to
+   20 bytes; fixed and verified as `chunk 20 → 514`. But it is a *throughput* fix.
+   Six clean writes afterwards looked like proof it had fixed the crash; the iPad
+   then crashed the radio with **zero** writes.
+3. **"`TransmitHistory::setLastSentToMesh` does flash I/O and starves the BLE
+   controller."** Built on decoding exactly **one** of 22 backtraces — a
+   littlefs/flash stack that appeared once and was a coincidence. The board also
+   stayed up 75 s past its first-save window and still crashed on the next Apple
+   connect. Upstream `TransmitHistory` is not implicated.
+
+The lesson worth keeping: decode **every** backtrace and count the signatures
+before naming a cause. One stack out of 22 produced a whole false narrative, and
+`addr2line` against the flashed ELF settled in minutes what three rounds of
+hypothesising could not.
+
+### Bench state left behind
+
+V3 on spike `c7fa0e2` (`7153c78` reverted — it was never the cause), WiFi **off**
+so BLE is up, no BLE peer connected, stable. The iPad's MeshMonitor and the
+Pixel's monitor are both stopped. Still owed: `enabled_protocols` 7→3,
+`bluetooth.mode` back to `RANDOM_PIN`, and a decision on WiFi (BLE **or** WiFi,
+never both on this build). `BLE_GATT_MESH_MAX_LINKS` is 1, so only one phone can
+hold the mesh slot at a time — the radio now says so at LOG_INFO
+(`peer slot held by conn N (1/1), not advertising`).

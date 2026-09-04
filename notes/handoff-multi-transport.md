@@ -56,37 +56,33 @@ advertisement was dark because the firmware conflated "wrote the CCCD" with
 "arrived on the mesh advertising set", and the iPad held the radio's single mesh
 slot. Everything below is what remains.
 
-**Verified on the Pixel already** (it was unlocked; see the plan doc's last
-section for the exact readings): `GattLinkStatus` and its `GATT:` line — which
-**confirmed the client half of the diagnosis**, showing the only GATT central to
-be a resolvable-private (Apple) address with `notify=enabled` while `gatt` rx sat
-at 0, and zero public-address connections in logcat; the scan-failure fault
-(`SCAN_FAILED_APPLICATION_REGISTRATION_FAILED` with the adapter off); and
-`MeshEvent.Sent` (`tx[gatt,ble-adv,udp] text id=… to=!ffffffff`). Two claims were
-*retracted* in the same session — the `ACCESS_LOCAL_NETWORK` root cause and the
-scope of `TransportFailed`; both are in the traps list below.
+**The GATT question is answered.** Android ↔ the firmware's mesh-peer service is
+**proven both ways** on the bench (`rx[gatt]` and `gatt 15 rx` on the phone;
+`Received text msg from=0x6337995d` on the radio for six consecutive sends). The
+plan doc's last section has the exact readings, the three wrong turns it took to
+get there, and the bench state.
 
-**What still needs the bench, and an agent cannot do:**
+**The one hard blocker left is firmware-side, not ours:** the V3's BLE
+**controller** asserts ~200 ms after *any Apple central* connects — before
+discovery or the CCCD write — and reboots. 13/13, `writes=0`. Decoded from 22
+panics, 11 sharing a remote-PHY-update signature
+(`r_llc_rem_phy_upd_proc_continue_eco` → `ll_phy_update_ind_handler_hack`),
+matching its `BLE assert lld_con.c 3397`. Apple requests a PHY update on connect,
+Android does not. **Untried mitigation:** pin the link to 1M PHY
+(`ble_gap_set_prefer_le_phy` on connect) or refuse 2M in the controller sdkconfig.
+Until that is done, no iOS ↔ firmware GATT testing is possible at all.
 
-1. **Attach the V3 to USB and approve a flash** of spike `7153c78`. Its console is
-   the only way to confirm the *radio-side* half of the diagnosis — grep for
-   `advertising the mesh-peer service on instance 2` vs `peer slot held by conn N`
-   — and the fix is unproven until then.
-2. **Quit the iPad's monitor, or set its GATT role to `peripheral only`.**
-   `BLE_GATT_MESH_MAX_LINKS` is 1: whichever central connects first holds the
-   radio's mesh slot, and the other phone can never find it — fix or no fix. The
-   iPad currently holds it, which is exactly what the verified `GATT:` line shows.
-
-**Then:** the `GATT:` line should name the V3's *public* MAC as a central with
-`notify=enabled` (compare against the V3 console's `BLE incoming connection`), the
-`gatt` row's rx should advance, and the log should show `rx[gatt] …` from the V3's
-node number. Finally change a knob to force a node rebuild and confirm the link
-comes back — previously it never did. Only after that: push node-kmp and the spike
-branch.
+**Also settled, so nobody re-attempts it:** the **desktop monitor cannot do GATT**
+— `GattLink.jvm.kt` is `UnsupportedGattLink` (the JVM has no BLE), so its `gatt`
+row can never move. macOS has a real CoreBluetooth path via
+`appleMain`/`macosArm64` (`GattLiveTest`), which the JVM desktop app does not
+reach. Desktop's testable bearer is UDP, and that needs the V3's WiFi **on**,
+which turns BLE **off** — the two cannot be tested in one sitting.
 
 **Still unverified on-device:** the `failed` column lighting up at all (no way was
-found to make a bearer *throw* on this device — see the traps), and
-`transport[udp] FAILED: …`.
+found to make a bearer *throw* on this device — see the traps),
+`transport[udp] FAILED: …`, and the Apple MTU re-read (compile-verified only,
+because that radio cannot hold an Apple connection long enough to exercise it).
 
 ## Next steps, in order
 
@@ -165,6 +161,23 @@ found to make a bearer *throw* on this device — see the traps), and
   BLE transports do not throw (`onScanFailed` instead), so the `failed` column
   stays 0 and a dead row is identical to an idle one. `failures == 0` is not
   health; the `GATT:` line's `fault:` is what actually reports it.
+- **On ESP32, WiFi on means BLE off.** `main-esp32.cpp` brings up NimBLE only when
+  `bluetooth.enabled && !network.wifi_enabled`, so a V3 configured as a UDP peer
+  has **no BLE at all** — both BLE transports sit at "waiting for Bluetooth ready"
+  for ever. This cost a whole afternoon: `gatt rx=0` was blamed on a firmware
+  slot-conflation bug when the real cause was a bench config change of my own.
+  Check `get_config network` before diagnosing anything BLE.
+- **Decode every backtrace, and count the signatures, before naming a cause.** An
+  ESP32 panic dumps both cores, so an interrupt-WDT crash yields several unrelated
+  stacks. Decoding *one* of 22 produced a confident, entirely wrong root cause
+  (`TransmitHistory` doing flash I/O). `addr2line` against the flashed ELF -
+  `~/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp-elf-addr2line
+  -pfC -e .pio/build/heltec-v3/firmware-*.elf 0xADDR` - settled in minutes what
+  three rounds of hypothesising could not. Every per-commit ELF is kept in
+  `.pio/build/heltec-v3/`, so an old panic can still be decoded.
+- **A serial capture contains binary bytes, so `grep` silently finds nothing in
+  it** (it treats the file as binary and suppresses matches, and `grep -c` prints
+  an empty string rather than 0). Filter these logs with `python3`, or `grep -a`.
 - **A constant identity seed makes every device the same node**; same-id nodes
   drop each other's frames as "heard myself", silently. Per-install identity
   (`platformNodeSeed()`) — and one desktop instance at a time.
