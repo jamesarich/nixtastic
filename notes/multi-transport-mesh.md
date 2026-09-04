@@ -697,15 +697,106 @@ stripped (`8427db6`). That exclude first did nothing because under Gradle 9
 `org.gradle.jvm.tasks.Jar` is not a subtype of `org.gradle.api.tasks.bundling.Jar`
 (memory `gradle9-jar-task-type-split`).
 
-**In flight — the `tackle-monitor-findings` workflow** (six agents: GATT
-diagnosis ∥ event-model implementer → GATT fix → correctness / concurrency /
-tests review lenses; agents commit to node-kmp `main`, nobody pushes):
+## The `gatt` rx = 0 hunt, and what the reviews found (2026-09-04, late)
 
-1. **`gatt` rx = 0** on the Pixel while gatt tx works (3 sends incl. 2 relays
-   accepted) — the V3 is not notifying that connection, although it did during
-   the Phase 3 proof (before BLE-adv ran in the same app, and before the monitor
-   began rebuilding the node on every tuning change).
-2. **`MeshEvent.TransportFailed`** + a `failures` counter, so a dead transport
-   can never again pass as idle.
-3. **`MeshEvent.Sent`** for originations, replacing the stats diff behind
-   `tx[…]`.
+Run as a workflow: a read-only diagnosis ∥ an event-model implementer → a GATT
+fix → three review lenses. All of it is committed to node-kmp `main` and the
+spike branch; **nothing is pushed and nothing is flashed**.
+
+**The answer was not the notify path.** The Pixel's GATT central had connected to
+three peers across the whole window — **all of them the iPad** (random addresses,
+the 10-service Apple GATT database, two name-resolved as "iPad") and **never to
+the V3's public address**. Subscribe worked on every one of them
+(`setCharacteristicNotification` → `gattc_inform_notification_handle handle:
+0x65`). So "gatt tx accepted by a peer" was writes into the iPad's monitor, which
+originates nothing — hence rx 0 — and the V3 simply was not a GATT peer at all.
+Its connectionless set (instance 1) was on the air, its connectable mesh-peer set
+(instance 2) was not.
+
+Radio-side cause, inferred from the code (**medium confidence — the V3's console
+was never read**): `BLE_GATT_MESH_MAX_LINKS` is 1, and `onSubscribe()` flagged
+*any* link that wrote the mesh CCCD as `viaMeshAdv`. That flag does two jobs —
+the slot count `startAdvertising()` gates on, and the early return in
+`NimbleBluetoothServerCallback::onDisconnect` that skips the phone-API re-arm.
+Both sets advertise the same public address, so a central that finds instance 2
+can land its CONNECT_IND on instance 0. Once the iPad took the slot and the
+Pixel's link dropped on a monitor rebuild, instance 2 was "slots full" (at
+LOG_DEBUG, the only trace) and instance 0 was never re-armed: both dark until
+reboot.
+
+Fixed in firmware `9f54363` + `7153c78`: `onSubscribe` sets `subscribed` only,
+`viaMeshAdv` means solely "arrived on instance 2"; re-arm on every drop with
+`startAdvertising()` deciding; the slot-full line is LOG_INFO and names the
+holder. Then the reviews found the re-arm change had made a pre-existing
+check-then-act race matter more — the count is read under lock, the `ble_gap`
+calls are made outside it (holding the lock across them deadlocks against the
+host task), so a CONNECT can take the slot after the count said it was free and
+leave the set advertising with no room. The slot-full branch now stops such a
+set and the CONNECT path asks for the re-arm that reaches it, so the state
+converges on "slot held, set off". `onDisconnect` also no longer logs or re-arms
+for a handle the table never held.
+
+Client side, `3e49c60`: `GattLink.status` — the peers we are a central to with a
+`PENDING | ENABLED | REFUSED` verdict on our subscription to each, who is
+subscribed to us, and the link's `lastFault`; Android stopped ignoring the CCCD
+write result and gained `onScanFailed`; the dashboard shows a `GATT:` line and
+logs `gatt links: …`. That line is what would have answered this in a minute
+instead of a session: the peer list is by node id, so it showed the V3 as a peer
+whose frames all arrived on other bearers.
+
+**The two event-model gaps, from the same run:** `602e8db`
+`MeshEvent.TransportFailed` + a `failures` counter (a dead bearer can no longer
+pass as idle — the red `! n` column), and `74d1281` `MeshEvent.Sent(id, to, via,
+kind)` from one `originate()` path shared by `sendText` / `announce` /
+`acknowledge`, replacing the before/after stats diff behind `tx[…]`.
+
+**What the reviews caught in that work** (all fixed: `7264d9e`, `d00c246`,
+`69423cc`):
+
+- **The hardware proof tests had been silently broken by the new event kinds.**
+  `FirmwareInteropTest`'s "decrypts live traffic" and `BleMeshLiveTest` waited
+  for the first event that was *not* `Dropped` or `Opaque` — a negative predicate
+  now satisfied by the node's own `announce()` reporting itself every 10 s, or by
+  a `TransportFailed` from the very dead bearer the event was added for. Both
+  would have passed on zero bytes from the radio. They are env-gated and never
+  run in the gate, which is how it slipped. Positive predicates now.
+- **`TransportFailed` could be lost at open** — the failure is emitted *through*
+  `deferredEvents` (replay 0), and `merge()` launches the transports side and the
+  deferred collector concurrently: a transport that throws immediately takes
+  three dispatches to reach its catch, the collector one to register, so on a
+  multi-threaded scope the event vanishes and only the counter survives. FIFO
+  dispatchers (the test, the monitor's UI scope) made it deterministic, which is
+  why nothing saw it. The transports side now waits on
+  `deferredEvents.subscriptionCount > 0`.
+- **Two vacuous tests.** `expectNoEvents()` is a synchronous `tryReceive`, and
+  `MeshNode.events` crosses a `shareIn` hop, so "a send nothing carried raises no
+  event" would have passed with an empty-`via` `Sent` going out, and "ignores its
+  own frame" with the own-frame guard deleted. `runCurrent()` before each, the
+  idiom the relay tests already use. The `failures` assertions now also pin that
+  *unsubscribing is not a failure* — a catch that counted the collector's own
+  cancellation would mark every bearer failed on every rebuild.
+- Diagnostics that could mislead: a not-ready central rendered as `discovering`
+  when both platforms record a peer at *connect-issued*, so a connect that never
+  completes was described as being in service discovery (`opening` now, and its
+  summary test caught the change); and `GattPeerTable`'s "a writer never blocks a
+  callback thread", no longer literally true since the `AtomicReference` became a
+  `MutableStateFlow`.
+
+**Recorded, deliberately not fixed:** the reviews named a pre-existing firmware
+edge in `NimbleBluetooth.cpp`'s disconnect path — a real phone whose CONNECT_IND
+lands on instance 2 is flagged `viaMeshAdv`, so its drop takes the early return
+and never runs `resetBleSessionState()`, leaving `BluetoothStatus` CONNECTED and
+a later phone-API re-arm discarded. The mirror (a mesh client on instance 0
+resetting a live phone session) is the residual the fix's own author named. The
+suggested guard keys the early return on `nimbleBluetoothConnHandle` too — but
+that handle is only set in `onAuthenticationComplete`, so under the bench's
+`NO_PIN` with bonding disabled it is never set and the guard would be inert
+exactly where it could be tested. Both directions were **narrowed** by `9f54363`;
+fixing them properly needs conn-handle-aware session tracking and a PIN-mode
+bench, so it is written down rather than changed blind.
+
+**Owed before this can be believed:** none of the firmware change is flashed and
+none of the client change is verified on-device. The three bench asks are the
+Pixel unlocked, the V3 on USB with flash approval, and the iPad's monitor quit or
+set `peripheral only` — otherwise it keeps the radio's single mesh slot and the
+Pixel can never find it, fix or no fix.

@@ -46,25 +46,40 @@ plus a three-node, three-bearer chain: the desktop logged `rx[udp] text chan
 from !6337995d` — the Pixel's probe — while the Pixel's own UDP tx was 0, so it
 went Pixel →GATT/BLE-adv→ V3 →UDP→ desktop.
 
-## In flight — check this FIRST
+## Waiting on the bench — do this FIRST
 
-The **`tackle-monitor-findings` workflow** (run id `wf_ba4fcf03-1d3`; `/workflows`
-in the session that started it) was running when this was written: a read-only
-GATT rx=0 diagnosis ∥ an implementer adding `MeshEvent.TransportFailed` (+ a
-per-transport `failures` counter) and `MeshEvent.Sent` → a GATT-fix implementer
-→ three review lenses. **Agents commit to node-kmp `main` but never push.**
+The GATT rx=0 hunt is **done and reviewed in code, verified nowhere**. Eight
+commits sit on node-kmp `main` (unpushed) and two on the spike branch (unpushed,
+unflashed). The full story is in the plan doc's last section; the short version is
+that the V3 was never a GATT peer of the Pixel at all — its mesh-peer
+advertisement was dark because the firmware conflated "wrote the CCCD" with
+"arrived on the mesh advertising set", and the iPad held the radio's single mesh
+slot. Everything below is what remains.
 
-To pick it up cold:
+**Three physical prerequisites, none of which an agent can do:**
 
-1. `git -C meshtastic-node-kmp log --oneline origin/main..HEAD` — whatever is
-   listed is the workflow's output, unpushed and unreviewed by a human.
-2. The agents' structured results are in the run's journal:
-   `~/.claude/projects/-Users-james-nixtastic/<session>/subagents/workflows/wf_ba4fcf03-1d3/journal.jsonl`
-   (the diagnosis object, each implementer's commits/caveats, the review findings).
-3. Check `git -C firmware/.claude/worktrees/spike-ble-mesh-transport log --oneline -3`
-   for a firmware-side GATT fix. **Nothing was flashed** — agents were forbidden to.
-4. Review the diff + findings, **verify on the Pixel** (install the new APK; the
-   `gatt` row must show rx > 0 and the log `rx[gatt] …`), then push node-kmp.
+1. **Unlock the Pixel.** The monitor is installed and running behind the
+   keyguard (`wm dismiss-keyguard` is refused; a lock is set), so no dashboard
+   can be read.
+2. **Attach the V3 to USB and approve a flash** of spike `7153c78`. Its console
+   is also the only way to confirm the inferred radio-side cause — grep it for
+   `advertising the mesh-peer service on instance 2` vs `peer slot held by conn N`.
+3. **Quit the iPad's monitor, or set its GATT role to `peripheral only`.**
+   `BLE_GATT_MESH_MAX_LINKS` is 1: whichever central connects first holds the
+   radio's mesh slot, and the other phone can never find it — fix or no fix.
+
+**Then, in order:** install the rebuilt APK; the `GATT:` line and the
+`gatt links: …` log entry should name the V3's public MAC as a central with
+`notify=enabled` (compare against the V3 console's own `BLE incoming connection`
+line). `notify=pending` that never turns `enabled`, or `notify=refused`, is the
+subscribe failing and now says so. Then the goal: the `gatt` row's rx advances and
+the log shows `rx[gatt] …` from the V3's node number. Finally change a knob to
+force a node rebuild and confirm the link comes back — previously it never did.
+Only after that: push node-kmp and the spike branch.
+
+**Also unverified on-device** from the same batch: the `failed` column (`! n` in
+red) on a bearer whose receive path dies, `transport[udp] FAILED: …`, and the
+`tx[…] text id=…` line replacing the old stats diff.
 
 ## Next steps, in order
 
