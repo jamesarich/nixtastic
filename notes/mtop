@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+exec /home/james/meshtastic/meshtastic-mcp/.venv/bin/python3 \
+     /home/james/meshtastic/notes/mtop.py "$@"

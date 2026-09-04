@@ -412,15 +412,19 @@ mk some-feedback  "how James wants it done"   feedback
 mk who-james-is   "the operator"              user
 mk bench-serials  "bench USB serials"         reference "  machine: james-pc
 "
+# A YAML-escaped inner quote must render bare, not as a backslash-quote.
+mk quoted-desc    "says \\\"hi\\\" to you"       project
 run "$sync"
 idx="$store/memory/MEMORY.md"
 head -1 "$idx" | grep -qx '# Memory' || { echo "T19: no header"; exit 1; }
 # Order: user, feedback, reference, project; alphabetical within.
-want='who-james-is some-feedback bench-serials alpha-project zeta-project'
+want='who-james-is some-feedback bench-serials alpha-project quoted-desc zeta-project'
 got=$(sed -n 's/^- \[[^]]*\](\([^)]*\)\.md).*/\1/p' "$idx" | tr '\n' ' ' | sed 's/ $//')
 [ "$got" = "$want" ] || { echo "T19: order was: $got"; exit 1; }
 grep -q '^- \[Bench serials\](bench-serials.md) — \[james-pc\] bench USB serials$' "$idx" \
   || { echo "T19: tag not inline / title not derived"; cat "$idx"; exit 1; }
+grep -q '^- \[Quoted desc\](quoted-desc.md) — says "hi" to you$' "$idx" \
+  || { echo "T19: escaped quote leaked into the index"; cat "$idx"; exit 1; }
 cp "$idx" "$HOME/idx.before"
 run "$sync"
 cmp -s "$idx" "$HOME/idx.before" || { echo "T19: re-render is not byte-identical"; exit 1; }

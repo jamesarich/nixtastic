@@ -116,7 +116,8 @@ memory_render_index() {
     echo '# Memory'
     echo
     find "$1" -maxdepth 1 -name '*.md' ! -name MEMORY.md -print0 | sort -z | xargs -0 gawk '
-      function val(s) { sub(/^[^:]*:[ \t]*/, "", s); gsub(/^"|"$/, "", s); return s }
+      # A quoted YAML scalar escapes its inner quotes; the index shows them bare.
+      function val(s) { sub(/^[^:]*:[ \t]*/, "", s); gsub(/^"|"$/, "", s); gsub(/\\"/, "\"", s); return s }
       function title(s,  t) { t = s; gsub(/[-_]+/, " ", t); return toupper(substr(t, 1, 1)) substr(t, 2) }
       function emit(  stem, rank, tag) {
         stem = FILENAME; sub(/.*\//, "", stem); sub(/\.md$/, "", stem)
