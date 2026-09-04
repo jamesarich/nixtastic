@@ -496,3 +496,35 @@ tip `17c6444`, 56 files +5333/−38, tree clean, **not pushed**; primary checkou
 
 Resume: an adversarial code review, then the on-device bring-up (Pixel 6a +
 Meshtadpole stick), then push / PR.
+
+## Full bench test — all working transports (2026-09-04)
+
+heltec-v3 running the cleaned per-peer firmware (`ea24b26d5`), verified live on
+the bench (LoRa + a Pixel 6a `node-kmp monitor` GATT peer):
+
+- **LoRa (transport 0):** RX + TX. Receives packets and relays them (`Lora RX …`
+  → `Started Tx …`).
+- **BLE advertisement (transport 9, `[BLEMesh]`):** RX. Hears the same nodes over
+  BLE advertisements with RSSI (`BLE mesh RX from=… rssi=-76`).
+- **BLE-GATT mesh-peer (transport 10):** egress to phone PROVEN. The Pixel app's
+  rx counter advanced (2 → 6) and it **decoded** frames at the mesh layer — a
+  position from a LoRa node and a **text** "probe from !b28c3748", plus opaque
+  channel-50 frames from the v3 itself (`!d1d90f21`).
+- **Cross-transport dedup:** one packet id arriving via LoRa **and** BLE-adv is
+  deduped by (from,id) — the multi-bearer mesh working as designed.
+- **Bridging:** LoRa / BLE-adv → phone over GATT, proven (the phone receives
+  frames that originated on LoRa). Stable, no crashes across the windows.
+
+**Not verified on-device (harness limits, not transport bugs):**
+- **BLE-GATT ingress (phone → mesh):** the monitor app's Compose "Send test"
+  button does not register adb/synthetic taps (app tx stayed 0 through
+  android_tap / `input tap` / `input swipe`), and the Mac (bleak) accumulated a
+  stale BLE bond (`CBError Code=14 Peer removed pairing information`) that blocks
+  reconnect to the v3's stable identity address across RPA rotations and reboots.
+  The ingress path (reassembly, ingress guards, router enqueue) is covered by the
+  26 passing native tests.
+- **UDP / MQTT:** enabled in the registry (`enabled_protocols=7`) but WiFi is off
+  and there is no second UDP peer on the bench to bridge against.
+
+**Bench cleanup still owed on the v3:** `network.wifi_enabled=true`,
+`enabled_protocols` 7→3, `bluetooth.mode=RANDOM_PIN`, reboot.
