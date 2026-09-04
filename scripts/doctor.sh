@@ -354,14 +354,6 @@ else
     ok "memory links" "$m_total slugs -> $mstore/memory"
   fi
 
-  mcfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
-  if grep -q nixtastic-memory-hook "$mcfg" 2>/dev/null && [ -x "$root/bin/nixtastic-memory-hook" ]; then
-    ok "memory hooks" "SessionStart pulls, Stop pushes"
-  else
-    warn "memory hooks" "not in $mcfg — sessions neither pull nor push"
-    fix "nix run .#sync -- --install-hooks"
-  fi
-
   m_dirty=$(git -C "$mstore" status --porcelain 2>/dev/null | wc -l)
   m_count=$(find "$mstore/memory" -maxdepth 1 -name '*.md' ! -name MEMORY.md 2>/dev/null | wc -l)
   if [ -e "$mstore/.git/MERGE_HEAD" ]; then

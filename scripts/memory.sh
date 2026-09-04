@@ -257,23 +257,3 @@ write_memory_hook() {
   } > "$1/bin/nixtastic-memory-hook"
   chmod +x "$1/bin/nixtastic-memory-hook"
 }
-
-# Register the hook in USER-scope settings.json — the one place that reaches
-# every directory on the machine, worktrees included. Merged with jq, never
-# overwritten: herdr and paseo already live in this file. Idempotent by the
-# script's own name; the backup is the same courtesy doctor extends. Both
-# machines need this, which is why doctor checks it.
-# $1 = workspace root. Returns 1 when already present (nothing written).
-install_memory_hooks() {
-  cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
-  hook="$1/bin/nixtastic-memory-hook"
-  write_memory_hook "$1"
-  mkdir -p "${cfg%/*}"
-  [ -f "$cfg" ] || echo '{}' > "$cfg"
-  grep -q nixtastic-memory-hook "$cfg" && return 1
-  cp "$cfg" "$cfg.nixtastic-bak"
-  jq --arg h "$hook" '
-    .hooks.SessionStart = ((.hooks.SessionStart // []) + [{matcher: "*", hooks: [{type: "command", command: ($h + " start"), timeout: 10}]}])
-    | .hooks.Stop = ((.hooks.Stop // []) + [{matcher: "", hooks: [{type: "command", command: ($h + " stop"), timeout: 15}]}])
-  ' "$cfg" > "$cfg.tmp" && mv "$cfg.tmp" "$cfg"
-}

@@ -466,17 +466,8 @@ mkdir -p "$HOME/.claude"
 cat > "$cfg" <<'EOF'
 { "model": "opus", "hooks": { "SessionStart": [ { "matcher": "*", "hooks": [ { "type": "command", "command": "herdr session", "timeout": 10 } ] } ] } }
 EOF
-run "$sync" --install-hooks
-expect 'hooks installed'
-[ -f "$cfg.nixtastic-bak" ] || { echo "T21: no backup"; exit 1; }
-[ "$(jq -r .model "$cfg")" = opus ] || { echo "T21: unrelated setting lost"; exit 1; }
-[ "$(jq '.hooks.SessionStart | length' "$cfg")" = 2 ] || { echo "T21: herdr entry lost or ours missing"; exit 1; }
-jq -e '.hooks.SessionStart[0].hooks[0].command == "herdr session"' "$cfg" >/dev/null || { echo "T21: existing hook rewritten"; exit 1; }
-jq -e '.hooks.Stop[0].hooks[0].command | test("nixtastic-memory-hook.* stop$")' "$cfg" >/dev/null || { echo "T21: stop hook missing"; exit 1; }
+run "$sync"
 [ -x "$root/bin/nixtastic-memory-hook" ] || { echo "T21: hook script missing"; exit 1; }
-run "$sync" --install-hooks
-expect 'hooks already installed'
-[ "$(jq '.hooks.SessionStart | length' "$cfg")" = 2 ] || { echo "T21: second install duplicated the entry"; exit 1; }
 # The hook: a memory written through the link is committed and pushed.
 printf -- '---\nname: from-a-session\ndescription: "x"\nmetadata:\n  type: project\n---\nbody\n' > "$projects/$(slug "$root")/memory/from-a-session.md"
 printf -- '- [dup line](from-a-session.md) — x\n- [dup line](from-a-session.md) — x\n' >> "$store/memory/MEMORY.md"
@@ -516,7 +507,7 @@ printf '{"cwd":"%s","hook_event_name":"Stop"}' "$root" | run "$root/bin/nixtasti
 echo "--- T22: doctor — store, links, hooks, state, age"
 run_lax "$doctor"
 expect 'ok +memory links'
-expect 'ok +memory hooks'
+refuse 'memory hooks'
 expect 'ok +memory store'
 # Unlinked slug is named by its label, not its 80-character slug.
 rm "$projects/$(slug "$root/kzstd")/memory"
@@ -606,6 +597,61 @@ grep -q 'now different' "$p/skills/android-baseline/SKILL.md" || { echo "T25: fo
 run "$sync"
 expect 'plugin +rendered .*unchanged'
 [ "$v2" = "$(jq -r .version "$p/.claude-plugin/plugin.json")" ] || { echo "T25: version churned after bump"; exit 1; }
+
+echo "--- T26: hook migration — only after the plugin is installed; ours removed, others kept, backup once"
+cfg="$HOME/.claude/settings.json"
+cat > "$cfg" <<EOF
+{ "model": "opus", "hooks": {
+  "SessionStart": [ { "matcher": "*", "hooks": [ { "type": "command", "command": "herdr session" } ] },
+                    { "matcher": "*", "hooks": [ { "type": "command", "command": "$root/bin/nixtastic-memory-hook start" } ] } ],
+  "Stop": [ { "matcher": "", "hooks": [ { "type": "command", "command": "$root/bin/nixtastic-memory-hook stop" } ] } ],
+  "PreToolUse": [ { "matcher": "Edit|Write|MultiEdit", "hooks": [ { "type": "command", "command": "bash \"\$HOME/.claude/hooks/block-main-checkout-edits.sh\"" } ] },
+                  { "matcher": "Bash", "hooks": [ { "type": "command", "command": "bash \"\$HOME/.claude/hooks/gradle-queue-guard.sh\"" } ] },
+                  { "matcher": "Bash", "hooks": [ { "type": "command", "command": "paseo hooks claude PreToolUse" } ] } ] } }
+EOF
+rm -f "$HOME/.claude/plugins/installed_plugins.json"
+run "$sync"
+expect 'plugin +register +skipped'
+expect 'plugin +hooks +kept in settings.json until the plugin is installed'
+[ "$(jq '.hooks.SessionStart | length' "$cfg")" = 2 ] || { echo "T26: migrated before install"; exit 1; }
+# Pretend the CLI installed it.
+mkdir -p "$HOME/.claude/plugins"
+v=$(jq -r .version "$root/.cache/agent-marketplace/nixtastic/.claude-plugin/plugin.json")
+jq -n --arg v "$v" '{version: 2, plugins: {"nixtastic@nixtastic": [{scope: "user", version: $v}]}}' > "$HOME/.claude/plugins/installed_plugins.json"
+jq -n --arg p "$root/.cache/agent-marketplace" '{nixtastic: {source: {source: "directory", path: $p}, installLocation: $p}}' > "$HOME/.claude/plugins/known_marketplaces.json"
+run "$sync"
+expect 'plugin +hooks +migrated 4'
+[ -f "$cfg.nixtastic-bak-plugin" ] || { echo "T26: no backup"; exit 1; }
+[ "$(jq -r .model "$cfg")" = opus ] || { echo "T26: unrelated setting lost"; exit 1; }
+[ "$(jq '.hooks.SessionStart | length' "$cfg")" = 1 ] || { echo "T26: memory start not removed / herdr lost"; cat "$cfg"; exit 1; }
+jq -e '.hooks.SessionStart[0].hooks[0].command == "herdr session"' "$cfg" >/dev/null || { echo "T26: herdr rewritten"; exit 1; }
+[ "$(jq '.hooks.Stop | length' "$cfg")" = 0 ] || { echo "T26: memory stop not removed"; exit 1; }
+[ "$(jq '.hooks.PreToolUse | length' "$cfg")" = 1 ] || { echo "T26: guards not removed / paseo lost"; cat "$cfg"; exit 1; }
+jq -e '.hooks.PreToolUse[0].hooks[0].command | test("paseo")' "$cfg" >/dev/null || { echo "T26: paseo lost"; exit 1; }
+expect 'restart claude'
+cp "$cfg.nixtastic-bak-plugin" "$HOME/bak1"
+run "$sync"
+expect 'plugin +hooks +nothing to migrate'
+cmp -s "$HOME/bak1" "$cfg.nixtastic-bak-plugin" || { echo "T26: backup rewritten on a no-op"; exit 1; }
+# --install-hooks now points at the plugin instead of writing.
+run "$sync" --install-hooks
+expect 'hooks ship in the nixtastic plugin'
+[ "$(jq '.hooks.SessionStart | length' "$cfg")" = 1 ] || { echo "T26: --install-hooks wrote entries"; exit 1; }
+
+echo "--- T27: queue symlink — created, idempotent, a real file is backed up; register reports version drift"
+q="$HOME/.claude/bin/gradle-queue"
+[ -L "$q" ] || { echo "T27: no symlink"; exit 1; }
+[ "$(readlink "$q")" = "$root/.cache/agent-marketplace/nixtastic/bin/gradle-queue" ] || { echo "T27: wrong target $(readlink "$q")"; exit 1; }
+run "$sync"
+expect 'plugin +queue +current'
+rm "$q"; echo old > "$q"
+run "$sync"
+expect 'plugin +queue +linked .*backup'
+[ -f "$q.pre-plugin" ] && [ -L "$q" ] || { echo "T27: real file not backed up"; exit 1; }
+# Installed version behind the render: register says so (claude absent, so it cannot act).
+jq '.plugins["nixtastic@nixtastic"][0].version = "0.1.0"' "$HOME/.claude/plugins/installed_plugins.json" > "$HOME/ip" && mv "$HOME/ip" "$HOME/.claude/plugins/installed_plugins.json"
+run "$sync"
+expect 'plugin +register +skipped .*claude plugin update'
 
 echo "all tests passed"
 touch "$out"

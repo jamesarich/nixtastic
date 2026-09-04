@@ -18,7 +18,7 @@
 #   --main     switch each repo to its DEFAULT branch first,
 #              then pull. Implies --pull. Refuses to switch a
 #              repo whose tracked files are modified.
-#   --install-hooks  register the memory hooks in user-scope settings.json
+#   --install-hooks  (retired) the hooks ship in the plugin; prints a pointer
 #   --memory-only    the memory pass alone — after worktree churn, or when
 #                    doctor says unpushed; everything else is a 19-repo fetch
 #   --slug <path>    print a Claude Code project slug and exit
@@ -156,14 +156,7 @@ memory_pass() {
   # editing a user-global file is consent the user gives once.
   write_memory_hook "$root"
   if [ "$hooks" = true ]; then
-    if install_memory_hooks "$root"; then
-      echo "            hooks installed in ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json (backup: settings.json.nixtastic-bak)"
-    else
-      echo "            hooks already installed"
-    fi
-  elif ! grep -q nixtastic-memory-hook "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" 2>/dev/null; then
-    echo "            no hooks yet — sessions will not pull or push until, once per machine:"
-    echo "                nix run .#sync -- --install-hooks"
+    echo '            hooks ship in the nixtastic plugin now — nothing to install; sync registers the plugin'
   fi
 }
 

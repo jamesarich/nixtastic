@@ -131,11 +131,93 @@ plugin_retire_root_skills() {
   echo "  plugin    retired .claude/skills (bundled copies now ship in the plugin)"
 }
 
+NIXTASTIC_PLUGIN_HOOK_NAMES='nixtastic-memory-hook block-main-checkout-edits.sh gradle-queue-guard.sh'
+
+plugin_config_dir() { printf '%s\n' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"; }
+
+plugin_installed_version() {
+  f="$(plugin_config_dir)/plugins/installed_plugins.json"
+  [ -f "$f" ] || return 0
+  jq -r --arg k "$(plugin_name)@$(plugin_name)" '.plugins[$k][0].version // empty' "$f" 2>/dev/null
+}
+
+plugin_marketplace_known() {
+  f="$(plugin_config_dir)/plugins/known_marketplaces.json"
+  [ -f "$f" ] && jq -e --arg k "$(plugin_name)" '.[$k]' "$f" >/dev/null 2>&1
+}
+
+# The CLI owns install state; we only call it, and only when needed. Without
+# claude on PATH (the test sandbox, a server) say what would run.
+# $1 = root, $2 = rendered version. Prints one status word, then the fix.
+plugin_register() {
+  rd=$(plugin_render_dir "$1"); name=$(plugin_name); inst=$(plugin_installed_version)
+  want=""
+  if ! plugin_marketplace_known; then want="claude plugin marketplace add $rd && claude plugin install $name@$name"
+  elif [ -z "$inst" ]; then want="claude plugin install $name@$name"
+  elif [ "$inst" != "$2" ]; then want="claude plugin update $name@$name"
+  fi
+  [ -z "$want" ] && { echo current; return 0; }
+  if ! command -v claude >/dev/null 2>&1; then printf 'skipped\t%s\n' "$want"; return 0; fi
+  if sh -c "$want" >/dev/null 2>&1; then
+    case "$want" in *marketplace*) echo added+installed ;; *install*) echo installed ;; *) echo updated ;; esac
+  else
+    printf 'failed\t%s\n' "$want"
+  fi
+}
+
+# Remove the user-scope entries the plugin now provides, matched by script
+# basename so both machines' paths match. Only once the plugin is installed:
+# removing first would leave sessions with no memory hook at all.
+plugin_migrate_hooks() {
+  cfg="$(plugin_config_dir)/settings.json"
+  [ -f "$cfg" ] || { echo nothing; return 0; }
+  [ -n "$(plugin_installed_version)" ] || { echo deferred; return 0; }
+  pat=$(printf '%s' "$NIXTASTIC_PLUGIN_HOOK_NAMES" | tr ' ' '|')
+  n=$(jq --arg p "$pat" '[.hooks // {} | .[] | .[] | .hooks[]? | select(.command | test($p))] | length' "$cfg")
+  [ "$n" -gt 0 ] || { echo nothing; return 0; }
+  cp "$cfg" "$cfg.nixtastic-bak-plugin"
+  jq --arg p "$pat" '
+    .hooks |= (with_entries(.value |= (map(.hooks |= map(select(.command | test($p) | not))) | map(select(.hooks | length > 0)))))
+  ' "$cfg" > "$cfg.tmp" && mv "$cfg.tmp" "$cfg"
+  printf 'migrated %s\n' "$n"
+}
+
+# The upstream android agent and the guard probe this exact path.
+plugin_link_queue() {
+  q="$(plugin_config_dir)/bin/gradle-queue"; target="$(plugin_render_dir "$1")/$(plugin_name)/bin/gradle-queue"
+  mkdir -p "${q%/*}"
+  if [ -L "$q" ] && [ "$(readlink "$q")" = "$target" ]; then echo current; return 0; fi
+  bak=""
+  if [ -e "$q" ] && [ ! -L "$q" ]; then mv "$q" "$q.pre-plugin"; bak=" backup=$q.pre-plugin"; fi
+  ln -sfn "$target" "$q"
+  printf 'linked%s\n' "$bak"
+}
+
 plugin_pass() {
   root="$1"
   out=$(plugin_render "$root")
   # shellcheck disable=SC2086
   set -- $out
-  printf '  plugin    rendered %s forwarder(s) into %s  (%s, version %s)\n' "$2" "$(plugin_render_dir "$root")" "$3" "$4"
+  version="$4"
+  printf '  plugin    rendered %s forwarder(s) into %s  (%s, version %s)\n' "$2" "$(plugin_render_dir "$root")" "$3" "$version"
   plugin_retire_root_skills "$root"
+  restart=false
+  reg=$(plugin_register "$root" "$version")
+  case "$reg" in
+    current) printf '  plugin    register  current (%s)\n' "$version" ;;
+    skipped*) printf '  plugin    register  skipped — claude not on PATH; run:  %s\n' "${reg#*$'\t'}" ;;
+    failed*)  printf '  WARN      plugin register failed; run by hand:  %s\n' "${reg#*$'\t'}" ;;
+    *) printf '  plugin    register  %s\n' "$reg"; restart=true ;;
+  esac
+  mig=$(plugin_migrate_hooks)
+  case "$mig" in
+    deferred) echo '  plugin    hooks     kept in settings.json until the plugin is installed' ;;
+    nothing)  echo '  plugin    hooks     nothing to migrate' ;;
+    *) printf '  plugin    hooks     migrated %s user-scope entr(ies) now provided by the plugin  (backup: settings.json.nixtastic-bak-plugin)\n' "${mig#migrated }"
+       echo '            the old ~/.claude/hooks/*.sh files are unused; delete them when convenient'
+       restart=true ;;
+  esac
+  printf '  plugin    queue     %s\n' "$(plugin_link_queue "$root")"
+  [ "$restart" = true ] && echo '            restart claude to load the plugin hooks and MCP server'
+  return 0
 }
