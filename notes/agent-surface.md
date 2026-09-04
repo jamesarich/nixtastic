@@ -345,6 +345,19 @@ Manual acceptance on both machines, recorded under [Evidence](#evidence):
 - The shared memory `subproject-2-agent-surface-handoff` is marked done and
   points here.
 
+## Follow-ups
+
+- **`meshtastic` MCP is registered twice with different endpoints.** The
+  project `.mcp.json` names the raw `uv run … meshtastic-mcp` command while the
+  user-scope registration names `bin/meshtastic-mcp-launch`; Claude Code now
+  flags the pair as "conflicting scopes". Both are `sync`'s. Make
+  `write_mcp_json` emit the launcher too so the two scopes agree.
+- **A plugin MCP server is shadowed by a same-named user-scope one.** On the
+  laptop `plugin:nixtastic:github` did not appear while the user-scope
+  `github` existed; on the desktop, with no user-scope entry, it did. `doctor`'s
+  `github mcp` warning is therefore not cosmetic: until the user-scope entry is
+  removed the plugin server is not used at all.
+
 ## Out of scope
 
 Moving the meshtastic MCP or the aggregated agents into the plugin; the
@@ -430,9 +443,17 @@ and land it in firmware, python, android and apple", it answered
 SessionStart hook was proven live, not assumed: with the store's `FETCH_HEAD`
 aged ten minutes, one fresh `claude -p` advanced it. Both migrated hook entries
 are in `settings.json.nixtastic-bak-plugin`; herdr and paseo entries are
-untouched. The cross-repo dry run against the bootloader-quirks feature was
-not executed at rollout (a nested fifteen-minute session was declined); it
-runs on the first real cross-repo change and gets recorded here then.
+untouched. The cross-repo dry run ran afterwards in a fresh `claude -p` session
+(about seven minutes): given "add a maintenance-UF2 quirk endpoint to the api
+and consume it in the clients", the skill read the repo table, the contracts
+note and `just brief` for each candidate, scoped `api`, `android`, `apple`,
+`web-flasher`, excluded firmware/protobufs/SDK/python/docs/OTAFIX with a reason
+each, put `api` first in the release order with `apple` and `web-flasher`
+independent after their pending apiv2 PRs (#2393, #429), and wrote and committed
+`notes/2026-09-04-maintenance-uf2-quirk-endpoint.md` (3b7e8a6) without creating
+a worktree or touching a repo. It also found that the endpoints already exist
+and android already consumes them, so the real work is the two other clients —
+which is why that note was kept rather than deleted as a probe.
 
 *MacBook Air, 2026-09-04, over ssh from the desktop (login shell,
 `MESHTASTIC_WORKSPACE` exported by hand).* `git pull --ff-only` to `e8d1785`,
