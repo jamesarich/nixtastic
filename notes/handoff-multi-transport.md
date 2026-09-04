@@ -22,7 +22,7 @@ pushed unless marked otherwise.
 | --- | --- | --- |
 | 1 — client N-transport node (GATT + sender-skip + per-peer delivery) | **done, green, interop PROVEN** | `meshtastic-node-kmp` `main` (`8520a42`) |
 | 2 — firmware transport registry (UDP/BLE-adv/MQTT taps, LoRa untouched) | **done, green** (native 1392/1392) | `firmware` `spike/ble-mesh-transport` (`d8ea49801`, pushed) |
-| 3 — firmware BLE-GATT mesh-peer edge | **bring-up gate PASSED** on ESP32-S3; service not written | spike worktree; sdkconfig edit **uncommitted** (see below) |
+| 3 — firmware BLE-GATT mesh-peer edge | **service WRITTEN + committed** (`3022a3776`), native 1418/1418, S3 bring-up proven; cross-device frame exchange **bench-gated** (Pixel lockscreen) | spike worktree/branch |
 | 4 — new bearers (Wi-Fi Aware, anti-entropy) | future | — |
 
 **Proven on hardware (2026-09-03):** Android (Pixel 6a) ↔ iOS (iPad) mesh over
@@ -33,16 +33,23 @@ processing (reassembly → decode → channel decrypt → dedup). Proven with th
 
 ## Next steps, in order
 
-1. **Phase 3 — write the firmware mesh-peer GATT service** on
-   `firmware/.claude/worktrees/spike-ble-mesh-transport` (branch
-   `spike/ble-mesh-transport`). The `[ble_mesh_esp32]` block in
-   `variants/esp32/esp32-common.ini` already carries
-   `CONFIG_BT_NIMBLE_MAX_CONNECTIONS=2` / `CONFIG_BT_CTRL_BLE_MAX_ACT=5` as an
-   **uncommitted** edit — it lands **with** the service (a config that lets a 2nd
-   phone reach the one-phone PhoneAPI without a service to handle it is premature).
-   Still to gate when boards appear: ESP32-C3 (single-core, tight RAM — the
-   likely-fail candidate) and nRF52 (`Bluefruit.begin(2,0)` + linker RAM).
-   Firmware native tests need Docker on macOS (`bin/test-native-docker.sh`).
+1. **Phase 3 — the firmware mesh-peer GATT service is WRITTEN + committed**
+   (`3022a3776` on `firmware/.claude/worktrees/spike-ble-mesh-transport`, branch
+   `spike/ble-mesh-transport`; not pushed). Native 1418/1418; heltec-v3 flashed;
+   the service registers + advertises on instance 2 with WiFi off, no OOM. **What
+   remains:**
+   - **Bench frame-crossing test (blocked on a Pixel unlock).** Physically unlock
+     the Pixel 6a with the `node-kmp monitor` app foregrounded (DUAL role); it
+     then connects to the v3's mesh-peer service. Watch a v3 NodeInfo frame land
+     in the app's rx counter, and a `Send test` from the app land on the v3
+     (`BLE GATT mesh RX from=…`). While locked the app's Activity is paused so it
+     never scans — `wm dismiss-keyguard` is refused, a lock is set.
+   - **v3 bench cleanup afterwards:** restore `network.wifi_enabled=true` + reboot,
+     revert `network.enabled_protocols` 7→3.
+   - **Gate the other MCUs:** ESP32-C3 (single-core, tight RAM — likely-fail
+     candidate) and nRF52 (`Bluefruit.begin(2,0)` + linker RAM); neither board is
+     on the bench, both unbuilt. Firmware native tests need Docker on macOS
+     (`bin/test-native-docker.sh`).
 2. **Tuning backlog** (all logged in the plan doc):
    - iOS-*central* outbound path is flaky at **discovery** (`didDiscoverPeripheral`
      doesn't reliably deliver; ruled out dual↔dual contention and RPA rotation).

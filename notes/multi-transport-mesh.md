@@ -61,22 +61,36 @@ All commits below are **local, not pushed**.
   - *Deliberately out of scope:* the receive-path MQTT tap (`Router.cpp:1631`,
     `!isFromUs`) stays a hardcoded `mqtt->onSend`; a no-LoRa transports-only node
     (would need relaxing `assert(iface)` — LoRa stays first-class, so opt-in only).
-- **Phase 3 (firmware BLE-GATT mesh-peer edge) — bring-up gate PASSED on the
-  ESP32-S3 (Heltec v3), 2026-09-03.** The #1 HARD blocker (would raising the
-  connection cap OOM at BLE init?) is cleared. Built the spike heltec-v3 with the
-  `[ble_mesh_esp32]` block bumped to `CONFIG_BT_NIMBLE_MAX_CONNECTIONS=2` /
-  `CONFIG_BT_CTRL_BLE_MAX_ACT=5` (ROLE_CENTRAL stays off — both phones are
-  centrals connecting *inward*), flashed the v3 (WiFi on, so the tight
-  coexistence heap), and it booted clean: `BLE mesh started`, free heap after
-  init 73504 B vs the cap-1 baseline 73576 B (≈ identical), full node operation,
-  zero OOM / `Memory Capacity Exceeded` / host-sync-fail / hang. sdkconfig
-  verified applied in the rebuilt NimBLE. So the mesh-peer edge is
-  hardware-feasible on the S3. **Still to gate:** the C3 (single-core, tighter
-  RAM — the research's likely-fail candidate) and nRF52 (`Bluefruit.begin(2,0)` +
-  linker RAM); neither board is on the bench. The 2-connection sdkconfig edit is
-  left **uncommitted** — it belongs with the mesh-peer *service* code (a config
-  that lets a 2nd phone reach the one-phone PhoneAPI, without the service to
-  handle it, is premature), so the two land together.
+- **Phase 3 (firmware BLE-GATT mesh-peer edge) — service WRITTEN + committed,
+  hardware bring-up proven on the ESP32-S3; cross-device frame exchange still
+  bench-gated. 2026-09-03.** Committed on `firmware` `spike/ble-mesh-transport`
+  as `3022a3776` (14 files, +1725): `BLEGattMeshHandler` (platform-neutral —
+  framing shared byte-for-byte with the node-kmp client, bounded reassembly, the
+  UDP/adv ingress guards, per-peer TX ring, no-echo-to-arrival-peer) and
+  `ESP32BLEGattMesh` (NimBLE — own connectable adv set on **instance 2**,
+  per-connection notifies, MTU-derived chunk, a GAP handler chained ahead of the
+  Arduino wrapper's, PhoneAPI-disconnect gating). Registry-gated on the new
+  `BLE_GATT_PEER` protocol flag. The sdkconfig bump landed **with** the service:
+  `CONFIG_BT_NIMBLE_MAX_CONNECTIONS=2` / `CONFIG_BT_CTRL_BLE_MAX_ACT=6`
+  (ROLE_CENTRAL stays off — phones connect *inward*). Proto pointer bumped for
+  the `TRANSPORT_BLE_GATT` + `BLE_GATT_PEER` enums; generated headers regenerated.
+  - **Proven:** native suite **1418/1418** (26 new cases for this transport);
+    heltec-v3 built + flashed, and with **WiFi off** (`network.wifi_enabled=false`
+    at runtime, PSK never written) it brings the service up clean —
+    `BLE GATT mesh: mesh-peer service registered`,
+    `advertising the mesh-peer service on instance 2`, full node operation, zero
+    OOM / `Memory Capacity Exceeded` / crash at the 2-connection config.
+  - **NOT yet proven (bench-gated):** a phone connecting as a mesh peer and a
+    frame crossing device→phone. Blocked 2026-09-03 on the **Pixel's secure
+    lockscreen** — with the screen locked its monitor Activity is paused, so it
+    never scans/connects; `wm dismiss-keyguard` is refused (a lock is set).
+    Needs a physical unlock with the `node-kmp monitor` app foregrounded.
+  - **Still to gate:** ESP32-C3 (single-core, tighter RAM — the likely-fail
+    candidate) and nRF52 (`Bluefruit.begin(2,0)` + linker RAM); neither board is
+    on the bench, both unbuilt.
+  - **Bench cleanup owed on the v3:** restore `network.wifi_enabled=true` +
+    reboot, and revert `network.enabled_protocols` 7→3, once the frame-crossing
+    test is done.
 - **Phase 4 — future** (Wi-Fi Aware, anti-entropy sync).
 
 ---
