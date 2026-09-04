@@ -560,3 +560,31 @@ two internal paths). The valid frames get through; worth chasing before PR.
 
 **Bench cleanup still owed on the v3:** `enabled_protocols` 7→3,
 `bluetooth.mode=RANDOM_PIN`, reboot. (WiFi now intentionally on for the UDP node.)
+
+
+## LoRa via Meshtadpole on Android — PROVEN on hardware (2026-09-04)
+
+A Meshtadpole (WCH CH341A `1a86:5512` + Semtech SX1262) plugged into the Pixel 6a
+over USB-C OTG, `:node-transport-lora:connectedAndroidDeviceTest` run against it:
+
+- **`LoraListenDeviceTest.hearsTheAirForSixtySeconds` PASSES.** The Kotlin SX1262
+  driver claimed the CH341 over the Android USB host API, read the chip
+  (`SX1261 V2D 2D02`), brought the radio up on **US LongFast, 906.875 MHz, slot
+  19/104, 10 dBm**, and **decoded three real over-the-air packets** from node
+  `!3061b02e` (the same node the bench v3 hears): `rx=3, rxCrcBad=0, rxTooShort=0,
+  rxDropped=0, usbErrors=0`, RSSI -56..-10, SNR ~6. So the whole stack - CH341
+  bulk SPI, SX1262 config + RX, the 16-byte header decode - works on device.
+- The USB permission is a one-time system dialog (tap Allow); after that the
+  grant persists.
+- **Not yet exercised:** transmit. It is gated behind
+  `-Pandroid.testInstrumentationRunnerArguments.meshLoraTx=1` (a regulatory
+  safety gate - a test run must never key up by accident). `Ch341ProbeDeviceTest`
+  failed only with `claimInterface refused` - a stale USB claim left by the listen
+  test / earlier attempts, not a transport bug (the listen test claimed fine).
+- One-line fix landed to make the device tests compile at all (`ed37488`): the
+  never-built `androidDeviceTest` used `.onEach{}.collect()` with the no-arg
+  terminal unresolved.
+
+So the answer to "does the LoRa transport work via Meshtadpole on Android": **yes,
+receive is proven on hardware.** Transmit is the remaining on-air check, behind
+its safety flag.
