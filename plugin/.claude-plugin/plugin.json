@@ -1,0 +1,7 @@
+{
+  "name": "nixtastic",
+  "version": "0.0.0",
+  "description": "Meshtastic workspace: cross-repo process skill, forwarders to each repo's skills, worktree and Gradle guards, shared memory hooks, GitHub read-only MCP. Rendered by nix run .#sync — edit plugin/ in the workspace, never the render.",
+  "author": { "name": "James Rich" },
+  "license": "GPL-3.0-only"
+}

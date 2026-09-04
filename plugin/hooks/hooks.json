@@ -1,0 +1,15 @@
+{
+  "description": "Memory pull/push and the two workspace-rule guards. Scripts resolve under the plugin root.",
+  "hooks": {
+    "SessionStart": [
+      { "matcher": "*", "hooks": [ { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/nixtastic-memory-hook start", "timeout": 10 } ] }
+    ],
+    "Stop": [
+      { "matcher": "", "hooks": [ { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/nixtastic-memory-hook stop", "timeout": 15 } ] }
+    ],
+    "PreToolUse": [
+      { "matcher": "Edit|Write|MultiEdit", "hooks": [ { "type": "command", "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/block-main-checkout-edits.sh" } ] },
+      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/gradle-queue-guard.sh" } ] }
+    ]
+  }
+}

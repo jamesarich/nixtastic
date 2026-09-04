@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/readonly",
+      "headersHelper": "${CLAUDE_PLUGIN_ROOT}/bin/github-mcp-headers"
+    }
+  }
+}

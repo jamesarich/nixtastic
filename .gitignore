@@ -31,6 +31,9 @@
 !/scripts/*.sh
 # Thin `just` aliases over the flake apps.
 !/justfile
+# The workspace plugin's hand-written source. sync renders it (plus generated
+# forwarders) into .cache/agent-marketplace/, which stays ignored.
+!/plugin/
 
 # Paseo worktree config: setup command + on-demand scripts. Paseo reads this
 # from the committed version of the base branch, so it must be tracked.

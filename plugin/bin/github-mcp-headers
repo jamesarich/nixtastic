@@ -1,0 +1,9 @@
+#!/bin/sh
+# headersHelper for the hosted GitHub MCP: the token comes from gh at connect
+# time, so nothing on disk ever carries it. Empty object when gh is logged out.
+tok=$(gh auth token 2>/dev/null) || tok=""
+if [ -n "$tok" ]; then
+  printf '{"Authorization":"Bearer %s"}\n' "$tok"
+else
+  printf '{}\n'
+fi

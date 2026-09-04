@@ -1352,6 +1352,20 @@
                 deadnix --fail ${self}
                 touch "$out"
               '';
+
+          # ShellCheck over the plugin's own scripts. writeShellApplication
+          # gates scripts/*.sh at build; these ship verbatim, so nothing
+          # else reads them.
+          plugin-lint =
+            pkgs.runCommand "nixtastic-plugin-lint"
+              {
+                nativeBuildInputs = [ pkgs.shellcheck ];
+              }
+              ''
+                shellcheck -s bash ${self}/plugin/hooks/*.sh ${self}/plugin/bin/gradle-queue
+                shellcheck -s sh ${self}/plugin/bin/github-mcp-headers
+                touch "$out"
+              '';
         }
       );
 

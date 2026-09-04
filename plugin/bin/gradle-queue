@@ -1,0 +1,157 @@
+#!/bin/bash
+# Machine-wide semaphore for Gradle builds across concurrent Claude sessions.
+#
+# All sessions share one ~/.gradle, so unbounded parallel builds thrash the
+# daemon-address registry, journal/file-hash/artifact caches, and RAM. This
+# admits at most $GRADLE_QUEUE_SLOTS builds at a time, FIFO by arrival.
+#
+#   gradle-queue [--gradle-timeout N] -- <gradlew args...>
+#   gradle-queue --status
+#   gradle-queue --reap
+#
+# Runs ./gradlew from the current directory (walking up to find it).
+
+set -uo pipefail
+
+QUEUE_DIR="${GRADLE_QUEUE_DIR:-$HOME/.claude/gradle-queue}"
+SLOTS="${GRADLE_QUEUE_SLOTS:-3}"
+WAIT_TIMEOUT="${GRADLE_QUEUE_WAIT_TIMEOUT:-3600}"
+POLL_INTERVAL="${GRADLE_QUEUE_POLL:-3}"
+
+WAIT_DIR="$QUEUE_DIR/waiting"
+mkdir -p "$WAIT_DIR"
+
+now() { date +%s; }
+
+# A holder/waiter is stale if its recorded pid is gone.
+pid_alive() { [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null; }
+
+reap() {
+  local i owner p
+  for ((i = 1; i <= SLOTS; i++)); do
+    owner="$QUEUE_DIR/slot.$i/owner"
+    [ -d "$QUEUE_DIR/slot.$i" ] || continue
+    p=$(sed -n 's/^pid=//p' "$owner" 2>/dev/null | head -1)
+    if ! pid_alive "$p"; then
+      rm -rf "$QUEUE_DIR/slot.$i"
+    fi
+  done
+  for f in "$WAIT_DIR"/*; do
+    [ -e "$f" ] || continue
+    p="${f##*-}"
+    pid_alive "$p" || rm -f "$f"
+  done
+}
+
+status() {
+  local i owner p started
+  echo "gradle-queue: $SLOTS slot(s), dir $QUEUE_DIR"
+  reap
+  for ((i = 1; i <= SLOTS; i++)); do
+    owner="$QUEUE_DIR/slot.$i/owner"
+    if [ -f "$owner" ]; then
+      p=$(sed -n 's/^pid=//p' "$owner")
+      started=$(sed -n 's/^started=//p' "$owner")
+      echo "  slot $i: BUSY pid=$p  $(( $(now) - ${started:-$(now)} ))s  $(sed -n 's/^dir=//p' "$owner")"
+      echo "          cmd: $(sed -n 's/^cmd=//p' "$owner")"
+    else
+      echo "  slot $i: free"
+    fi
+  done
+  local n
+  n=$(find "$WAIT_DIR" -type f 2>/dev/null | wc -l | tr -d ' ')
+  echo "  waiting: $n"
+  find "$WAIT_DIR" -type f 2>/dev/null | sort | sed 's|.*/|    queued: |'
+}
+
+case "${1:-}" in
+  --status) status; exit 0 ;;
+  --reap)   reap; echo "reaped"; exit 0 ;;
+esac
+
+GRADLE_TIMEOUT=""
+if [ "${1:-}" = "--gradle-timeout" ]; then
+  GRADLE_TIMEOUT="$2"; shift 2
+fi
+[ "${1:-}" = "--" ] && shift
+
+if [ $# -eq 0 ]; then
+  echo "usage: gradle-queue [--gradle-timeout N] -- <gradlew args...>" >&2
+  exit 2
+fi
+
+# Locate the gradlew wrapper by walking up from cwd.
+GRADLEW=""
+d="$PWD"
+while [ "$d" != "/" ]; do
+  if [ -x "$d/gradlew" ]; then GRADLEW="$d/gradlew"; break; fi
+  d="$(dirname "$d")"
+done
+if [ -z "$GRADLEW" ]; then
+  echo "gradle-queue: no ./gradlew found from $PWD" >&2
+  exit 2
+fi
+
+TICKET="$WAIT_DIR/$(now).$$-$$"
+printf 'dir=%s\ncmd=%s\n' "$PWD" "$*" > "$TICKET"
+
+SLOT=""
+# Invoked by the trap below.
+# shellcheck disable=SC2329
+cleanup() {
+  rm -f "$TICKET"
+  [ -n "$SLOT" ] && rm -rf "$SLOT"
+}
+trap cleanup EXIT INT TERM
+
+deadline=$(( $(now) + WAIT_TIMEOUT ))
+announced=0
+
+while :; do
+  reap
+
+  # FIFO fairness: only the oldest $SLOTS waiters may contend for a slot,
+  # so a busy session cannot starve one that has been queued longer.
+  eligible=$(find "$WAIT_DIR" -type f 2>/dev/null | sort | head -n "$SLOTS" | grep -Fx "$TICKET")
+
+  if [ -n "$eligible" ]; then
+    for ((i = 1; i <= SLOTS; i++)); do
+      if mkdir "$QUEUE_DIR/slot.$i" 2>/dev/null; then
+        SLOT="$QUEUE_DIR/slot.$i"
+        printf 'pid=%s\nstarted=%s\ndir=%s\ncmd=%s\n' "$$" "$(now)" "$PWD" "$*" > "$SLOT/owner"
+        break
+      fi
+    done
+  fi
+
+  [ -n "$SLOT" ] && break
+
+  if [ "$(now)" -ge "$deadline" ]; then
+    echo "gradle-queue: timed out after ${WAIT_TIMEOUT}s waiting for a build slot." >&2
+    echo "gradle-queue: run 'gradle-queue --status' to see what is holding them." >&2
+    exit 75
+  fi
+
+  if [ "$announced" -eq 0 ]; then
+    ahead=$(find "$WAIT_DIR" -type f 2>/dev/null | sort | grep -n -Fx "$TICKET" | cut -d: -f1)
+    echo "gradle-queue: all $SLOTS slots busy; queued at position ${ahead:-?}. Waiting..." >&2
+    announced=1
+  fi
+  sleep "$POLL_INTERVAL"
+done
+
+rm -f "$TICKET"
+echo "gradle-queue: acquired $(basename "$SLOT") -> $GRADLEW $*" >&2
+
+if [ -n "$GRADLE_TIMEOUT" ]; then
+  "$GRADLEW" "$@" &
+  gpid=$!
+  ( sleep "$GRADLE_TIMEOUT"; kill -TERM "$gpid" 2>/dev/null ) &
+  watchdog=$!
+  wait "$gpid"; rc=$?
+  kill "$watchdog" 2>/dev/null
+else
+  "$GRADLEW" "$@"; rc=$?
+fi
+
+exit "$rc"
