@@ -115,3 +115,21 @@ BLE work" parts 2 & 4. `apache/mynewt-nimble` `ble_gatts.c`. `espressif/esp-idf`
 (`sm_bonding` is passive). NimBLE-Arduino 1.4 `NimBLEServer.cpp` (ENC_CHANGE doesn't
 terminate). Meshtastic firmware #2793, #7606, discussion #10173, org #357 (all fixed
 by "forget the device"). Berty BLE blog. GATT-133 explainer + Nordic devzone.
+
+## Refinement (2026-09-04): no COMPLETED bond on the Pixel
+
+The v3 is **not** in the Pixel's saved/paired list — so there is no completed
+bond auto-encrypting on reconnect (the Q1-C sub-theory is out). What we saw was
+`BOND_BONDING → Detect bonding failure → Remove from storage`, looping: Android
+**attempts a fresh bond on every connection and it fails**, cleaning up the
+half-bond each time (hence nothing persists in the list). So the question is no
+longer "stale key" but **"what makes Android start pairing each time?"** — either
+(A) the app touched an encrypted attribute (ATT insufficient-auth → auto-bond),
+which for our open mesh char would only happen if it also reads a phone-API
+secured char on the same ACL, or (B) the ESP32 sends an SMP Security Request
+(firmware `sm_bonding=true` + security callbacks initiating). **Decisive next
+measurement: the direction of the first SMP frame** (btsnoop on the phone, or log
+`event->enc_change.status` + initiator at `NimbleBluetooth.cpp:698` and rebuild).
+`removeBond`/`refresh` on the client is still harmless (no-op with no bond) and
+still worth it for the stale-GATT-cache case; `connectGatt(TRANSPORT_LE)` is worth
+it unconditionally for the status=133 instability.
