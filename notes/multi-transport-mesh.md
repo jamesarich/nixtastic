@@ -588,3 +588,28 @@ over USB-C OTG, `:node-transport-lora:connectedAndroidDeviceTest` run against it
 So the answer to "does the LoRa transport work via Meshtadpole on Android": **yes,
 receive is proven on hardware.** Transmit is the remaining on-air check, behind
 its safety flag.
+
+### Transmit also PROVEN — round-trip on the air (2026-09-04)
+
+Ran the transmit test with its safety flag:
+`connectedAndroidDeviceTest -Pandroid.testInstrumentationRunnerArguments.class=…LoraTransmitDeviceTest
+-P…meshLoraTx=1 -P…meshLoraRegion=US`.
+
+- Meshtadpole (Android node `!0a11ce`) **keyed up and sent** one frame:
+  `lora: tx ok len=41 toa=559ms`, `sendText -> true`, `tx=1 txTimeouts=0 txRefused=0`,
+  US LongFast 906.875 MHz, 10 dBm.
+- The **bench v3 received it over the air and decoded it**:
+  `[RadioIf] Lora RX (id=0x3f9f04e6 fr=0x000a11ce … len=41 rxSNR=6.75)` →
+  `[Router] Received text msg from=0x000a11ce, msg=node-kmp lora probe` →
+  `Forwarding to phone`. Exact text the test sent.
+- So `node-transport-lora` on Android is **bidirectional on real hardware**:
+  RX (3 packets) and TX (a decoded text landed on a separate LoRa node). One
+  cosmetic hiccup: a single `USB error, bulk IN failed (-1); retrying in 3000 ms`
+  right after TX (the RX poll immediately after keying up), self-recovers - worth
+  a look but not a functional fault.
+
+**Net: the LoRa-via-Meshtadpole transport works on Android hardware, both
+directions.** Remaining polish before a PR: the probe test's stale-claim
+(`claimInterface refused` when run after the listen test), the post-TX bulk-IN
+retry, and wiring the transport into the monitor app UI (currently only the
+device tests exercise it).
