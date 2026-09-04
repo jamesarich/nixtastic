@@ -273,7 +273,6 @@ expect '1 dropped \(source gone\)'
 echo "--- T13: claude-ws turns repo names into --add-dir and passes everything else through"
 mkdir -p "$root/apple/.claude/skills/speckit-plan"
 run "$sync"
-expect 'bin/claude-ws .*repos shipping skills:.* apple'
 [ -x "$root/bin/claude-ws" ] || { echo "T13: launcher missing or not executable"; exit 1; }
 # Drive it against a stub claude: the point is the argv it builds, and the
 # real binary is the user's install, deliberately resolved from PATH.
@@ -548,6 +547,65 @@ run "$sync" --memory-only
 expect 'memory .*slugs ->'
 refuse 'current +kzstd'
 refuse 'clone '
+
+echo "--- T24: plugin render — source copied, bundled skills copied, forwarders generated and prefixed, speckit skipped"
+# Two repos shipping the same skill name, one unique, one speckit, one symlinked.
+mkskill() { mkdir -p "$1"; printf -- '---\nname: %s\ndescription: %s\n---\nbody\n' "$2" "$3" > "$1/SKILL.md"; }
+mkskill "$root/android/.claude/skills/code-review"  code-review "Review android the repo way"
+mkskill "$root/android/.claude/skills/baseline"     baseline    "Run the android baseline"
+mkskill "$root/apple/.claude/skills/code-review"    code-review "Review apple the repo way"
+mkskill "$root/apple/.claude/skills/speckit-plan"   speckit-plan "Spec Kit plan"
+mkdir -p "$root/apple/.agents/skills/marketing"
+printf -- '---\nname: marketing\ndescription: Capture marketing shots\n---\nbody\n' > "$root/apple/.agents/skills/marketing/SKILL.md"
+ln -s ../../.agents/skills/marketing "$root/apple/.claude/skills/marketing"
+mkskill "$root/meshtastic-mcp/src/meshtastic_mcp/skills/meshtastic-device-ops" meshtastic-device-ops "Drive devices"
+run "$sync"
+expect 'plugin +rendered'
+rd="$root/.cache/agent-marketplace"
+[ -f "$rd/.claude-plugin/marketplace.json" ] || { echo "T24: no marketplace.json"; exit 1; }
+[ "$(jq -r '.plugins[0].source' "$rd/.claude-plugin/marketplace.json")" = ./nixtastic ] || { echo "T24: marketplace source"; exit 1; }
+p="$rd/nixtastic"
+[ -f "$p/hooks/hooks.json" ] && [ -x "$p/hooks/gradle-queue-guard.sh" ] && [ -x "$p/bin/gradle-queue" ] || { echo "T24: source not copied"; exit 1; }
+[ -x "$p/hooks/nixtastic-memory-hook" ] || { echo "T24: memory hook not rendered into the plugin"; exit 1; }
+[ -f "$p/skills/meshtastic-device-ops/SKILL.md" ] || { echo "T24: bundled mcp skill not copied"; exit 1; }
+for f in android-code-review android-baseline apple-code-review apple-marketing; do
+  [ -f "$p/skills/$f/SKILL.md" ] || { echo "T24: forwarder $f missing"; ls "$p/skills"; exit 1; }
+done
+[ ! -e "$p/skills/apple-speckit-plan" ] || { echo "T24: speckit forwarded"; exit 1; }
+grep -q '^name: android-code-review$' "$p/skills/android-code-review/SKILL.md" || { echo "T24: forwarder name"; exit 1; }
+grep -q '^description: "\[android\] Review android the repo way"$' "$p/skills/android-code-review/SKILL.md" || { echo "T24: forwarder description"; cat "$p/skills/android-code-review/SKILL.md"; exit 1; }
+grep -qF "$root/android/.claude/skills/code-review" "$p/skills/android-code-review/SKILL.md" || { echo "T24: forwarder lacks absolute target"; exit 1; }
+grep -qF 'just brief android' "$p/skills/android-code-review/SKILL.md" || { echo "T24: forwarder lacks brief"; exit 1; }
+# Version is not the source placeholder.
+[ "$(jq -r .version "$p/.claude-plugin/plugin.json")" != 0.0.0 ] || { echo "T24: version not written"; exit 1; }
+# The root skills dir holding only bundled copies is retired.
+mkdir -p "$root/.claude/skills/meshtastic-device-ops"; : > "$root/.claude/skills/meshtastic-device-ops/SKILL.md"
+run "$sync"
+[ ! -d "$root/.claude/skills" ] || { echo "T24: root .claude/skills kept"; exit 1; }
+# A root skills dir with a foreign entry is left alone, warned.
+mkdir -p "$root/.claude/skills/mine"; : > "$root/.claude/skills/mine/SKILL.md"
+run "$sync"
+expect 'WARN .*\.claude/skills'
+[ -d "$root/.claude/skills/mine" ] || { echo "T24: foreign root skill removed"; exit 1; }
+rm -rf "$root/.claude/skills"
+
+echo "--- T25: plugin render is idempotent; a source change bumps the version once"
+v1=$(jq -r .version "$p/.claude-plugin/plugin.json")
+before=$(find "$p" -type f -exec ls -l --time-style=full-iso {} + | sort)
+run "$sync"
+expect 'plugin +rendered .*unchanged'
+[ "$v1" = "$(jq -r .version "$p/.claude-plugin/plugin.json")" ] || { echo "T25: version churned"; exit 1; }
+[ "$before" = "$(find "$p" -type f -exec ls -l --time-style=full-iso {} + | sort)" ] || { echo "T25: files rewritten"; exit 1; }
+sleep 1
+printf -- '---\nname: baseline\ndescription: Run the android baseline, now different\n---\nbody\n' > "$root/android/.claude/skills/baseline/SKILL.md"
+run "$sync"
+expect 'plugin +rendered .*changed'
+v2=$(jq -r .version "$p/.claude-plugin/plugin.json")
+[ "$v1" != "$v2" ] || { echo "T25: version not bumped"; exit 1; }
+grep -q 'now different' "$p/skills/android-baseline/SKILL.md" || { echo "T25: forwarder not refreshed"; exit 1; }
+run "$sync"
+expect 'plugin +rendered .*unchanged'
+[ "$v2" = "$(jq -r .version "$p/.claude-plugin/plugin.json")" ] || { echo "T25: version churned after bump"; exit 1; }
 
 echo "all tests passed"
 touch "$out"

@@ -490,24 +490,12 @@ fi
 # in the other direction.
 [ "$agents_dropped" -gt 0 ] && printf '  .claude/agents  %s dropped (source gone)\n' "$agents_dropped"
 
-# Skills cannot be aggregated the way subagents were — a skill is a
-# directory whose name IS its identity, and --add-dir is the only supported
-# way to load one from elsewhere. Rationale with write_claude_launcher.
+# The --add-dir launcher stays as an edge case (loads a repo's CLAUDE.md
+# too); the plugin's forwarders are the everyday door to repo skills.
 write_claude_launcher "$root"
-skill_repos=""
-while IFS=$'\t' read -r d _ _; do
-  if [ -d "$root/$d/.claude/skills" ]; then
-    skill_repos="$skill_repos $d"
-  fi
-done < "$NIXTASTIC_REPOS_TSV"
-if [ -n "$skill_repos" ]; then
-  first=${skill_repos#" "}; first=${first%% *}
-  printf '  bin/claude-ws   --add-dir launcher; repos shipping skills:%s\n' "$skill_repos"
-  printf '      %s/bin/claude-ws %s   (that repo only — --add-dir loads its CLAUDE.md too)\n' \
-    "$root" "$first"
-fi
 
 memory_pass
+plugin_pass "$root"
 
 if write_mcp_json "$root" "$root"; then
   echo "  .mcp.json written — meshtastic-mcp server for this workspace"
@@ -524,13 +512,6 @@ if write_mcp_json "$root" "$root"; then
     echo "  firmware/ and their worktrees (upstream's tracked .mcp.json wins"
     echo "  there) until you run, once ever:"
     echo "      claude mcp add --scope user meshtastic -- $root/bin/meshtastic-mcp-launch"
-  fi
-  # The bundled skills are what turn 90 tool names into a
-  # procedure. Not installed here: on a fresh machine that
-  # would trigger a full uv sync inside a git tool.
-  if [ ! -d "$root/.claude/skills/meshtastic-device-ops" ]; then
-    echo "  agent skills missing — install the bundled three:"
-    echo "      (cd $root/meshtastic-mcp && uv run meshtastic-mcp skills install --dest $root/.claude/skills)"
   fi
   echo ""
 fi

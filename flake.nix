@@ -1127,6 +1127,7 @@
           reposTsv = pkgs.writeText "nixtastic-repos.tsv" (nixpkgs.lib.concatStringsSep "\n" entries + "\n");
           toolEnv = {
             NIXTASTIC_REPOS_TSV = reposTsv;
+            NIXTASTIC_PLUGIN_SRC = "${./plugin}";
             NIXTASTIC_UV = "${pkgs.uv}/bin/uv";
             NIXTASTIC_PY = "${mcpPython}/bin/python3";
             NIXTASTIC_LIB = pkgs.lib.makeLibraryPath [
@@ -1156,6 +1157,7 @@
             text =
               builtins.readFile ./scripts/lib.sh
               + builtins.readFile ./scripts/memory.sh
+              + builtins.readFile ./scripts/plugin.sh
               + builtins.readFile ./scripts/sync.sh;
           };
 
@@ -1272,6 +1274,7 @@
             text =
               builtins.readFile ./scripts/lib.sh
               + builtins.readFile ./scripts/memory.sh
+              + builtins.readFile ./scripts/plugin.sh
               + builtins.readFile ./scripts/doctor.sh;
           };
         in
@@ -1332,6 +1335,7 @@
             worktree = "${self.packages.${system}.worktree}/bin/meshtastic-worktree";
             brief = "${self.packages.${system}.brief}/bin/meshtastic-brief";
             doctor = "${self.packages.${system}.doctor}/bin/meshtastic-doctor";
+            pluginSrc = "${./plugin}";
           } (builtins.readFile ./scripts/tools-tests.sh);
 
           # statix + deadnix over this repo's own tracked files. ${self}
