@@ -183,8 +183,16 @@ memory_overlaps() {
 # and the script always exits 0: a hook must never block a session. A
 # merge that conflicts is aborted, not left for the next session to load
 # with markers in it; doctor reports it as diverged.
+#
+# Cheap exits come first, because Stop fires at the end of EVERY turn and
+# the registration is user-scope, so this runs for every project on the
+# machine: a cwd whose slug is not linked into the store leaves at once, a
+# clean store leaves before any network, and a pull under two minutes old
+# is not repeated (parallel sessions). Measured before the gates: 1.1 s of
+# GitHub round-trips per turn, everywhere.
 # $1 = workspace root.
-# shellcheck disable=SC2016
+# SC2028 too: the backslashes in the sed line are for the generated script.
+# shellcheck disable=SC2016,SC2028
 write_memory_hook() {
   mkdir -p "$1/bin"
   {
@@ -193,8 +201,26 @@ write_memory_hook() {
     echo '# SessionStart: pull. Stop: dedupe the index, commit, pull, push.'
     echo '# Every step best-effort; design in notes/agent-memory-sync.md.'
     printf 'store="%s"\n' "$(memory_store)"
+    printf 'projects="%s"\n' "$(claude_projects_dir)"
     echo '[ -d "$store/.git" ] || exit 0'
+    echo '# Only a session in a LINKED project touches the store. Claude Code hands'
+    echo '# the cwd as JSON on stdin; a terminal (no stdin) is treated as linked.'
+    echo 'if [ ! -t 0 ]; then'
+    echo '  cwd=$(sed -n '"'"'s/.*"cwd" *: *"\([^"]*\)".*/\1/p'"'"' | head -1)'
+    echo '  if [ -n "$cwd" ]; then'
+    echo '    slug=$(printf '"'"'%s'"'"' "$cwd" | sed '"'"'s/[^a-zA-Z0-9]/-/g'"'"')'
+    echo '    [ "$(readlink "$projects/$slug/memory" 2>/dev/null)" = "$store/memory" ] || exit 0'
+    echo '  fi'
+    echo 'fi'
     echo 'cd "$store" || exit 0'
+    echo '# Never hang a session on a bad link: 3 s to connect, 3 s under 1 KB/s.'
+    echo 'export GIT_SSH_COMMAND="ssh -o ConnectTimeout=3 -o BatchMode=yes"'
+    echo 'git() { command git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=3 "$@"; }'
+    echo 'case "${1:-}" in'
+    echo '  start) [ -n "$(find .git/FETCH_HEAD -mmin -2 2>/dev/null)" ] && exit 0 ;;'
+    echo '  stop)  [ -n "$(git status --porcelain 2>/dev/null)" ] || exit 0 ;;'
+    echo '  *) exit 0 ;;'
+    echo 'esac'
     echo 'lock="$store/.git/nixtastic-hook.lock"'
     echo '# A lock older than a minute belongs to a crashed holder, not a live one.'
     echo 'if ! mkdir "$lock" 2>/dev/null; then'
@@ -204,7 +230,7 @@ write_memory_hook() {
     echo 'fi'
     echo 'trap '"'"'rmdir "$lock" 2>/dev/null'"'"' EXIT'
     echo 'pull() { git pull --no-rebase --autostash -q >/dev/null 2>&1 || git merge --abort >/dev/null 2>&1 || true; }'
-    echo 'case "${1:-}" in'
+    echo 'case "$1" in'
     echo '  start) pull ;;'
     echo '  stop)'
     echo '    # A union merge can leave a pointer line twice; drop repeats, KEEP'

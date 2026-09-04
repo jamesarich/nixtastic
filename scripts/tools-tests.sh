@@ -469,7 +469,9 @@ expect 'hooks already installed'
 printf -- '---\nname: from-a-session\ndescription: "x"\nmetadata:\n  type: project\n---\nbody\n' > "$projects/$(slug "$root")/memory/from-a-session.md"
 printf -- '- [dup line](from-a-session.md) — x\n- [dup line](from-a-session.md) — x\n' >> "$store/memory/MEMORY.md"
 run "$root/bin/nixtastic-memory-hook" stop
-git -C "$origins/nixtastic-agent.git" log --oneline | grep -q 'memory: ' || { echo "T21: hook did not push"; exit 1; }
+git -C "$origins/nixtastic-agent.git" log --oneline | grep -q 'memory: ' || {
+  echo "T21: hook did not push"; echo "--- origin log:"; git -C "$origins/nixtastic-agent.git" log --oneline --all | head -5
+  echo "--- store:"; git -C "$store" status -sb | head -3; git -C "$store" log --oneline -3; ls -d "$store/.git/nixtastic-hook.lock" 2>/dev/null; exit 1; }
 [ "$(grep -c 'dup line' "$store/memory/MEMORY.md")" = 1 ] || { echo "T21: union duplicate not collapsed"; exit 1; }
 # A held lock means another session is mid-push: exit 0, do nothing.
 mkdir "$store/.git/nixtastic-hook.lock"
@@ -484,8 +486,20 @@ other="$HOME/other-machine"
 git clone -q "$origins/nixtastic-agent.git" "$other"
 printf -- '---\nname: from-the-laptop\ndescription: "x"\nmetadata:\n  type: project\n---\nbody\n' > "$other/memory/from-the-laptop.md"
 (cd "$other" && git add -A && git commit -qm "memory: laptop" && git push -q)
+# A pull landed under two minutes ago (the stop above): start skips the network.
+touch "$store/.git/FETCH_HEAD"
+run "$root/bin/nixtastic-memory-hook" start
+[ ! -f "$store/memory/from-the-laptop.md" ] || { echo "T21: start pulled despite a fresh FETCH_HEAD"; exit 1; }
+touch -d '10 minutes ago' "$store/.git/FETCH_HEAD"
 run "$root/bin/nixtastic-memory-hook" start
 [ -f "$store/memory/from-the-laptop.md" ] || { echo "T21: start hook did not pull"; exit 1; }
+# The hook is user-scope and fires for every project on the machine; only a
+# session whose cwd is a LINKED slug may touch the store. cwd arrives as JSON.
+echo dirty >> "$store/memory/from-a-session.md"
+printf '{"cwd":"/nowhere/linked","hook_event_name":"Stop"}' | run "$root/bin/nixtastic-memory-hook" stop
+[ -n "$(git -C "$store" status --porcelain)" ] || { echo "T21: unlinked cwd committed to the store"; exit 1; }
+printf '{"cwd":"%s","hook_event_name":"Stop"}' "$root" | run "$root/bin/nixtastic-memory-hook" stop
+[ -z "$(git -C "$store" status --porcelain)" ] || { echo "T21: linked cwd did not commit"; exit 1; }
 
 echo "--- T22: doctor — store, links, hooks, state, age"
 run_lax "$doctor"
