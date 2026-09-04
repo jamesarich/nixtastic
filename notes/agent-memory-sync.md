@@ -414,4 +414,20 @@ above does not.
     StudioProjects-meshtastic-sdk vs nixtastic-meshtastic-sdk
       only in legacy: 0   only in current: 1   in both:   1   content differs:  0
 
-Nothing exists only in the legacy stores, so excluding them loses nothing.
+Nothing exists only in the `StudioProjects-*` stores, so excluding them loses
+nothing. The rollout found the claim did **not** hold for the fourth legacy
+store, `-Users-james-meshtastic` (4 files): `meshtastic-kmp-alignment.md`
+existed only there and was hand-copied into the store; the other three were
+identical or older. Lesson kept in the plan: subset-check every legacy store,
+not the ones that look biggest.
+
+**Rollout result, 2026-09-04.** Desktop imported 43 (36 slugs linked), laptop
+imported 241 (45 slugs), zero filename collisions on import — 284, then 285
+with the legacy orphan, then 283 after the two true duplicates were merged by
+hand (`commontest-names-no-commas` into `ios-rejects-commas-in-test-names`;
+`no-ai-attribution` into `no-claude-attribution-in-commits`). Machine tags:
+4 `darwin`, 8 `james-pc`. End-to-end proof: a headless session in
+`~/meshtastic/android` on the desktop answered from `agp9-plugin-quirks`, a
+memory that had only ever existed on the laptop. Desktop clones over HTTPS
+(no GitHub SSH key there; `gh auth setup-git` supplies the hook's credential
+helper); the laptop uses the default SSH remote.
