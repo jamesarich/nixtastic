@@ -178,7 +178,7 @@ whole plan is drawn on.
 | --- | --- | --- | --- | --- | --- |
 | **LoRa** (RF backbone, km) | ✓ backbone | ✓ backbone | — | — | — |
 | **BLE-adv** (connectionless, ext-adv) | spike ✓ | spike ✓ (rak4631 RX) | ✓ | **RX only** (no TX) | BlueZ (future) |
-| **BLE-GATT** (connection, dual-role) | phone-API only¹ | phone-API only¹ | ✓ | ✓ | BlueZ (future) |
+| **BLE-GATT** (connection, dual-role) | spike ✓ mesh-peer service | spike ✓ mesh-peer service (rak4631_blemesh) | ✓ | ✓ | BlueZ (future) |
 | **UDP multicast** (LAN) | ✓ (wifi/eth) | ~ (eth) | ✓ | ~ (entitlement) | ✓ |
 | **Wi-Fi Aware** (Android↔Android) | — | — | ✓ (future) | — | — |
 | **MQTT** (internet, infra-backed) | ✓ (wifi/eth) | ~ | ✓ | ✓ | ✓ |

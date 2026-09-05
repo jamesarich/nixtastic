@@ -132,7 +132,16 @@ because that radio cannot hold an Apple connection long enough to exercise it).
    monitor's `ble-adv` counter freezes while `lora` climbs. Fix in node-kmp: both
    Android scanners restart every 3 min; a 7.5-min soak then matched Pocket bursts to
    Pixel receptions to the second past the 5-min mark (15 bursts, counter 15, no
-   timeout logged). Next nRF52 work item: GATT mesh-peer on nRF52. Pocket console:
+   timeout logged). **GATT mesh-peer on nRF52: DONE and proven both ways (07:14, spike
+   commit "nRF52: mesh-peer GATT service over Bluefruit", env `rak4631_blemesh`,
+   `enabled_protocols=6`).** Pixel found the service in the scan response 3 s after
+   boot, subscribed at chunk 244, Send test -> `BLE GATT mesh RX ... peer=1`; Pocket
+   text -> `rx[gatt]` on the Pixel 1 s later. Trades: S140's single adv set means the
+   mesh UUID displaces TX power in the scan response and the advertised name is
+   shortened to "Meshtastic_" while the GATT peer bit is on; `Bluefruit.begin(2,1)`
+   fits the re-based linker script. Untested: iPad <-> Pocket (the real prize - Nordic
+   controller, no Apple PHY assert expected); monitor must be reinstalled on the iPad
+   first (trust + Bluetooth prompt). Pocket console:
    USB CDC prints only with **DTR asserted** (the opposite of the V3's UART rule),
    and a config write or `--reboot` re-enumerates USB under an open handle.
 6. **Gate the ESP32-C3:** ESP32-C3 (single-core, tight RAM — likely-fail
