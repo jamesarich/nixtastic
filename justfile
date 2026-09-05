@@ -67,6 +67,13 @@ pr *ARGS:
 wt repo name +CMD:
     d="$(nix run {{ justfile_directory() }}#worktree -- --path {{ repo }} {{ name }})" && cd "$d" && direnv exec . {{ CMD }}
 
+# Local CodeRabbit pass on the change you are standing in, before the PR exists.
+# Free tier is 3 reviews/hour: spend one on a finished change, not mid-edit.
+[no-cd]
+review *ARGS:
+    @command -v coderabbit >/dev/null || { echo "coderabbit CLI not installed:  curl -fsSL https://cli.coderabbit.ai/install.sh | sh"; exit 1; }
+    coderabbit review --agent {{ ARGS }}
+
 # Same for a primary checkout:  just in firmware pio run -e tbeam
 [no-cd]
 in repo +CMD:

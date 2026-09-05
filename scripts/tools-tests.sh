@@ -827,7 +827,9 @@ cat > "$PWD/fakebin/gh" <<'EOF'
 n=$(cat "$PRFIX/calls" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "$PRFIX/calls"
 case "$*" in
   *"pr view"*)        cat "$PRFIX/view.json" ;;
+  *mutation*)         echo "$*" >> "$PRFIX/posted"; echo '{"data":{"resolveReviewThread":{"thread":{"isResolved":true}}}}' ;;
   *graphql*)          if [ -f "$PRFIX/flip" ] && [ "$n" -ge "$(cat "$PRFIX/flip")" ]; then cat "$PRFIX/gql_after.json"; else cat "$PRFIX/gql.json"; fi ;;
+  *"/reviews"*)       if [ -f "$PRFIX/flip" ] && [ "$n" -ge "$(cat "$PRFIX/flip")" ]; then cat "$PRFIX/reviews_after.json"; else cat "$PRFIX/reviews.json"; fi ;;
   *"/check-runs"*)    case "$*" in *aaaaaaa*) cat "$PRFIX/checks_head.json" ;; *) cat "$PRFIX/checks_stale.json" ;; esac ;;
   *"/compare/"*)      echo '{"behind_by": 0}' ;;
   *"pr comment"*)     echo "$*" >> "$PRFIX/posted"; echo "https://github.com/x/y/pull/1#issuecomment-1" ;;
@@ -848,7 +850,15 @@ cat > "$FIX/gql_after.json" <<'EOF'
 {"data":{"repository":{"pullRequest":{"mergeQueueEntry":{"position":2,"state":"QUEUED"},"reviews":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
 EOF
 cat > "$FIX/checks_head.json" <<'EOF'
-{"check_runs":[{"id":1,"name":"validate-and-build / Build Desktop Debug","status":"in_progress","conclusion":null},{"id":2,"name":"Unit Tests","status":"completed","conclusion":"success"}]}
+{"check_runs":[{"id":1,"name":"validate-and-build / Build Desktop Debug","status":"in_progress","conclusion":null},{"id":2,"name":"Unit Tests","status":"completed","conclusion":"success"},{"id":3,"name":"CodeRabbit","status":"completed","conclusion":"success","output":{"title":"Review skipped","summary":"Review skipped: incremental reviews are disabled"}}]}
+EOF
+# A reply-wrapper review at the head (empty body) plus a real pass at an older SHA: NOT reviewed at head.
+cat > "$FIX/reviews.json" <<'EOF'
+[{"id":1,"user":{"login":"coderabbitai[bot]"},"body":"","commit_id":"aaaaaaa1111111111111111111111111111111111","state":"COMMENTED"},
+ {"id":2,"user":{"login":"coderabbitai[bot]"},"body":"**Actionable comments posted: 2**\n\nmore","commit_id":"bbbbbbb2222222222222222222222222222222222","state":"COMMENTED"}]
+EOF
+cat > "$FIX/reviews_after.json" <<'EOF'
+[{"id":3,"user":{"login":"coderabbitai[bot]"},"body":"**Actionable comments posted: 0**","commit_id":"aaaaaaa1111111111111111111111111111111111","state":"COMMENTED"}]
 EOF
 cat > "$FIX/checks_stale.json" <<'EOF'
 {"check_runs":[{"id":9,"name":"Unit Tests","status":"completed","conclusion":"failure"}]}
@@ -858,8 +868,11 @@ run "$pr" android 7000
 expect 'meshtastic/Meshtastic-Android #7000 +feat: offline map fallback +OPEN'
 expect '^head +aaaaaaa'
 expect '^merge +BLOCKED +unresolved threads: 2 +queue: not enqueued +conflicts: none'
-expect '^checks@aaaaaaa +ok 1 +fail 0 +pending 1 +validate-and-build / Build Desktop Debug'
+expect '^checks@aaaaaaa +ok 2 +fail 0 +pending 1 +validate-and-build / Build Desktop Debug'
 refuse 'fail 1'
+# The head-SHA reply wrapper must NOT count as a review; the skipped check must show.
+expect '^review +CodeRabbit: skipped at aaaaaaa — last full review at bbbbbbb; post'
+expect '^next .*CodeRabbit skipped this head'
 expect '^reviews +APPROVED 1 \(garth\)'
 expect 'coderabbitai +app/MapScreen.kt:123 +"Consider guarding the null case here\.'
 expect '^next +resolve 2 threads'
@@ -882,6 +895,21 @@ run "$pr" android 7000 rereview
 [ "$(grep -c 'full review' "$FIX/posted")" = 1 ] || { echo "T32: rereview did not post once"; exit 1; }
 run_lax "$pr" notarepo 1
 expect 'unknown repo'
+rc=0; "$pr" android 7000 reviewed >/dev/null 2>&1 || rc=$?
+[ "$rc" = 1 ] || { echo "T32: reviewed must exit 1 when the head is not reviewed, got $rc"; exit 1; }
+echo 0 > "$FIX/calls"; echo 9 > "$FIX/flip"
+NIXTASTIC_PR_POLL=0.1 run "$pr" android 7000 wait --until reviewed --timeout 30
+expect 'condition met: reviewed'
+run "$pr" android 7000 reviewed
+expect '^CodeRabbit: reviewed at aaaaaaa \(0 actionable\)$'
+echo 0 > "$FIX/calls"; rm -f "$FIX/flip"
+run "$pr" android 7000 resolve T1 --reply "fixed in the next push"
+expect 'resolved T1 .*with reply'
+grep -q 'addPullRequestReviewThreadReply.*id=T1.*body=fixed in the next push' "$FIX/posted" || { echo "T32: reply mutation not posted"; exit 1; }
+grep -q 'resolveReviewThread.*id=T1' "$FIX/posted" || { echo "T32: resolve mutation not posted"; exit 1; }
+run "$pr" android 7000 resolve T2
+expect 'resolved T2'
+refuse 'T2 .*with reply'
 PATH="$oldpath"; export PATH
 
 echo "--- T36: worktree --gc — merged-at-head and stale-empty reaped; dirty, open, unpushed, fresh, foreign kept"

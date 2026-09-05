@@ -53,6 +53,36 @@ GQL = """query($owner:String!,$name:String!,$number:Int!){repository(owner:$owne
  reviewThreads(first:100){nodes{id isResolved comments(first:1){nodes{author{login} path line body}}}}}}}"""
 
 OK_CONCLUSIONS = ("success", "skipped", "neutral")
+CR_LOGIN = "coderabbitai[bot]"
+
+
+def review_state(repo, n, sha, checks):
+    """Did CodeRabbit review THIS head? Only a review whose body says
+    "Actionable comments posted" is a real pass — every reply it makes on a
+    thread is wrapped in its own review object carrying the head SHA and an
+    empty body, which reads as "re-reviewed" when nothing was. The CodeRabbit
+    check saying "Review skipped" means skipped, not clean."""
+    revs = json.loads(gh("api", f"repos/{repo}/pulls/{n}/reviews?per_page=100"))
+    full = [r for r in revs if (r.get("user") or {}).get("login") == CR_LOGIN
+            and "Actionable comments posted" in (r.get("body") or "")]
+    at_head = [r for r in full if (r.get("commit_id") or "") == sha]
+    cr = [c for c in checks if "coderabbit" in (c.get("name") or "").lower()]
+    skipped = any("review skipped" in (((c.get("output") or {}).get("title") or "")
+                                       + ((c.get("output") or {}).get("summary") or "")).lower() for c in cr)
+    if at_head:
+        state = "reviewed"
+    elif skipped:
+        state = "skipped"
+    elif any(c["status"] != "completed" for c in cr):
+        state = "pending"
+    else:
+        state = "none"
+    actionable = None
+    if at_head:
+        m = re.search(r"Actionable comments posted:\s*\**\s*(\d+)", at_head[-1]["body"])
+        actionable = int(m.group(1)) if m else None
+    return {"state": state, "full_reviews": len(full), "actionable_at_head": actionable,
+            "last_full_sha": (full[-1].get("commit_id") or "")[:7] if full else None}
 
 
 def first_comment(t):
@@ -87,6 +117,7 @@ def fetch(repo, n, deep=False):
                 log = gh("api", f"repos/{repo}/actions/jobs/{c['id']}/logs")
                 if "FROM-CACHE" in log:
                     replayed.append(c["name"])
+    review = review_state(repo, n, sha, checks)
     reviews = {}
     for r in pr["reviews"]["nodes"]:
         reviews.setdefault(r["state"], []).append(r["author"]["login"])
@@ -98,6 +129,7 @@ def fetch(repo, n, deep=False):
         "merge_state": view["mergeStateStatus"], "mergeable": view["mergeable"],
         "review_decision": view.get("reviewDecision"),
         "queue": {"position": q["position"], "state": q["state"]} if q else None,
+        "review": review,
         "checks": {"ok": len(ok), "fail": len(fail), "pending": len(pending),
                    "pending_names": [c["name"] for c in pending], "fail_names": [c["name"] for c in fail],
                    "replayed_from_cache": replayed, "deep": deep},
@@ -132,6 +164,7 @@ def render_status(d):
         print(f"cache    {len(c['replayed_from_cache'])} test job(s) replayed FROM-CACHE{tail}")
     rv = "   ".join(f"{k} {len(v)} ({', '.join(v)})" for k, v in d["reviews"].items()) or "none"
     print(f"reviews  {rv}")
+    print(f"review   {review_line(d)}")
     for t in [t for t in d["threads"] if not t["resolved"]][:6]:
         print(f"threads  {t['author']:<13} {t['path']}:{t['line']}  \"{first_line(t['body'])}\"")
     nxt = []
@@ -143,6 +176,8 @@ def render_status(d):
         nxt.append("then checks")
     if d["mergeable"] == "CONFLICTING":
         nxt.append("rebase onto base")
+    if d["review"]["state"] == "skipped":
+        nxt.append("CodeRabbit skipped this head: `pr … rereview`")
     if d["state"] == "OPEN" and not q:
         nxt.append("`gh pr merge --squash` here means enqueue")
     print("next     " + ("; ".join(nxt) if nxt else ("in queue" if q else "nothing pending")))
@@ -158,10 +193,33 @@ def render_threads(d, show_all):
             print(f"    {line}")
 
 
+def review_line(d):
+    r = d["review"]
+    h = d["head"][:7]
+    if r["state"] == "reviewed":
+        n = r["actionable_at_head"]
+        return f"CodeRabbit: reviewed at {h}" + (f" ({n} actionable)" if n is not None else "")
+    last = f" — last full review at {r['last_full_sha']}" if r["last_full_sha"] else " — no full review yet"
+    if r["state"] == "skipped":
+        return f"CodeRabbit: skipped at {h}{last}; post `pr … rereview`"
+    if r["state"] == "pending":
+        return f"CodeRabbit: running on {h}{last}"
+    return f"CodeRabbit: none at {h}{last}"
+
+
+def resolve_thread(repo, n, thread, reply):
+    if reply:
+        gh("api", "graphql", "-f", "query=mutation($id:ID!,$body:String!){addPullRequestReviewThreadReply("
+           "input:{pullRequestReviewThreadId:$id,body:$body}){comment{id}}}", "-F", f"id={thread}", "-F", f"body={reply}")
+    gh("api", "graphql", "-f", "query=mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}",
+       "-F", f"id={thread}")
+    print(f"resolved {thread} on {repo}#{n}" + (" (with reply)" if reply else ""))
+
+
 def summary_line(d):
     q = d["queue"]
     qs = f"position {q['position']}" if q else "none"
-    return f"{d['state']} threads:{d['threads_unresolved']} pending:{d['checks']['pending']} queue: {qs}"
+    return f"{d['state']} threads:{d['threads_unresolved']} pending:{d['checks']['pending']} queue: {qs} review:{d['review']['state']}"
 
 
 def wait(repo, n, until, timeout):
@@ -175,7 +233,7 @@ def wait(repo, n, until, timeout):
             print(s, flush=True)
             last = s
         met = {"checks": d["checks"]["pending"] == 0, "queue": d["queue"] is not None,
-               "merged": d["state"] == "MERGED"}[until]
+               "merged": d["state"] == "MERGED", "reviewed": d["review"]["state"] == "reviewed"}[until]
         if met:
             print(f"condition met: {until} ({s})")
             return 0
@@ -189,16 +247,24 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("repo")
     ap.add_argument("number", nargs="?", default="0")
-    ap.add_argument("cmd", nargs="?", default="status", choices=["status", "threads", "wait", "rereview"])
+    ap.add_argument("cmd", nargs="?", default="status",
+                    choices=["status", "threads", "wait", "rereview", "reviewed", "resolve"])
+    ap.add_argument("thread", nargs="?", help="resolve: the review thread id (from `threads`)")
+    ap.add_argument("--reply", help="resolve: one-line reply to post before resolving")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--deep", action="store_true", help="grep passing test jobs' logs for FROM-CACHE")
     ap.add_argument("--all", action="store_true", help="threads: include resolved")
-    ap.add_argument("--until", choices=["checks", "queue", "merged"], default="checks")
+    ap.add_argument("--until", choices=["checks", "queue", "merged", "reviewed"], default="checks")
     ap.add_argument("--timeout", type=int, default=900, help="wait: seconds before exit 75")
     a = ap.parse_args()
     repo, n = resolve_repo(a.repo, a.number)
     if a.cmd == "wait":
         return wait(repo, n, a.until, a.timeout)
+    if a.cmd == "resolve":
+        if not a.thread:
+            sys.exit("resolve needs a thread id — see `pr <repo> <n> threads`")
+        resolve_thread(repo, n, a.thread, a.reply)
+        return 0
     if a.cmd == "rereview":
         gh("pr", "comment", str(n), "--repo", repo, "--body", "@coderabbitai full review")
         print(f"posted '@coderabbitai full review' on {repo}#{n}")
@@ -208,6 +274,9 @@ def main():
         json.dump(d, sys.stdout, indent=1)
         print()
         return 0
+    if a.cmd == "reviewed":
+        print(review_line(d))
+        return 0 if d["review"]["state"] == "reviewed" else 1
     if a.cmd == "threads":
         render_threads(d, a.all)
     else:

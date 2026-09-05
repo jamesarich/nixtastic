@@ -320,7 +320,8 @@ repo builds.
 | `nix run .#brief -- <repo>…` | orient: branch, shell, docs to read, pins, PRs. Several repos per call |
 | `nix run .#brief -- --short <repo>…` | one line per repo: branch, drift, clean or `dirty!`, PR count, pins verdict |
 | `nix run .#pins` | cross-repo pin state: protobufs, TAKPacket-SDK, design, api seeds; `current` / `behind` / `ahead` per consumer |
-| `nix run .#pr -- <repo> <n> [status\|threads\|wait\|rereview]` | PR status for the **head SHA**: checks, unresolved threads, queue, conflicts. `wait` exits 75 on timeout |
+| `nix run .#pr -- <repo> <n> [status\|threads\|reviewed\|resolve\|wait\|rereview]` | PR status for the **head SHA**: checks, unresolved threads, queue, conflicts, whether CodeRabbit reviewed *this* head. `resolve <thread> [--reply]` closes a thread; `wait --until checks\|queue\|merged\|reviewed` exits 75 on timeout |
+| `just review` | local CodeRabbit pass on the change you stand in, before opening the PR (free tier 3/hour) |
 | `nix run .#worktree -- <repo> <branch>` | worktree with the correct shell |
 | `nix run .#worktree -- --list \| --remove \| --prune \| --path` | manage worktrees across all repos; `--path` prints one's directory |
 | `nix run .#worktree -- --gc [--apply]` | reap worktrees whose branch merged (GitHub says so, at this exact HEAD) or that never got a commit; report only unless `--apply` |

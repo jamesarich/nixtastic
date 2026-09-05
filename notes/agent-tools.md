@@ -101,6 +101,20 @@ reviewDecision, isDraft, url); one GraphQL query for `reviewThreads`,
 with `--deep`, `GET /repos/{o}/{r}/actions/jobs/{id}/logs` per completed test
 job.
 
+**Review round, added 2026-09-05** (CodeRabbit is org-wide now, so rounds are
+routine). `pr … reviewed` answers "did CodeRabbit review *this* head" from
+the one reliable signal — a review body containing `Actionable comments
+posted` at `headRefOid`; reply wrappers carry the head SHA with an empty body
+and must not count, and a `CodeRabbit` check reading "Review skipped" is
+reported as `skipped`, not clean. `pr … resolve <thread> [--reply]` posts the
+reply and the `resolveReviewThread` mutation, because android blocks the
+queue on *resolved*. `wait --until reviewed` blocks on the signal. The
+`nixtastic:review-round` skill drives the loop (one push per round, resolve
+every thread, confirm the review, then checks) and starts with `just review`,
+a local `coderabbit review --agent` pass on a finished change. Live check:
+android #7000 merged with its final head never fully reviewed (last full pass
+at 51a98f0, head 2bf955a) — exactly the state the head-SHA match used to hide.
+
 ## `pins`
 
     nix run .#pins [--fetch] [--json]

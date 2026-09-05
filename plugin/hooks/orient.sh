@@ -49,7 +49,8 @@ if command -v just >/dev/null 2>&1; then
   just brief <repo>            orient on one repo (docs to read, branch, drift)
   just brief --short a b c     one line per repo
   just pins                    cross-repo pin state (protobufs, design, api seeds)
-  just pr <repo> <n>           PR status: checks for the head SHA, threads, queue
+  just pr <repo> <n>           PR status: checks for the head SHA, threads, queue; reviewed | resolve | wait
+  just review                  local CodeRabbit pass on a finished change (3/hour), before the PR
   just wt <repo> <name> <cmd>  run in a worktree with its env; just in <repo> <cmd> for the primary
   just worktree <repo> <br>    create a worktree the right way
   just sync | just doctor
@@ -59,7 +60,7 @@ else
   nix run $root#brief -- <repo>                orient on one repo (docs to read, branch, drift)
   nix run $root#brief -- --short a b c         one line per repo
   nix run $root#pins                            cross-repo pin state (protobufs, design, api seeds)
-  nix run $root#pr -- <repo> <n>                PR status: checks for the head SHA, threads, queue
+  nix run $root#pr -- <repo> <n>                PR status: checks for the head SHA, threads, queue; reviewed | resolve | wait
   nix run $root#worktree -- --path <repo> <name>   a worktree's path; then cd there && direnv exec . <cmd>
   nix run $root#worktree -- <repo> <br>         create a worktree the right way
   nix run $root#sync | nix run $root#doctor"
