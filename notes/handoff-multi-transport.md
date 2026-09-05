@@ -5,10 +5,15 @@ Android node, instrumented them per bearer, and found the dead-UDP bug that
 instrumentation exists to find. **Start a new session here.** Everything below
 is committed; push state is stated per repo.
 
-**Updated the same evening:** the Apple-central bootloop is **fixed** on the spike
-(`fcc3c0582`, 1M-only PHY), iPad ↔ firmware GATT carries frames, and the GATT PHY
-is a monitor tuning knob (node-kmp `4436227`). Details under "The Apple-central
-bootloop is FIXED" below; the bench rules it cost are at the end of this file.
+**Updated 2026-09-05 (morning):** the Apple-central bootloop is **fixed** on the
+spike (`fcc3c0582`, 1M-only PHY on ESP32-S3/C3); **nRF52 is a full peer** — BLE-adv
+both ways and the mesh-peer GATT service both ways with Android *and* iOS on a
+WisMesh Pocket (`df1ae63bf`, env `rak4631_blemesh`); the ESP32-C3 links (build-only,
+no board); Android's 5-minute BLE scan downgrade is worked around in node-kmp
+(`d669e8d`). An audit of the whole feature ran 2026-09-05 — see "Audit findings".
+All three repos are pushed. **One blocker for anyone cloning the spike: the
+`protobufs` submodule commit it points at is on no remote** (next steps, item 0).
+The audit's findings, fixes and open items: [`audit-multi-transport-2026-09-05.md`](./audit-multi-transport-2026-09-05.md).
 
 ## Read first
 
@@ -22,18 +27,20 @@ bootloop is FIXED" below; the bench rules it cost are at the end of this file.
    `AGENTS.md`).
 3. Memories worth loading: `ble-mesh-interop-bench` (bench recipe + tooling
    traps), **`node-kmp-monitor-bench-driving`** (how to drive the monitor on
-   Pixel and desktop), **`android-17-access-local-network`**,
-   **`gradle9-jar-task-type-split`**, `pixel6a-wireless-adb`,
-   `ios-ble-kmp-gotchas`, `heltec-v3-serial-dtr-rts`,
-   `xcodebuild-device-test-failure-sudo`.
+   Pixel and desktop), **`nrf52-ble-mesh-pocket-bench`**,
+   **`esp32-ble-phy-update-assert-apple`**, **`android-ble-scan-downgrade-5min`**,
+   `ios-restoration-held-ble-connection`, `v3-serial-holder-capture`,
+   `pioarduino-shared-libs-cross-env-link`, `android-17-access-local-network`,
+   `gradle9-jar-task-type-split`, `pixel6a-wireless-adb`, `ios-ble-kmp-gotchas`,
+   `heltec-v3-serial-dtr-rts`, `xcodebuild-device-test-failure-sudo`.
 
 ## Where the plan stands
 
 | Phase | State | Where |
 | --- | --- | --- |
 | 1 — client N-transport node | **done; four bearers (gatt, ble-adv, udp, lora) in one Android node, instrumented per bearer, PROVEN live** | `meshtastic-node-kmp` `main`, **pushed** (`8427db6` + the docs commit) |
-| 2 — firmware transport registry | done, green (native 1392/1392) | `firmware` `spike/ble-mesh-transport` (`d8ea49801`, pushed) |
-| 3 — firmware BLE-GATT mesh-peer edge | **PROVEN end to end** — the phone decoded a position + text notified by the V3, and the phone's writes/relays are accepted. **Open:** the notify direction is *not delivering in the four-transport monitor* (see In flight) | spike branch tip `ea24b26d5`, **ahead 5 of origin, NOT pushed** |
+| 2 — firmware transport registry | done, green (native 1392/1392) | `firmware` `spike/ble-mesh-transport` (through `df1ae63bf`, pushed) |
+| 3 — firmware BLE-GATT mesh-peer edge | **PROVEN both ways on ESP32-S3 (Android; iOS after the 1M-PHY fix) and on nRF52 (Android and iOS, two phones at once)** | `ESP32BLEGattMesh`, `NRF52BLEGattMesh`; `BLEGattMeshHandler` shared |
 | LoRa transport (CH341A + SX1262, Meshtadpole) | **PROVEN bidirectional on hardware**, merged to `main`, in the monitor | `meshtastic-node-kmp` `main` |
 | 4 — new bearers (Wi-Fi Aware, anti-entropy) | future | — |
 
@@ -51,15 +58,7 @@ plus a three-node, three-bearer chain: the desktop logged `rx[udp] text chan
 from !6337995d` — the Pixel's probe — while the Pixel's own UDP tx was 0, so it
 went Pixel →GATT/BLE-adv→ V3 →UDP→ desktop.
 
-## Waiting on the bench — do this FIRST
-
-The GATT rx=0 hunt is **done and reviewed in code, verified nowhere**. Eight
-commits sit on node-kmp `main` (unpushed) and two on the spike branch (unpushed,
-unflashed). The full story is in the plan doc's last section; the short version is
-that the V3 was never a GATT peer of the Pixel at all — its mesh-peer
-advertisement was dark because the firmware conflated "wrote the CCCD" with
-"arrived on the mesh advertising set", and the iPad held the radio's single mesh
-slot. Everything below is what remains.
+## Settled (do not re-investigate)
 
 **The GATT question is answered.** Android ↔ the firmware's mesh-peer service is
 **proven both ways** on the bench (`rx[gatt]` and `gatt 15 rx` on the phone;
@@ -97,63 +96,53 @@ reach. Desktop's testable bearer is UDP, and that needs the V3's WiFi **on**,
 which turns BLE **off** — the two cannot be tested in one sitting.
 
 **Still unverified on-device:** the `failed` column lighting up at all (no way was
-found to make a bearer *throw* on this device — see the traps),
-`transport[udp] FAILED: …`, and the Apple MTU re-read (compile-verified only,
-because that radio cannot hold an Apple connection long enough to exercise it).
+found to make a bearer *throw* on this device — see the traps) and
+`transport[udp] FAILED: …`. The Apple MTU re-read is now verified: the iPad held
+links at chunk 512 against the V3 and 244 against the Pocket.
 
 ## Next steps, in order
 
-1. **Push three repos:** firmware spike `fcc3c0582` (the 1M-PHY fix, flashed on
-   the V3), node-kmp `4436227` (GATT PHY knob), and this workspace.
-2. **Develop PR from `fcc3c0582` — ON HOLD, James's call when.** It fixes stock
+0. **Push the `protobufs` submodule commit** the spike points at (`8db5d3e`, "Add
+   BLE GATT mesh-peer transport enums": `ProtocolFlags.BLE_BROADCAST=0x0002`,
+   `BLE_GATT_PEER=0x0004`, `TransportMechanism.TRANSPORT_BLE_ADV=9`,
+   `TRANSPORT_BLE_GATT=10`). It exists only in this machine's submodule checkout;
+   a fresh clone of the spike gets a dangling pointer and cannot regenerate the
+   headers. Where it goes (a branch on `meshtastic/protobufs`, or a fork) is
+   James's call — it is the org's shared repo.
+1. **Develop PR from `fcc3c0582` — ON HOLD, James's call when.** It fixes stock
    firmware too (develop and the nightly bootloop on this iPad with the stock iOS
    app); the trade to state when it goes up: iOS phone-API links run at 1M on
    ESP32-S3/C3. Until then the fix lives only on the spike branch.
-3. **Upstream:** nudge esp-idf#15311 (same assert, same PC 0x40006fcb) with the
+2. **Upstream:** nudge esp-idf#15311 (same assert, same PC 0x40006fcb) with the
    peer-initiated variant, the stock-Meshtastic repro and the 1M workaround; a
    `meshtastic/firmware` issue so A16-iPad users have somewhere to land.
-4. **V3 bench restore:** the web-flasher erase (17:47) took `config.proto` and
-   `nodes.proto` and reset the primary channel to `LongFast`. Region US and
-   `enabled_protocols=7` are restored over serial; the **`olm3sh` channel and the
-   WiFi credentials are James's to re-enter from the app** (never written by the
-   agent). `bluetooth.mode` is back at its default. WiFi is **off** (BLE on).
-5. **nRF52 gate: PASSED on the WisMesh Pocket (RAK4631), 2026-09-04 21:00.** Spike
-   `361ac318d` links (RAM 39.8%, flash 91.4%; the fix was one undefined
-   `nrf52BluetoothReady`). Flashed by UF2 (`meshtastic --enter-dfu`, copy to
-   `/Volumes/RAK4631`), `enabled_protocols=2`. **BLE-adv RX proven:** the Pixel's
-   Send test landed as `BLE mesh RX from=0x6337995d rssi=-36` the same second.
-   **BLE-adv TX works too (2026-09-05 morning; yesterday's "not observed" retracted).**
-   Burst diagnostics (`a4fc82349`) show every frame leave as 3 extended events on the
-   borrowed set 0 (`adv burst ... shared` → `terminated: reason 2 after 3 events`);
-   S140 has one advertising set and the mesh borrows it per send, which is fine.
-   The receiver was the fault: **Android downgrades a filtered LOW_LATENCY scan ~5 min
-   after start** (`BtScan.ScanManager: regularScanTimeout(... monitor ...) Moving
-   filtered scan to downgraded scan`), after which 90 ms bursts are missed and the
-   monitor's `ble-adv` counter freezes while `lora` climbs. Fix in node-kmp: both
-   Android scanners restart every 3 min; a 7.5-min soak then matched Pocket bursts to
-   Pixel receptions to the second past the 5-min mark (15 bursts, counter 15, no
-   timeout logged). **GATT mesh-peer on nRF52: DONE and proven both ways (07:14, spike
-   commit "nRF52: mesh-peer GATT service over Bluefruit", env `rak4631_blemesh`,
-   `enabled_protocols=6`).** Pixel found the service in the scan response 3 s after
-   boot, subscribed at chunk 244, Send test -> `BLE GATT mesh RX ... peer=1`; Pocket
-   text -> `rx[gatt]` on the Pixel 1 s later. Trades: S140's single adv set means the
-   mesh UUID displaces TX power in the scan response and the advertised name is
-   shortened to "Meshtastic_" while the GATT peer bit is on; `Bluefruit.begin(2,1)`
-   fits the re-based linker script. **iPad <-> Pocket PROVEN both ways 07:29 (2026-09-05):** the iPad subscribed
-   as conn 2 beside the Pixel's conn 1, its Send test arrived as `BLE GATT mesh RX
-   from=0x9ebca8df peer=2` and decoded, and a Pocket text showed as `rx[gatt]` on the
-   iPad - 305 s, zero asserts. First iOS <-> firmware GATT mesh link with no PHY
-   workaround: Nordic's controller takes the A16 as-is. Two of the iPad's first three
-   connects dropped after 2 s "never subscribed" before one stuck (the iOS-central
-   flakiness already on the tuning backlog). **Console trap:** any CLI session on the
-   Pocket's USB serial hands the port to the phone API and the firmware stops printing
-   logs until the next reboot - after `--sendtext`/`--set`, `--reboot` and reattach
-   before trusting a silent capture. Pocket console:
-   USB CDC prints only with **DTR asserted** (the opposite of the V3's UART rule),
-   and a config write or `--reboot` re-enumerates USB under an open handle.
-6. **Gate the ESP32-C3:** ESP32-C3 (single-core, tight RAM — likely-fail
-   candidate) and nRF52 (`Bluefruit.begin(2,0)` + linker RAM); neither on the
-   bench, both unbuilt. Firmware native tests need Docker on macOS.
+3. **V3 bench restore (V3 currently unplugged):** the web-flasher erase took
+   `config.proto` and `nodes.proto` and reset the primary channel to `LongFast`.
+   Region US and `enabled_protocols=7` were restored over serial; the **`olm3sh`
+   channel and the WiFi credentials are James's to re-enter from the app** (never
+   written by the agent). WiFi is **off** (BLE on).
+4. **nRF52 — done.** Gate passed (`rak4631`: RAM 39.8% / flash 91.4%; `rak4631_blemesh`
+   with GATT: RAM 41.1% / flash 92.0%). BLE-adv RX and TX proven with the Pixel;
+   the mesh-peer GATT service proven both ways with the Pixel and the iPad, both
+   subscribed at once; 305 s, zero asserts. Details and the bench recipe:
+   `nrf52-ble-mesh-pocket-bench` memory and the design note's 2026-09-05 section.
+   Audit fixes `ca0a39c51`: the phone is the link that uses the phone API (not the
+   last connect), a free slot is always advertised, disconnect markers never drop.
+   Left on this track: the iOS-central connect flakiness (two of three connects
+   dropped after 2 s before one stuck) and the **advertised-name decision** —
+   with the GATT-peer bit on, S140's single advertising set carries the mesh UUID
+   in the scan response in place of TX power and the name shortens to
+   "Meshtastic_" for every stock app in range; fine on a bench, not in a release
+   (an extended advertising set on nRF52, or discovering the service on connect
+   instead of advertising it, are the options).
+5. **ESP32-C3 — links, untestable here.** `heltec-ht62-esp32c3-sx1262` builds with
+   the mesh section: RAM 34.2%, flash 87.2%. No C3 on the bench, so on-device
+   stays open until someone has one.
+6. **The Apple app's restoration handler** (`BLETransport.swift`
+   `handleWillRestoreState`) re-issues `connect()` on the first restored peripheral
+   with no check that it is the preferred device and never cancels; harmless with
+   a healthy radio, an infinite hammer against one that dies mid-connect. A small
+   PR against `apple`, independent of the controller bug.
 7. **Tuning backlog** (all in the plan doc): iOS-*central* discovery flakiness
    (`didDiscoverPeripheral` unreliable; inbound link is solid); DUAL-role
    connection arbitration + a low connection cap; per-peer send-queue concurrency;
@@ -173,13 +162,21 @@ because that radio cannot hold an Apple connection long enough to exercise it).
 
 ## The bench
 
-- **Heltec v3** (ESP32-S3) — USB serial on `/dev/cu.usbserial-0001`, **WiFi off,
-  BLE on**, running spike `fcc3c0582` (1M-only PHY). Config after the flasher
-  erase: `region=US`, `enabled_protocols=7`, default `bluetooth.mode`, primary
-  channel `LongFast` until James re-shares `olm3sh`, empty node DB. Console via
-  the one-open pyserial holder (below); every open resets the board.
-- **Pixel 6a** (Android 17, SDK 37) — wifi-adb serial
-  `adb-24201JEGR04964-pey7fQ._adb-tls-connect._tcp` (the **full** mDNS serial).
+- **WisMesh Pocket** (RAK4631, nRF52840) — `/dev/cu.usbmodem1101`, node `!7263cc65`
+  "956a", running spike `ca0a39c51` env `rak4631_blemesh`, `enabled_protocols=6`
+  (BLE broadcast + GATT peer), stock config otherwise, default channel. Console:
+  USB CDC prints **only with DTR asserted** (`cdc-holder.py`), a `--set`/`--reboot`
+  re-enumerates USB under an open handle, and **any CLI session silences the
+  console until the next reboot** (the phone API takes the port; the API still
+  answers). Flash by `meshtastic --enter-dfu` then `cp *.uf2 /Volumes/RAK4631/`.
+- **Heltec v3** (ESP32-S3) — **unplugged since 2026-09-05 morning.** Last state:
+  spike `fcc3c0582` (1M-only PHY), WiFi off, BLE on, `region=US`,
+  `enabled_protocols=7`, primary channel `LongFast` until James re-shares `olm3sh`,
+  empty node DB. When plugged: `/dev/cu.usbserial-0001`, console via the one-open
+  pyserial holder with **DTR/RTS low** (every open resets the board).
+- **Pixel 6a** (Android 17, SDK 37) — on USB adb as `24201JEGR04964` since
+  2026-09-05; over wifi-adb it is `adb-24201JEGR04964-pey7fQ._adb-tls-connect._tcp`
+  (the **full** mDNS serial). Runs the monitor with the 3-minute scan refresh.
   `mcp__meshtastic__android_ui_dump` / `android_tap` **must pass `serial=`**; taps
   register on the monitor's Compose chips and buttons (Send test is at
   `(897,2211)`). The Meshtadpole hangs off its OTG port. Node `!6337995d`.
@@ -193,7 +190,8 @@ because that radio cannot hold an Apple connection long enough to exercise it).
   frames as "heard myself"). Node `!a6e88506`.
 - **iPad** — devicectl UDID `EF386CA9-5DC4-551F-9D9E-ABDE7F5CF166`; **hardware**
   UDID `00008120-001C1D820A61A01E` (what `idevicesyslog` wants). Bundle
-  `org.meshtastic.node.monitor`, wrapper in `meshtastic-node-kmp/tools/monitor-ios/`.
+  `org.meshtastic.node.monitor`, wrapper in `meshtastic-node-kmp/tools/monitor-ios/`;
+  installed and trusted as of 2026-09-05, Bluetooth permission granted.
   iOS = `:monitor:linkDebugFrameworkIosArm64` **with the Temurin JDK**, then
   `xcodebuild -project tools/monitor-ios/MeshMonitor.xcodeproj`, then `devicectl
   device install app` + `process launch`. Read its trace via `xcrun devicectl

@@ -10,11 +10,15 @@ The ask that started this: *"holistically leverage / interoperate / bridge
 between all transports available on each device — LoRa, UDP, BLE-adv, BLE-GATT,
 Wi-Fi, MQTT — extend the mesh via as many transports as possible."*
 
-## Implementation status (updated 2026-09-04)
+## Implementation status (updated 2026-09-05)
 
-`meshtastic-node-kmp` `main` is **pushed** through `8427db6` (and the docs commit
-after it). The `firmware` `spike/ble-mesh-transport` branch is **ahead 5 of
-origin, not pushed** (`3022a3776` … `ea24b26d5`).
+`meshtastic-node-kmp` `main` is **pushed** through `d669e8d`. The `firmware`
+`spike/ble-mesh-transport` branch is **pushed** through `df1ae63bf`. **Its
+`protobufs` submodule pointer (`8db5d3e`) is on no remote** — see the handoff.
+Since the 2026-09-04 status below: the Apple-central controller assert is fixed on
+ESP32-S3/C3 (1M-only PHY); **nRF52 is a full peer** (BLE-adv both ways, mesh-peer
+GATT both ways with Android and iOS, two phones at once, on a WisMesh Pocket);
+ESP32-C3 links build-only; Android's 5-minute scan downgrade is worked around.
 
 - **Phase 1 (client) — done, green, and since 2026-09-04 a four-bearer node with
   per-bearer instrumentation.** Everything is on `meshtastic-node-kmp` `main`.
@@ -126,9 +130,10 @@ origin, not pushed** (`3022a3776` … `ea24b26d5`).
     Android client, the firmware's per-peer `subscribed` gate, BLE-adv coexistence
     on one adapter, NO_PIN encryption on the CCCD, and the monitor's
     rebuild-on-tune lifecycle are the hypotheses.
-  - **Still to gate:** ESP32-C3 (single-core, tighter RAM — the likely-fail
-    candidate) and nRF52 (`Bluefruit.begin(2,0)` + linker RAM); neither board is
-    on the bench, both unbuilt.
+  - **Gated 2026-09-05:** nRF52 on the WisMesh Pocket — links (RAM 41.1%, flash
+    92.0% with GATT), BLE-adv and GATT proven both ways with Android and iOS.
+    ESP32-C3 links build-only (`heltec-ht62-esp32c3-sx1262`: RAM 34.2%, flash
+    87.2%); no C3 on the bench.
   - **Current v3 bench state (2026-09-04, evening):** `enabled_protocols=7`,
     `network.wifi_enabled=true` (turned back on so it is the UDP peer; reachable
     at 192.168.1.180, **no USB serial attached**), `bluetooth.mode=NO_PIN` (the
