@@ -11,8 +11,8 @@ both ways and the mesh-peer GATT service both ways with Android *and* iOS on a
 WisMesh Pocket (`df1ae63bf`, env `rak4631_blemesh`); the ESP32-C3 links (build-only,
 no board); Android's 5-minute BLE scan downgrade is worked around in node-kmp
 (`d669e8d`). An audit of the whole feature ran 2026-09-05 — see "Audit findings".
-All three repos are pushed. **One blocker for anyone cloning the spike: the
-`protobufs` submodule commit it points at is on no remote** (next steps, item 0).
+All three repos are pushed, and the `protobufs` submodule commits are on
+`meshtastic/protobufs` `spike/ble-mesh-transport` (next steps, item 0).
 The audit's findings, fixes and open items: [`audit-multi-transport-2026-09-05.md`](./audit-multi-transport-2026-09-05.md).
 
 ## Read first
@@ -102,13 +102,11 @@ links at chunk 512 against the V3 and 244 against the Pocket.
 
 ## Next steps, in order
 
-0. **Push the `protobufs` submodule commit** the spike points at (`8db5d3e`, "Add
-   BLE GATT mesh-peer transport enums": `ProtocolFlags.BLE_BROADCAST=0x0002`,
-   `BLE_GATT_PEER=0x0004`, `TransportMechanism.TRANSPORT_BLE_ADV=9`,
-   `TRANSPORT_BLE_GATT=10`). It exists only in this machine's submodule checkout;
-   a fresh clone of the spike gets a dangling pointer and cannot regenerate the
-   headers. Where it goes (a branch on `meshtastic/protobufs`, or a fork) is
-   James's call — it is the org's shared repo.
+0. **Done 2026-09-05:** the `protobufs` submodule commits (`6c246f1` BLE-adv enums,
+   `8db5d3e` GATT mesh-peer enums) are on `meshtastic/protobufs` branch
+   `spike/ble-mesh-transport`; a clone of the firmware spike now resolves its
+   submodule. Still to do before anything ships: land them on `master` and publish
+   the `org.meshtastic:protobufs` artifact so node-kmp can name the values.
 1. **Develop PR from `fcc3c0582` — ON HOLD, James's call when.** It fixes stock
    firmware too (develop and the nightly bootloop on this iPad with the stock iOS
    app); the trade to state when it goes up: iOS phone-API links run at 1M on

@@ -22,7 +22,7 @@ feature depends on exist only in this machine's submodule checkout.
 
 | # | Where | Finding | Status |
 | --- | --- | --- | --- |
-| B1 | firmware `protobufs` submodule, `8db5d3e` | The four new enum values (`ProtocolFlags.BLE_BROADCAST=2`, `BLE_GATT_PEER=4`, `TransportMechanism.TRANSPORT_BLE_ADV=9`, `TRANSPORT_BLE_GATT=10`) are committed only in the local submodule; on no remote. A clone of the spike gets a dangling pointer. node-kmp still consumes `org.meshtastic:protobufs:2.8.0`, which lacks them (wire-safe: unknown enum values round-trip as unknown fields, but the client cannot name them). | **Open — James's call**: push to a branch on `meshtastic/protobufs` or a fork, then publish. |
+| B1 | firmware `protobufs` submodule, `8db5d3e` | The four new enum values (`ProtocolFlags.BLE_BROADCAST=2`, `BLE_GATT_PEER=4`, `TransportMechanism.TRANSPORT_BLE_ADV=9`, `TRANSPORT_BLE_GATT=10`) are committed only in the local submodule; on no remote. A clone of the spike gets a dangling pointer. node-kmp still consumes `org.meshtastic:protobufs:2.8.0`, which lacks them (wire-safe: unknown enum values round-trip as unknown fields, but the client cannot name them). | **Resolved 2026-09-05**: pushed to `meshtastic/protobufs` branch `spike/ble-mesh-transport` (`6c246f1`, `8db5d3e`). Publishing the artifact for node-kmp remains. |
 
 ## Fixed in this audit
 
