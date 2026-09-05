@@ -659,7 +659,11 @@ non-interactive context, run repo commands as
 Same rule, same reason: regenerate it, never hand-edit it. `.#sync` writes one
 at the workspace root and `.#worktree` writes one per worktree, both from
 `write_mcp_json` in [`scripts/lib.sh`](./scripts/lib.sh), registering the
-`meshtastic-mcp` server for whatever MCP client runs in that directory.
+`meshtastic-mcp` server for whatever MCP client runs in that directory. Since
+2026-09-05 the command it names is `bin/meshtastic-mcp-launch`, not `uv`
+itself: Claude Code reports one server name with two endpoints across scopes
+as a conflict, and the user-scope entry below names the launcher. The store
+paths live only in the launcher now.
 
 A bare `claude mcp add` would instead put **store paths** in `~/.claude.json`
 — outside the workspace, where `.#sync` cannot rebuild them, going stale on
@@ -677,9 +681,9 @@ claude mcp add --scope user meshtastic -- "$MESHTASTIC_WORKSPACE/bin/meshtastic-
 puts the meshtastic tools in **every** directory on the machine — including
 the repos and worktrees project scope can never reach (below) — and survives
 `nix flake update`, because the registration names the launcher, not the
-store. Where a project `.mcp.json` defines the same server name, project
-scope wins, so behaviour at the workspace root is unchanged. `doctor` checks
-the registration; `sync` prints the command when it is missing.
+store. Project and user scope now name the same endpoint, so `/mcp` shows
+one `meshtastic` server and no conflict. `doctor` checks both; `sync` prints
+the command when the user-scope entry is missing.
 
 The same stable-path shape carries `bin/nixtastic-memory-hook`: the
 `SessionStart`/`Stop` hook body that keeps Claude's memory store
@@ -690,9 +694,10 @@ symlink target rather than a synced directory: `notes/agent-memory-sync.md`.
 
 Three consequences worth knowing:
 
-- **It names store paths** — `uv`, the interpreter, and the loader path are
-  resolved at generation time, so `nix flake update` invalidates them. Re-run
-  `.#sync`, exactly as for anything else generated here.
+- **The launcher names store paths** — `uv`, the interpreter, and the loader
+  path are resolved at generation time, so `nix flake update` invalidates them.
+  Re-run `.#sync`, exactly as for anything else generated here; the
+  `.mcp.json` files themselves no longer change.
 - **`nix develop` is deliberately not in the command.** Wrapping it would keep
   the paths fresh, but measured 4.6s per server start; the client launches this
   on every session.

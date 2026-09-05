@@ -351,7 +351,10 @@ Manual acceptance on both machines, recorded under [Evidence](#evidence):
   project `.mcp.json` names the raw `uv run … meshtastic-mcp` command while the
   user-scope registration names `bin/meshtastic-mcp-launch`; Claude Code now
   flags the pair as "conflicting scopes". Both are `sync`'s. Make
-  `write_mcp_json` emit the launcher too so the two scopes agree.
+  `write_mcp_json` emit the launcher too so the two scopes agree. **Done
+  2026-09-05:** the binary's rule is "defined in multiple scopes with
+  different endpoints", so `.mcp.json` now names the launcher, carries no
+  store paths, and `doctor`'s `mcp registration` line warns on the old form.
 - **A plugin MCP server is shadowed by a same-named user-scope one.** On the
   laptop `plugin:nixtastic:github` did not appear while the user-scope
   `github` existed; on the desktop, with no user-scope entry, it did. `doctor`'s

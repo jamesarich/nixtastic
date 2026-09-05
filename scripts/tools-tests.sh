@@ -102,6 +102,9 @@ grep -q 'use flake "\$MESHTASTIC_WORKSPACE#kotlin"' "$root/kzstd/.envrc" || { ec
 grep -qxF '.mcp.json' "$root/kzstd/.git/info/exclude" || { echo "T1: ensure_excludes did not reach kzstd"; exit 1; }
 [ -f "$root/.mcp.json" ] || { echo "T1: root .mcp.json missing"; exit 1; }
 jq -e '.mcpServers.meshtastic' "$root/.mcp.json" >/dev/null || { echo "T1: root .mcp.json malformed"; exit 1; }
+# Same endpoint as the user-scope entry, or Claude Code reports a scope conflict.
+[ "$(jq -r '.mcpServers.meshtastic.command' "$root/.mcp.json")" = "$root/bin/meshtastic-mcp-launch" ] || { echo "T1: root .mcp.json does not name the launcher"; exit 1; }
+! grep -q '/nix/store' "$root/.mcp.json" || { echo "T1: store paths leaked into .mcp.json"; exit 1; }
 [ -x "$root/bin/meshtastic-mcp-launch" ] || { echo "T1: stable launcher missing or not executable"; exit 1; }
 grep -qF "export MESHTASTIC_WORKSPACE=\"$root\"" "$root/bin/meshtastic-mcp-launch" \
   || { echo "T1: launcher lacks the workspace root"; exit 1; }
@@ -151,6 +154,7 @@ git -C "$root/kzstd" worktree add -q .claude/worktrees/stray -b test/stray
 run "$sync"
 expect 'adopted +kzstd/stray +mcp\.json'
 [ -f "$root/kzstd/.claude/worktrees/stray/.mcp.json" ] || { echo "T6: adopted mcp missing"; exit 1; }
+[ "$(jq -r '.mcpServers.meshtastic.command' "$root/kzstd/.claude/worktrees/stray/.mcp.json")" = "$root/bin/meshtastic-mcp-launch" ] || { echo "T6: worktree .mcp.json does not name the launcher"; exit 1; }
 [ ! -e "$root/kzstd/.claude/worktrees/stray/.envrc" ] || { echo "T6: needless envrc written (ancestor covers it)"; exit 1; }
 run "$sync"
 refuse 'adopted +kzstd/stray'

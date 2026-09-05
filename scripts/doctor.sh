@@ -252,10 +252,12 @@ else
 fi
 
 # --- MCP registration -----------------------------------
-# Store paths are the whole point of checking this: they go
-# stale on `nix flake update` and the server then fails to
-# start with nothing said anywhere.
+# The project file must name the launcher, the same endpoint as the
+# user-scope entry — Claude Code flags one server name with two
+# endpoints as a scope conflict. An older render named uv's store
+# path directly, which also went stale on `nix flake update`.
 mcp="$root/.mcp.json"
+launcher="$root/bin/meshtastic-mcp-launch"
 if [ ! -f "$mcp" ]; then
   warn "mcp registration" "no .mcp.json"
   fix "nix run .#sync"
@@ -264,11 +266,14 @@ elif ! jq -e . "$mcp" >/dev/null 2>&1; then
   fix "nix run .#sync"
 else
   cmd=$(jq -r '.mcpServers.meshtastic.command // ""' "$mcp")
-  if [ -z "$cmd" ] || [ ! -x "$cmd" ]; then
-    bad "mcp registration" "command missing: ${cmd:-unset}"
-    fix "nix run .#sync   (store paths go stale on flake update)"
+  if [ "$cmd" != "$launcher" ]; then
+    warn "mcp registration" "names ${cmd:-nothing}, not the launcher — a scope conflict with the user-scope entry"
+    fix "nix run .#sync"
+  elif [ ! -x "$cmd" ]; then
+    bad "mcp registration" "launcher missing at $cmd"
+    fix "nix run .#sync"
   else
-    ok "mcp registration" "command resolves"
+    ok "mcp registration" "names the launcher"
   fi
 fi
 
@@ -278,7 +283,6 @@ fi
 # never written beside it. A user-scope registration pointing at the
 # STABLE launcher (bin/meshtastic-mcp-launch, rewritten by sync with
 # fresh store paths) covers every directory and survives flake updates.
-launcher="$root/bin/meshtastic-mcp-launch"
 ucmd=$(jq -r '.mcpServers.meshtastic.command // ""' "$HOME/.claude.json" 2>/dev/null || true)
 if [ ! -x "$launcher" ]; then
   warn "mcp user scope" "no launcher at bin/meshtastic-mcp-launch"

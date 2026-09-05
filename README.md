@@ -93,12 +93,12 @@ Step 5 writes a `.envrc` into each repo, which is what makes `cd android` select
 `.#android`. `direnv` requires explicit consent per file, so `sync` prints the
 `direnv allow` commands rather than running them.
 
-It also writes `.mcp.json` at the workspace root, registering the
-`meshtastic-mcp` server for whatever MCP client you run here — approve it once
-via `/mcp` — and `bin/meshtastic-mcp-launch`, a stable launcher for the
-**user-scope** registration that carries the tools into `android/`,
-`firmware/` and every worktree (their upstream-tracked `.mcp.json` wins over
-project scope). `sync` prints the one-time `claude mcp add --scope user`
+It also writes `bin/meshtastic-mcp-launch`, a stable launcher carrying the
+store paths, and `.mcp.json` at the workspace root pointing at it — approve
+once via `/mcp`. The **user-scope** registration names the same launcher and
+carries the tools into `android/`, `firmware/` and every worktree (their
+upstream-tracked `.mcp.json` wins over project scope); same endpoint in both
+scopes, so `/mcp` reports no conflict. `sync` prints the one-time `claude mcp add --scope user`
 command until it exists. The bundled agent skills, the per-repo skill
 forwarders, the guards and the memory hooks ship in the `nixtastic` plugin
 `sync` renders and installs; see `notes/agent-surface.md`.
@@ -352,7 +352,8 @@ nix run .#doctor
 | Worktree has no MCP tools, or `firmware` worktree hits `bwrap` | created by hand or by an agent harness — no `.mcp.json`, no sidecar | `nix run .#sync` adopts it; prefer `nix run .#worktree` next time |
 | An agent's isolated worktree has no repos in it | harness worktree isolation clones the *workspace* repo; the org repos are untracked | use `nix run .#worktree -- <repo> <branch>` for repo work |
 | No `meshtastic-mcp` tools in the client | `.mcp.json` is per directory, and `android`/`firmware` track their own | register the stable launcher once, user-scope: `claude mcp add --scope user meshtastic -- $MESHTASTIC_WORKSPACE/bin/meshtastic-mcp-launch` — `doctor` checks it |
-| `meshtastic-mcp` server stops starting | its `.mcp.json` names store paths, which `nix flake update` invalidates | `nix run .#sync` regenerates it |
+| `meshtastic-mcp` server stops starting | `bin/meshtastic-mcp-launch` names store paths, which `nix flake update` invalidates | `nix run .#sync` rewrites it |
+| `/mcp` shows `meshtastic` as a scope conflict | an old `.mcp.json` names `uv` directly while user scope names the launcher | `nix run .#sync`; `doctor` reports it as `mcp registration` |
 | `./gradlew` can't start a daemon | repo needs a JDK vendor/version not present | all six JDKs must stay in `flake.nix` |
 | Compose UI tests all die with `LibraryLoadException` / `libGL.so.1` | Nix glibc can't see the host's mesa | the JVM shells export `libglvnd` on `LD_LIBRARY_PATH`; re-enter the shell |
 | A repo looks clean but is behind | single-branch clone | `nix run .#sync -- --pull` widens the refspec |
@@ -387,8 +388,8 @@ cold rebuild, nothing else.
 A scheduled workflow opens a weekly `chore: nix flake update` PR (Mondays),
 validated **inside its own run** — the ci workflow never fires on it, because
 PRs created with `GITHUB_TOKEN` don't trigger other workflows. After merging,
-run `nix run .#sync` on each machine: the generated `.mcp.json` files name
-store paths the update invalidates.
+run `nix run .#sync` on each machine: the generated launcher names store
+paths the update invalidates.
 
 ---
 

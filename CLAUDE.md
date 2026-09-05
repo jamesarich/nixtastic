@@ -165,12 +165,12 @@ finds — run it before diagnosing by hand.
   flake), so it gets an untracked `.envrc-workspace` sidecar instead. Never
   edit a tracked `.envrc`.
 - **`.mcp.json` is generated too** — `.#sync` at the root, `.#worktree` per
-  worktree. It names store paths, so `nix flake update` breaks the server until
-  you re-run `.#sync`. A bare `claude mcp add` (local scope, store paths in
+  worktree, and both name the stable `bin/meshtastic-mcp-launch`, which holds
+  the store paths and which `sync` rewrites (`nix flake update` breaks the
+  server until you do). A bare `claude mcp add` (local scope, store paths in
   `~/.claude.json`) is the trap; the sanctioned form is **user scope pointed
-  at the stable `bin/meshtastic-mcp-launch`**, which `sync` rewrites — that
-  one reaches `android/`, `firmware/` and every worktree, and never goes
-  stale.
+  at that same launcher** — it reaches `android/`, `firmware/` and every
+  worktree, and one endpoint in both scopes means no `/mcp` conflict.
 - **Per-repo subagents only exist at the root because `.#sync` copies them
   there.** Claude Code scans `.claude/agents/` from the cwd up to the
   enclosing repo root, and the org repos are not ancestors of the workspace —
