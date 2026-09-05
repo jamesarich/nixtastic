@@ -734,5 +734,15 @@ ctx "$root/.claude/worktrees/ws-wt" | grep -q 'org repos are NOT here' || { echo
 git -C "$root" worktree remove --force "$root/.claude/worktrees/ws-wt"; git -C "$root" branch -D ws-wt -q
 git -C "$root/kzstd" worktree remove --force "$root/kzstd/.claude/worktrees/orient-wt"; git -C "$root/kzstd" branch -D orient-wt -q
 
+echo "--- T34: worktree --path resolves branch or dir name; unknown exits 1"
+run "$worktree" kzstd feat/path-me
+run "$worktree" --path kzstd feat/path-me
+expect "^$root/kzstd/.claude/worktrees/feat-path-me\$"
+run "$worktree" --path kzstd feat-path-me
+expect "^$root/kzstd/.claude/worktrees/feat-path-me\$"
+run_lax "$worktree" --path kzstd nope
+expect 'no worktree'
+run "$worktree" --remove kzstd feat-path-me
+
 echo "all tests passed"
 touch "$out"

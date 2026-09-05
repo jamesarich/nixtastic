@@ -11,6 +11,7 @@ usage() {
   echo "  nix run .#worktree -- <repo> <branch> [name]   create"
   echo "  nix run .#worktree -- --list [repo]            list"
   echo "  nix run .#worktree -- --remove <repo> <name>   remove one"
+  echo "  nix run .#worktree -- --path <repo> <branch|name>   print its path"
   echo "  nix run .#worktree -- --prune [repo]           drop dead registrations"
 }
 
@@ -41,6 +42,22 @@ case "${1:-}" in
       fi
     done <<< "$(targets "${2:-}")"
     exit 0 ;;
+  --path)
+    dir="${2:-}"; want="${3:-}"
+    [ -n "$dir" ] && [ -n "$want" ] || { usage; exit 1; }
+    p="$root/$dir"
+    [ -d "$p/.git" ] || { echo "$dir not cloned" >&2; exit 1; }
+    # Branch or directory name: the create side derives one from the other,
+    # the Desktop app names its own, so accept both.
+    byname="$p/.claude/worktrees/$want"
+    if [ -d "$byname" ]; then echo "$byname"; exit 0; fi
+    byname="$p/.claude/worktrees/$(echo "$want" | tr '/' '-')"
+    if [ -d "$byname" ]; then echo "$byname"; exit 0; fi
+    found=$(git -C "$p" worktree list --porcelain | awk -v b="refs/heads/$want" '
+      /^worktree /{w=substr($0,10)} /^branch /{if($2==b){print w; exit}}')
+    if [ -n "$found" ]; then echo "$found"; exit 0; fi
+    echo "no worktree of $dir named or on branch '$want'" >&2
+    exit 1 ;;
   --remove)
     # The create side generates the path, so the remove side
     # should not make you retype it. `git worktree remove` alone

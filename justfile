@@ -49,3 +49,25 @@ check:
 # Format the workspace's own .nix files.
 fmt:
     nix fmt
+
+# Cross-repo pin state (protobufs, design, api seeds) and whether each consumer is current.
+[no-cd]
+pins *ARGS:
+    nix run {{ justfile_directory() }}#pins -- {{ ARGS }}
+
+# PR status for the HEAD SHA: checks, unresolved threads, queue, conflicts.
+[no-cd]
+pr *ARGS:
+    nix run {{ justfile_directory() }}#pr -- {{ ARGS }}
+
+# `direnv exec DIR` loads DIR's env but leaves the cwd alone, so these cd first.
+#   just wt android feat-x ./gradlew :core:test
+# Run a command inside a worktree, in it, with that repo's environment.
+[no-cd]
+wt repo name +CMD:
+    d="$(nix run {{ justfile_directory() }}#worktree -- --path {{ repo }} {{ name }})" && cd "$d" && direnv exec . {{ CMD }}
+
+# Same for a primary checkout:  just in firmware pio run -e tbeam
+[no-cd]
+in repo +CMD:
+    cd {{ justfile_directory() }}/{{ repo }} && direnv exec . {{ CMD }}
