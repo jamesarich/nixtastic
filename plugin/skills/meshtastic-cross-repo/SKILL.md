@@ -39,12 +39,17 @@ coupling graph implies even if unasked:
 | a `design` token or asset | `android`, `apple`, `meshtastic` (submodule) |
 | `Adafruit_nRF52_Bootloader_OTAFIX` release | `api` data, `apple` hand copy |
 
+Run `just pins` first: it prints every consumer's pin and whether it is
+`current`, `behind` or `ahead`, so the implied list starts from facts.
+
 Present the list with one line of reason per repo and **ask for
 confirmation** before anything else. A repo the user removes stays out.
 
 ### 2. Brief
 
-Run `just brief <repo>` for every confirmed repo. Stop and report if any
+Run `just brief --short <repos…>` once, then the full `just brief <repo>`
+only for repos whose line shows drift, `dirty!`, or open PRs you need to
+read. Stop and report if any
 checkout is dirty, on an unexpected branch, or behind its origin: another
 session may own it (see the memory `foreign-live-session-in-sibling-repo`).
 Never work in a dirty primary checkout.
@@ -89,7 +94,9 @@ will bump.
 Each repo's own gate (the one its docs name). Where a device and an app
 both changed, run the cross-plane check with `nixtastic:meshtastic-e2e`.
 Report proven vs unproven plainly; never call the feature working from one
-side alone.
+side alone. For each PR opened, `just pr <repo> <n>` before claiming anything
+about CI: it reads checks for the head SHA and the unresolved threads that
+block android's merge.
 
 ### 8. Close
 
