@@ -117,22 +117,36 @@ because that radio cannot hold an Apple connection long enough to exercise it).
    `enabled_protocols=7` are restored over serial; the **`olm3sh` channel and the
    WiFi credentials are James's to re-enter from the app** (never written by the
    agent). `bluetooth.mode` is back at its default. WiFi is **off** (BLE on).
-5. **Gate the other MCUs:** ESP32-C3 (single-core, tight RAM — likely-fail
+5. **nRF52 gate: PASSED on the WisMesh Pocket (RAK4631), 2026-09-04 21:00.** Spike
+   `361ac318d` links (RAM 39.8%, flash 91.4%; the fix was one undefined
+   `nrf52BluetoothReady`). Flashed by UF2 (`meshtastic --enter-dfu`, copy to
+   `/Volumes/RAK4631`), `enabled_protocols=2`. **BLE-adv RX proven:** the Pixel's
+   Send test landed as `BLE mesh RX from=0x6337995d rssi=-36` the same second.
+   **BLE-adv TX NOT observed:** two Pocket-originated texts reached the Pixel over
+   LoRa only (`ble-adv` rx counter flat). Boot says why to look:
+   `BLE mesh: no spare adv set (0x4), sharing the phone's` — S140 has one
+   advertising set, Bluefruit owns it, and the mesh borrows it per send
+   (`NRF52BLEMesh.cpp:107-125`) with no error logged and no frame received. Next
+   work item: make the shared-set path actually radiate (or time-share the one
+   set for both phone API and mesh), then GATT mesh-peer on nRF52. Pocket console:
+   USB CDC prints only with **DTR asserted** (the opposite of the V3's UART rule),
+   and a config write or `--reboot` re-enumerates USB under an open handle.
+6. **Gate the ESP32-C3:** ESP32-C3 (single-core, tight RAM — likely-fail
    candidate) and nRF52 (`Bluefruit.begin(2,0)` + linker RAM); neither on the
    bench, both unbuilt. Firmware native tests need Docker on macOS.
-6. **Tuning backlog** (all in the plan doc): iOS-*central* discovery flakiness
+7. **Tuning backlog** (all in the plan doc): iOS-*central* discovery flakiness
    (`didDiscoverPeripheral` unreliable; inbound link is solid); DUAL-role
    connection arbitration + a low connection cap; per-peer send-queue concurrency;
    the send-dedup asymmetry (repeated `Send test` shared a packet id on the Pixel).
-7. **Bigger pieces:** desktop BLE (BlueZ D-Bus on Linux / a CoreBluetooth binding
+8. **Bigger pieces:** desktop BLE (BlueZ D-Bus on Linux / a CoreBluetooth binding
    on macOS) and LoRa (libusb `UsbBulkPipe`) JVM backends — today the desktop
    lists four bearers and only UDP moves bytes; iOS UDP (multicast entitlement +
    a native socket the app supplies); **iOS LoRa-over-USB is blocked by iOS**.
-8. **Dogfood API gaps still open:** `GattMeshTransport` clock default; a
+9. **Dogfood API gaps still open:** `GattMeshTransport` clock default; a
    `MeshNode` peer `Flow`. Done since last time: a `MeshTransport` display label
    (`name`); and the note that Compose chips ignore synthetic taps was **wrong**
    — `android_tap` registers fine.
-9. **Monitor polish:** the tuning panel squeezes the log to nothing on a phone
+10. **Monitor polish:** the tuning panel squeezes the log to nothing on a phone
    (a sheet, or collapse peers too); the LoRa stale claim after the device tests
    (`SX1262 command 0x80 failed, status 0xf7` retrying) and the post-TX bulk-IN
    retry.
