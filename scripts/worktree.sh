@@ -150,6 +150,7 @@ case "${1:-}" in
           # worktree's .git file is written once, at creation.
           if [ -n "$(find "$wt/.git" -maxdepth 0 -mtime +0 2>/dev/null)" ]; then class=reap; why="no commits beyond $def"
           else why="no commits yet, created today"; fi
+        elif [ "$branch" = HEAD ]; then why="detached HEAD, $beyond commit(s) beyond $def; no branch to ask GitHub about"
         elif [ "$have_gh" = false ]; then why="$beyond commit(s) beyond $def; gh not on PATH, cannot ask GitHub"
         elif [ "$asked" = false ]; then why="$beyond commit(s) beyond $def; GitHub query failed (gh auth?)"
         else why="$beyond commit(s) beyond $def, no merged PR at this HEAD"

@@ -904,6 +904,7 @@ mk gc-unpushed; (cd "$root/kzstd/.claude/worktrees/gc-unpushed" && echo u > u.tx
 mk gc-empty-old; touch -d '2 days ago' "$root/kzstd/.claude/worktrees/gc-empty-old/.git"
 mk gc-empty-new
 mk gc-ghfail;   (cd "$root/kzstd/.claude/worktrees/gc-ghfail"   && echo g > g.txt && git add g.txt && git commit -qm ghfail)
+git -C "$root/kzstd" worktree add -q --detach "$root/kzstd/.claude/worktrees/gc-detached"; (cd "$root/kzstd/.claude/worktrees/gc-detached" && echo x > x.txt && git add x.txt && git commit -qm detached)
 git -C "$root/kzstd" worktree add -q "$HOME/parked-elsewhere" -b gc-parked
 git -C "$root" worktree add -q "$root/.claude/worktrees/ws-empty" -b ws-empty; touch -d '2 days ago' "$root/.claude/worktrees/ws-empty/.git"
 printf '[{"number":11,"state":"MERGED","headRefOid":"%s"}]' "$(git -C "$root/kzstd/.claude/worktrees/gc-merged" rev-parse HEAD)" > "$GCFIX/gc-merged.json"
@@ -920,6 +921,7 @@ expect '^  reap +kzstd/gc-empty-old .*no commits beyond'
 expect '^  keep +kzstd/gc-empty-new .*created today'
 expect '^  keep +kzstd/parked-elsewhere .*parked by another tool'
 expect '^  keep +kzstd/gc-ghfail .*GitHub query failed'
+expect '^  keep +kzstd/gc-detached .*detached HEAD, 1 commit'
 expect '2 reapable, [0-9]+ kept'
 run "$worktree" --gc
 expect '^  reap +workspace/ws-empty .*no commits beyond'
@@ -938,6 +940,7 @@ PATH="$oldpath"; export PATH
 [ ! -d "$root/.claude/worktrees/ws-empty" ] || { echo "T36: workspace worktree not reaped"; exit 1; }
 for w in gc-behind gc-open gc-unpushed gc-empty-new gc-ghfail; do git -C "$root/kzstd" worktree remove --force "$root/kzstd/.claude/worktrees/$w"; git -C "$root/kzstd" branch -D -q "$w"; done
 git -C "$root/kzstd" worktree remove --force "$root/kzstd/.claude/worktrees/gc-dirty"; git -C "$root/kzstd" branch -D -q gc-dirty
+git -C "$root/kzstd" worktree remove --force "$root/kzstd/.claude/worktrees/gc-detached"
 git -C "$root/kzstd" worktree remove --force "$HOME/parked-elsewhere"; git -C "$root/kzstd" branch -D -q gc-parked
 run "$sync"
 expect 'worktrees [0-9]+ open — nix run .#worktree -- --gc'
