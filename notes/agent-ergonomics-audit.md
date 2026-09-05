@@ -56,6 +56,11 @@ correct guards again.
 
 ## Do now (ranked)
 
+Built 2026-09-05 (`notes/agent-tools.md`): 1 → `pr` 123e3d3; 2 → `pins`
+5310be2; 3 → `worktree --path`, `just wt`/`just in` c1953af; 4 → `brief`
+multi-repo and `--short` b101361; 5 → orient hook 6117b7a plus `just pins`
+and `just pr` through the same `[no-cd]` recipes.
+
 1. **`nix run .#pr -- <repo> <n>`** (both machines' largest block) — one call answers what today takes five
    to ten: head SHA, checks *for that SHA* (not whatever is attached),
    `mergeStateStatus`, merge-queue position, unresolved review threads with

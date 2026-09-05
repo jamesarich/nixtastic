@@ -14,11 +14,10 @@ be loaded.
    every agent/governance doc that repo actually has. Run from inside a
    worktree it describes *that* worktree — named on a `checkout` line — not
    the primary checkout. The bare `.#` form only works **from the workspace
-   root**: `.#` resolves the flake from your cwd and stops at a git-repo
-   boundary, so inside any repo or worktree it dies with "is not part of a
-   flake". From there use **`just brief <repo>`** (cwd-preserving by design,
-   so it stays worktree-aware) or `nix run "$MESHTASTIC_WORKSPACE"#brief --
-   <repo>`. The tools print whichever form suits where you are standing.
+   root** (`.#` stops at a git-repo boundary); elsewhere use **`just brief
+   <repo>`** (cwd-preserving, so it stays worktree-aware). Every session gets
+   the same spellings injected by the plugin's orient hook; `just pins` and
+   `just pr <repo> <n>` answer coupling and PR state without `gh`.
 2. **Read that repo's own docs first.** Precedence:
    `.specify/memory/constitution.md` → `AGENTS.md` → `CLAUDE.md` →
    `CONTRIBUTING.md`. A repo with no `AGENTS.md` is not undocumented — check

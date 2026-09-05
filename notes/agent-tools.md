@@ -113,8 +113,10 @@ Offline by default: local checkouts, local tags. `--fetch` runs `git fetch
     consumer  firmware           submodule protobufs @ 7b2464c = v2.8.0       current
     consumer  meshtastic-python  submodule protobufs @ da60cee = v2.7.26      behind: v2.8.0
     consumer  android            org.meshtastic:protobufs 2.8.0  (gradle/libs.versions.toml)   current
-    consumer  meshtastic-sdk     <its protobufs pin>                          …
-    consumer  apple              <found in the plan's first task>             …
+    consumer  apple              submodule protobufs @ cd1d340 = v2.8.0+2    ahead of v2.8.0
+    consumer  meshtastic-sdk     org.meshtastic:protobufs 2.7.26 (gradle/libs.versions.toml)  behind: v2.8.0
+    producer  TAKPacket-SDK      main 3e85d93     latest tag v0.9.1
+    consumer  android            org.meshtastic:takpacket-sdk 0.9.1 (gradle/libs.versions.toml)  current
     producer  design             master <sha>
     consumer  meshtastic         submodule static/design @ 77fafb2            behind by N commits
     producer  api                data/*.json
@@ -123,20 +125,21 @@ Offline by default: local checkouts, local tags. `--fetch` runs `git fetch
 
 Rules:
 
-- A **producer** row is a repo others pin: protobufs, design, api data,
-  meshtastic-sdk where a consumer exists. A **consumer** row names the file
+- A **producer** row is a repo others pin: protobufs, TAKPacket-SDK, design,
+  api data. Nothing pins `meshtastic-sdk` by version (android and apple build
+  it from source), so it has no row. A **consumer** row names the file
   the pin lives in, the pinned value, what it resolves to (tag or short SHA),
   and one verdict: `current`, `behind: <what>`, `ahead`, `unknown`.
-- One reader per pin format: `.gitmodules` + `git submodule status`; a TOML
-  `[versions]` key; `Package.resolved`; byte comparison for the JSON seed
+- One reader per pin format: the submodule SHA from `git ls-tree HEAD`; a
+  TOML `[versions]` key; byte comparison for the JSON seed
   pairs (`maintenanceUf2`↔`maintenance_uf2`,
   `bootloaderOtaQuirks`↔`device_bootloader_ota_quirks`,
   `deviceLinks`↔`device_links`, `eventFirmware`↔`event_firmware`). Adding a pin
   is one function and one row.
-- **Apple's proto pin is not in `Package.resolved`** (that file holds only
-  `swift-protobuf`). The plan's first task finds where it lives; until a
-  reader exists the row prints `unknown (in-tree, last touched <date>)` from
-  `git log`. Never a guess.
+- **Apple's proto pin is a submodule too**: `apple/.gitmodules` names
+  `protobufs`, so the same reader serves it. `Package.resolved` holds only
+  `swift-protobuf` and is not read. A submodule past the latest tag reports
+  `vX.Y.Z+N  ahead of vX.Y.Z`, never `current`.
 - `brief <repo>` gains one `PINS` line with that repo's rows. The cross-repo
   skill's scope step says "run `just pins`" instead of grepping.
 
@@ -162,8 +165,9 @@ into the model's context. No network; git limited to `rev-parse`; under 50 ms.
 
 The spellings block, identical everywhere and at most eight lines:
 `just brief <repo>`, `just brief --short a b c`, `just pins`,
-`just pr <repo> <n>`, `just wt <repo> <name> -- <cmd>`, `just in <repo> --
-<cmd>`, `just worktree <repo> <branch>`, `just sync`, `just doctor`.
+`just pr <repo> <n>`, `just wt <repo> <name> <cmd>`, `just in <repo> <cmd>`,
+`just worktree <repo> <branch>`, `just sync`, `just doctor`. (No `--` before
+the command: `just` takes `+CMD` variadics as-is.)
 
 It does not tell the model to `cd` (decision 1) and it does not print memory
 (the store does that).
@@ -174,13 +178,17 @@ It does not tell the model to `cd` (decision 1) and it does not print memory
   worktree path, nothing else; exit 1 with a one-line reason if none. Branch
   and directory name both resolve, since `.#worktree` derives names from
   branches (`feat/x` → `feat-x`) and the Desktop app names its own.
-- `just wt <repo> <name> -- <cmd…>` = `direnv exec "$(worktree --path …)"
-  cmd…`. `just in <repo> -- <cmd…>` = `direnv exec <root>/<repo> cmd…`. Both
-  `[no-cd]`, both resolving the flake by the justfile's path.
+- `just wt <repo> <name> <cmd…>` = `cd "$(worktree --path …)" && direnv exec
+  . cmd…`. `just in <repo> <cmd…>` = `cd <root>/<repo> && direnv exec . cmd…`.
+  Both `[no-cd]`, both resolving the flake by the justfile's path. The `cd`
+  is load-bearing: `direnv exec DIR` loads DIR's env but leaves the cwd
+  alone (measured 2026-09-05: `just in kzstd pwd` printed the root without
+  it).
 - `brief` accepts several repos and prints each full brief separated by a
   rule. `brief --short a b c` prints one line per repo: branch, drift, clean
   or `dirty!`, open-PR count, the `pins` verdict. Drift, dirty and PRs are
-  what `brief` computes today; pins is the same function `pins` uses. The
+  what `brief` computes today; the pins column shells out to the `pins`
+  binary (`NIXTASTIC_PINS`, set by the flake) and prints `-` without it. The
   cross-repo skill's brief step becomes one `--short` call, then full briefs
   only where needed.
 
@@ -256,7 +264,10 @@ workspace repo, containing `flake.nix`, `notes/`, `CLAUDE.md` and no org repo.
 **Pins today.** `firmware` submodule `protobufs` @ 7b2464c = v2.8.0;
 `meshtastic-python` @ da60cee = v2.7.26; android `meshtastic-protobufs =
 "2.8.0"`; protobufs `master` 970fb19, latest tag v2.8.0; `meshtastic`
-submodule `static/design` @ 77fafb2; `apple/MeshtasticProtobufs/Package.resolved`
-pins only `swift-protobuf 1.36.1`.
+submodule `static/design` @ 77fafb2 (60 commits behind `design` master);
+`apple` submodule `protobufs` @ cd1d340 = v2.8.0+2; `meshtastic-sdk`
+`meshtasticProtobufs = "2.7.26"`; android `takpacket-sdk = "0.9.1"` =
+TAKPacket-SDK's latest tag; `apple/MeshtasticProtobufs/Package.resolved` pins
+only `swift-protobuf 1.36.1`.
 
 **Acceptance runs.** Appended per machine when the rollout lands.

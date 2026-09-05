@@ -572,6 +572,18 @@ The worktree edit guard and the Gradle queue guard came from one machine's
 `~/.claude/bin/gradle-queue` because the upstream android agent probes that
 exact path.
 
+### `pr` reads checks by SHA; the hook only orients
+
+`gh pr checks` reports whatever is attached to the PR without naming the
+commit it ran against, so after a push it happily shows the previous head's
+results; `pr` asks for the check-runs of `headRefOid` and prints that SHA on
+the line. Unresolved review threads are the android merge blocker that no
+REST view exposes, so they come from GraphQL (`reviewThreads`), the same
+query that returns the merge-queue entry. The orient hook classifies the cwd
+and prints the `just` spellings that work from there; it never says `cd`,
+because a session that is told to move loses the worktree guard's premise
+that edits belong to the tree it started in.
+
 ## Git across repos
 
 ### Default branches differ
