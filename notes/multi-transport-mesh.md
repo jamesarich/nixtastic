@@ -10,9 +10,27 @@ The ask that started this: *"holistically leverage / interoperate / bridge
 between all transports available on each device — LoRa, UDP, BLE-adv, BLE-GATT,
 Wi-Fi, MQTT — extend the mesh via as many transports as possible."*
 
-## Implementation status (updated 2026-09-05)
+## Implementation status (updated 2026-09-05, afternoon)
 
-`meshtastic-node-kmp` `main` is **pushed** through `d669e8d`. The `firmware`
+**Availability seam landed (2026-09-05 afternoon), `meshtastic-node-kmp` `main`
+pushed through `c14c4b4`.** A transport now declares whether it can carry
+anything and why not — `MeshTransport.availability` (`Unavailable(reason)`,
+`NeedsPermission`, `Ready`, `Active`), `absentTransports()` for bearers a
+platform never builds, and a constant `receiveOnly` for ones that can never
+speak. Closes the "fix first" of the monitor-honesty item and the state/fault
+half of the commonization item; the Material 3 pass and the live mesh diagram
+remain. Verified on the desktop (three bearers greyed with reasons), the Pixel
+(BLE rows flipping live as Bluetooth went off and back), and the iPad (`gatt`
+transmitting, `ble-adv` marked rx-only, `udp`/`lora` greyed as absent). Details
+and the two design corrections it took: the handoff's "Availability seam"
+section.
+
+Caught in the same sitting: the `api/` binary-compatibility dumps had gone stale
+because the gate documented in node-kmp's `AGENTS.md` never named `apiCheck`,
+even though BCV was wired for klib and JVM all along. Dumps regenerated and
+`apiCheck` now leads the gate.
+
+`meshtastic-node-kmp` `main` was previously **pushed** through `d669e8d`. The `firmware`
 `spike/ble-mesh-transport` branch is **pushed** through `df1ae63bf`. **Its
 `protobufs` submodule pointer (`8db5d3e`) is on no remote** — see the handoff.
 Since the 2026-09-04 status below: the Apple-central controller assert is fixed on
