@@ -327,10 +327,28 @@ held a **three-node, two-bearer mesh**: `!6337995d MON` (the Pixel, over UDP) an
 air), with its NodeInfo decoded and the peer listed by name. The endpoint numbers
 0x02/0x82, taken from flashrom rather than measured, are therefore right in practice.
 
-**Still owed on hardware:** LoRa **transmit** - the region is `UNSET`, the deliberate
-rx-only default, so nothing has been keyed and the airtime/duty-cycle path is
-unexercised; a DM round-trip to the Pocket now a keypair exists; and three DUAL nodes
-at once to exercise the GATT arbitration.
+**LORA TRANSMIT PROVEN TOO, 2026-09-05** (region armed to US at James's request;
+power left at the 10 dBm default, since the stick is bus-powered and 22 dBm browns
+out an OTG port):
+
+```
+tx[udp,lora] data id=3818401404 to=!a6e88506
+lora: tx ok len=24 toa=436ms
+rx[lora] delivered: !a6e88506 ack req=3818401404
+```
+
+Frames keyed onto the air with real computed airtime (436-477 ms at LongFast), and
+**acknowledgements came back over LoRa** - so a real radio received our
+transmission and answered it. Those `delivered:` lines are `MeshEvent.Delivered`
+out of the retransmit queue written the same day, which means reliable delivery is
+exercised on hardware and not only under virtual time. `tx[udp,lora]` on one line
+is a single frame going out on two bearers at once.
+
+Five peers discovered off the air with their short names decoded: `!7263cc65 956a`
+at -3 dBm plus three more at -45/-46 dBm, and the Pixel over UDP.
+
+**Still owed on hardware:** a DM round-trip to the Pocket now a keypair exists, and
+three DUAL nodes at once to exercise the GATT arbitration.
 
 **Still open from the plan's sequence:** desktop BLE (BlueZ), MQTT bridge, iOS UDP,
 and answering traceroute rather than only reading it.
