@@ -4,7 +4,7 @@ One memory store for every Claude Code session in this workspace, on every
 machine. Today there are twenty-plus stores across two machines that have never
 met; this note is the design that collapses them into one.
 
-Written 2026-09-04. Every count below was measured, not estimated — the
+Written 2026-09-04. Every count below was measured, not estimated - the
 measurements and the one empirical proof the design rests on are in
 [Evidence](#evidence) at the bottom.
 
@@ -26,7 +26,7 @@ That path shape breaks two ways at once.
 
 No transport fixes this. rsync, Syncthing, a database, and a git repo all fail
 identically, because the two machines are reading *different directory names*.
-Aligning the directory names does not help either — `/home` and `/Users` are
+Aligning the directory names does not help either - `/home` and `/Users` are
 fixed by the operating systems.
 
 **Within a machine.** Every repo and every worktree is its own cwd, hence its
@@ -63,14 +63,14 @@ The slug differs per machine and per repo. The target does not. That is the
 whole mechanism; everything below is plumbing around it.
 
 The workspace is the only thing that can do this, because the workspace is the
-only thing that already knows the full slug set — `NIXTASTIC_REPOS_TSV` plus
+only thing that already knows the full slug set - `NIXTASTIC_REPOS_TSV` plus
 `<repo>/.claude/worktrees/*` plus the root. So the code lives in `scripts/`.
 
 ## Store layout
 
     ~/.nixtastic-agent/            git clone of jamesarich/nixtastic-agent (PRIVATE)
     ├── memory/                    282 memory files + a generated MEMORY.md
-    │                              — this directory is the symlink target
+    │                              - this directory is the symlink target
     ├── .gitattributes             MEMORY.md merge=union
     └── .gitignore                 *.jsonl, .credentials.json
 
@@ -98,7 +98,7 @@ one's absolute path.
 
 ## Import: the sync code path, not a migration script
 
-`sync` meets non-empty `memory/` directories constantly — on both machines
+`sync` meets non-empty `memory/` directories constantly - on both machines
 today, and on any machine where a session ran before the link was laid. One
 rule, applied every run, for every slug:
 
@@ -124,7 +124,7 @@ a session appends its own hand-written line (the harness says to), and a hand
 title is a better retrieval key than `Ble ota test on battery not usb`. The
 198 hand titles from the pre-rollout indexes were seeded back this way.
 It is a derived file: 282 memory files in, one generated index out. No machine's
-existing `MEMORY.md` is imported — they are all superseded by the regenerated
+existing `MEMORY.md` is imported - they are all superseded by the regenerated
 one.
 
 The index is the **retrieval key**, not a table of contents. A second probe
@@ -138,18 +138,18 @@ selected from their index line alone. So the index is written for selection:
   ones among 199 perishable ones; type order front-loads them where a skim
   survives.
 - **Machine tag rendered inline** when present:
-  `- [Power-cycle with uhubctl](f.md) — [james-pc] cycle wedged bench radios…`.
+  `- [Power-cycle with uhubctl](f.md) - [james-pc] cycle wedged bench radios…`.
   A tag that lives only in file frontmatter is read *after* the selection it
   was meant to inform.
 - **Cross-store topic overlaps printed at import.** Filenames never collide
   (measured); facts can. `sync` lists pairs of imported names sharing two or
   more keyword stems for a five-minute human pass. It never merges them
-  itself — of the nine pairs found, one is a true duplicate and the rest are
+  itself - of the nine pairs found, one is a true duplicate and the rest are
   distinct facts that happen to share words.
 
 **Legacy stores are excluded, not imported.** `-Users-james-StudioProjects-*`
 on the laptop are strict subsets of the corresponding `-Users-james-nixtastic-*`
-stores — 0 files exist only in the legacy copy, and the files that differ are
+stores - 0 files exist only in the legacy copy, and the files that differ are
 newer on the `nixtastic` side, which was forked from them on 2026-08-15 and used
 daily since. They stay on disk, untouched, unlinked.
 
@@ -178,19 +178,19 @@ Five checks, in the established `ok`/`warn`/`bad` + `fix` idiom:
 | store state | `warn "memory store" "7 commits unpushed"` / `"diverged"` | `git -C ~/.nixtastic-agent push` |
 | staleness | `warn "memory age" "37 not updated since 2026-06-06 (113 undated)"` | review; delete what is wrong |
 
-The staleness line reads frontmatter `modified:` — file mtimes are useless
-here, the 2026-08-15 laptop migration reset every one — and reports the count
+The staleness line reads frontmatter `modified:` - file mtimes are useless
+here, the 2026-08-15 laptop migration reset every one - and reports the count
 older than 90 days. It is a visibility signal, not a reaper. Nothing in this
 design deletes a memory; the convention that wrong memories get deleted needs
 a prompt, and this is it. 113 memories carry no `modified:` at all and never
-will; they are counted in the `ok` line, never warned about — a warning that
+will; they are counted in the `ok` line, never warned about - a warning that
 cannot clear is noise.
 
 ### `nix run .#worktree`
 
 Lays the link at creation, before Claude Code has ever run there.
 `~/.claude/projects/<slug>/` does not exist until the first session writes to
-it, so without this a new worktree is memory-blind for its whole first session —
+it, so without this a new worktree is memory-blind for its whole first session -
 which is the `android/ = 2 memories` hole, reproduced on every branch.
 
 ## Hooks
@@ -203,11 +203,11 @@ existing herdr and paseo entries are preserved untouched.
 | Hook | Action | Timeout |
 | --- | --- | --- |
 | `SessionStart` | `flock` → `git pull --no-rebase --autostash \|\| true` | 10s |
-| `Stop` | `flock` → `add -A`, `commit`, `pull --no-rebase`, dedupe `MEMORY.md`, `push` — all `\|\| true` | 15s |
+| `Stop` | `flock` → `add -A`, `commit`, `pull --no-rebase`, dedupe `MEMORY.md`, `push` - all `\|\| true` | 15s |
 
 `--no-rebase`, not `--rebase`, and the distinction is load-bearing: a merge
 driver only runs during a *merge*. Under `pull --rebase` git replays commits one
-at a time and a same-region `MEMORY.md` change stops the rebase — the union
+at a time and a same-region `MEMORY.md` change stops the rebase - the union
 driver never fires. One file per memory makes linear history worthless here
 anyway, so the merge commits cost nothing.
 
@@ -220,7 +220,7 @@ the same moment on one machine would otherwise both pull into the same store.
 
 **Friction fixes, 2026-09-04 (same day, after an afternoon of use).** The
 hook as first shipped cost 1.1 s of GitHub round-trips at the end of *every*
-turn, in *every* project on the machine — `Stop` fires per turn and the
+turn, in *every* project on the machine - `Stop` fires per turn and the
 registration is user-scope. Four cheap exits now come before any network,
 in this order: a cwd whose slug is not linked into the store (read from the
 JSON Claude Code hands the hook on stdin) leaves at once; a clean store
@@ -235,7 +235,7 @@ the plugin `sync` installs, and `doctor` is what keeps it honest.
 
 **Worktrees made between syncs, 2026-09-05.** The Desktop app's worktree
 mode and harness isolation both create a worktree and start a session in it
-at once — before any `sync` could link its slug, so the "not linked, leave"
+at once - before any `sync` could link its slug, so the "not linked, leave"
 gate made exactly those sessions blind. Two changes: `memory_slug_dirs` now
 lists the workspace repo's own worktrees (the laptop had three, each with
 its own stranded memory dir), so `sync` links and imports them like any repo
@@ -258,7 +258,7 @@ with no human in the loop. Not `sort -u`: that would undo the type ordering the
 index is rendered in. The hook drops repeated lines and keeps their order;
 `sync` re-renders properly on its next run.
 
-The full regeneration from frontmatter is a **`sync` step, not a hook step** —
+The full regeneration from frontmatter is a **`sync` step, not a hook step** -
 it runs once at install and after any import. The hooks only ever `sort -u`, so
 no hook is doing work that could take a session-blocking amount of time.
 
@@ -266,14 +266,14 @@ Anything union merge cannot resolve: `git rebase --abort`, leave the local store
 intact, and let `doctor` report `diverged`. The design never auto-resolves a
 real content conflict.
 
-**Parallel sessions on one machine** — several run routinely here — take a
+**Parallel sessions on one machine** - several run routinely here - take a
 `flock` on the store around commit and push. Concurrent writes to *distinct*
 memory files need no lock, which is precisely why one-file-per-memory matters.
 
 ## The one silent-degradation risk
 
 If a future Claude Code version ever replaces `memory/` rather than writing into
-it — `rm -rf` plus `mkdir` on some compaction or migration path — the symlink
+it - `rm -rf` plus `mkdir` on some compaction or migration path - the symlink
 becomes a real directory again and that slug silently diverges back to today's
 behaviour, with no error anywhere. `doctor`'s "every slug linked" check is what
 catches it, which is why that check exists and why `doctor` should be run after
@@ -290,16 +290,16 @@ One frontmatter line, nothing more:
     metadata:
       machine: james-pc        # or: darwin
 
-Applied at import by filename heuristic — `ios-*`, `xcodebuild-*`, `*-macos*`
-→ `darwin`; `uhubctl-*`, `rak-bench-*`, `tadpole-*`, `*-pio-*` → `james-pc` —
+Applied at import by filename heuristic - `ios-*`, `xcodebuild-*`, `*-macos*`
+→ `darwin`; `uhubctl-*`, `rak-bench-*`, `tadpole-*`, `*-pio-*` → `james-pc` -
 and corrected as encountered thereafter. 282 files are not hand-audited. The tag
 is advisory: it tells a session to check before acting, and no filtering
 machinery is built. It is rendered into the `MEMORY.md` line (above) because
 that is where selection happens.
 
 The case that shows why: `firmware-native-tests-need-docker` (desktop) and
-`firmware-native-tests-on-macos` (laptop) share a conclusion — use
-`bin/test-native-docker.sh` — for different reasons that are each true on
+`firmware-native-tests-on-macos` (laptop) share a conclusion - use
+`bin/test-native-docker.sh` - for different reasons that are each true on
 exactly one machine. They are not a duplicate to merge; they are two tagged
 memories that coexist.
 
@@ -317,14 +317,14 @@ memories that coexist.
 
 Fixtures in `tools-tests.sh`:
 
-1. **Slug vectors** — `remember`'s `docs/slug-vectors.json`, used verbatim.
-2. **Import idempotence** — run twice; the second reports `0 imported` and
+1. **Slug vectors** - `remember`'s `docs/slug-vectors.json`, used verbatim.
+2. **Import idempotence** - run twice; the second reports `0 imported` and
    changes no mtimes.
-3. **Never-clobber** — a same-named file with different content in the target
+3. **Never-clobber** - a same-named file with different content in the target
    survives; the incoming one is skipped and named in the output.
-4. **Link-in-place** — a slug already symlinked is left alone, not re-created.
-5. **Worktree** — `worktree.sh` creates the link before any session exists.
-6. **Index rendering** — a fixture store with one memory of each type and one
+4. **Link-in-place** - a slug already symlinked is left alone, not re-created.
+5. **Worktree** - `worktree.sh` creates the link before any session exists.
+6. **Index rendering** - a fixture store with one memory of each type and one
    tagged memory renders in type order with the tag inline; a re-render of an
    unchanged store is byte-identical.
 
@@ -335,11 +335,11 @@ Gate is the existing one, `just check`: `nix flake check --all-systems
 
 The order matters; step 0 is already done.
 
-0. **Symlink proof.** Done — see [Evidence](#evidence).
+0. **Symlink proof.** Done - see [Evidence](#evidence).
 1. Create private `jamesarich/nixtastic-agent`; seed from the desktop's 42.
 2. Build and test the `sync` / `doctor` / `worktree` changes on the desktop.
-3. Run `sync` on the laptop over SSH — imports its 240, pushes.
-4. Run `sync` on the desktop — pulls; 282 in one store on both machines.
+3. Run `sync` on the laptop over SSH - imports its 240, pushes.
+4. Run `sync` on the desktop - pulls; 282 in one store on both machines.
 5. Machine-tag pass by heuristic.
 
 Steps 1–4 are an afternoon. Step 5 is twenty minutes.
@@ -351,12 +351,12 @@ Steps 1–4 are an afternoon. Step 5 is twenty minutes.
   this store is the private, accreted one. Different audiences, different repos.
 - **The `remember` plugin's handoffs.** Investigated and deliberately dropped.
   Its config precedence is plugin-defaults → `~/.remember/config.json` →
-  `${REMEMBER_DIR}/config.json`. The middle one is *user-global* — pointing it
+  `${REMEMBER_DIR}/config.json`. The middle one is *user-global* - pointing it
   at this store would drag `goon`, `jeff` and `koblin` handoffs into a
   Meshtastic repo. The last one lives inside the directory it would need to
   relocate, so it cannot relocate it. There is no workspace-scoped setting, and
   the plugin is not installed on the laptop at all. Its own `git_backup` /
-  `git_restore` therefore stay off too — enabling them would mean a second,
+  `git_restore` therefore stay off too - enabling them would mean a second,
   competing transport for a store only one machine has. Revisit under the
   agent-surface work, where "which plugins do both machines run" is the actual
   question.
@@ -365,11 +365,11 @@ Steps 1–4 are an afternoon. Step 5 is twenty minutes.
 
 Tracked here so they are not silently folded into this work.
 
-- **Agent-surface consolidation.** Done — [agent-surface.md](./agent-surface.md).
+- **Agent-surface consolidation.** Done - [agent-surface.md](./agent-surface.md).
 - **Workspace-repo worktrees.** Done 2026-09-05, see Hooks above.
 - **Workspace directory name.** The laptop uses `~/nixtastic`, the desktop
   `~/meshtastic`. Aligning them does *not* help the slug problem (`/home` vs
-  `/Users`), so it is cosmetics — but `~/meshtastic/meshtastic` reads badly, and
+  `/Users`), so it is cosmetics - but `~/meshtastic/meshtastic` reads badly, and
   the laptop's name was a deliberate 2026-08-15 consolidation decision recorded
   in `old-workspace-migration.md`. Renaming the desktop costs a 2.3 GB
   PlatformIO rebuild. Do it after this lands, when `sync` owns the symlinks and
@@ -377,7 +377,7 @@ Tracked here so they are not silently folded into this work.
 
 ## Evidence
 
-**Step 0 — the symlink read path, proven not assumed.** A store was created at
+**Step 0 - the symlink read path, proven not assumed.** A store was created at
 a scratch path, a probe project directory's `memory/` was symlinked to it, and a
 headless session was started in that directory:
 
@@ -389,12 +389,12 @@ follows a symlinked `memory/` directory for the session-start read. This is the
 assumption the entire design rests on, which is why it was tested before the
 design was written rather than after.
 
-**Probe 2 — memory bodies are retrieved on demand.** The first probe put the
+**Probe 2 - memory bodies are retrieved on demand.** The first probe put the
 canary in both the index and the memory file, so it proved only that the index
 loads. The second put a different canary **only in a memory file body**, behind
 a neutral index line:
 
-    - [Bench relay part number](bench-relay-partno.md) — the part number for the bench relay board
+    - [Bench relay part number](bench-relay-partno.md) - the part number for the bench relay board
 
     $ claude -p 'What is the bench relay board part number?'
     FROBOZZ-9284-QQ
@@ -403,10 +403,10 @@ The body was fetched, selected from the index line alone. This is why the index
 is designed as a retrieval key above.
 
 **Quality against the memory conventions**, measured on the desktop store: 40
-of 40 `MEMORY.md` lines conform to `- [Title](file.md) — hook`; 32 of 35
+of 40 `MEMORY.md` lines conform to `- [Title](file.md) - hook`; 32 of 35
 `feedback`/`project` memories carry `**Why:**`; 421 `[[links]]` across the 282
 files with 9 distinct dangling targets (2 %). Merging does **not** repair the
-dangling ones — each desktop dangler was checked against the laptop and none
+dangling ones - each desktop dangler was checked against the laptop and none
 exist there. They are missing memories, not split ones.
 
 **Topic overlap across machines.** Nine pairs share two or more filename
@@ -422,7 +422,7 @@ all workspace slugs on both machines, then deduplicating once at the end:
     unique names:    282
     duplicate names:   0
 
-Zero collisions, so the merge is a pure union — no reconciliation, no
+Zero collisions, so the merge is a pure union - no reconciliation, no
 newest-wins rule, no manual review. An earlier count deduplicated each machine
 *before* comparing and therefore hid ~182 intra-laptop duplicates; the number
 above does not.
@@ -444,7 +444,7 @@ identical or older. Lesson kept in the plan: subset-check every legacy store,
 not the ones that look biggest.
 
 **Rollout result, 2026-09-04.** Desktop imported 43 (36 slugs linked), laptop
-imported 241 (45 slugs), zero filename collisions on import — 284, then 285
+imported 241 (45 slugs), zero filename collisions on import - 284, then 285
 with the legacy orphan, then 283 after the two true duplicates were merged by
 hand (`commontest-names-no-commas` into `ios-rejects-commas-in-test-names`;
 `no-ai-attribution` into `no-claude-attribution-in-commits`). Machine tags:

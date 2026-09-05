@@ -5,15 +5,15 @@
 One base directory for working across every Meshtastic repo, with the right
 toolchain for each supplied by Nix.
 
-It does not vendor the repos — it clones them, gives each one a dev shell, and
+It does not vendor the repos - it clones them, gives each one a dev shell, and
 keeps them oriented. One place to start; see [Shells](#shells) for the full set.
 
 **Needs:** Nix with flakes, `git`, and a Linux or Apple-silicon host (Intel macOS
-is out — nixpkgs dropped it). Everything else — JDKs, the Android SDK,
-PlatformIO, `buf`, Node — is supplied per shell. Budget tens of GB: the repos,
+is out - nixpkgs dropped it). Everything else - JDKs, the Android SDK,
+PlatformIO, `buf`, Node - is supplied per shell. Budget tens of GB: the repos,
 their build caches and the Nix store all land on the same disk.
 
-The checkout directory can be named anything and live anywhere — everything
+The checkout directory can be named anything and live anywhere - everything
 derives from `MESHTASTIC_WORKSPACE`. Verified by bootstrapping a second host
 into `~/meshtastic-workspace`, a different name from the one used below.
 
@@ -23,7 +23,7 @@ $MESHTASTIC_WORKSPACE/         (any path, any name)
 ├── scripts/               the tool scripts (.#sync, .#worktree, .#doctor, …)
 ├── justfile               short spellings: just sync / brief / doctor / check
 ├── direnvrc               sourced by ~/.config/direnv/direnvrc
-├── CLAUDE.md              agent router — repo index + protocol
+├── CLAUDE.md              agent router - repo index + protocol
 ├── AGENTS.md              why the constraints exist
 ├── notes/                 repo orientation + cross-repo contracts
 ├── firmware/  android/  apple/  meshtastic-sdk/  …   ← the repos
@@ -35,13 +35,13 @@ $MESHTASTIC_WORKSPACE/         (any path, any name)
 ## One-time setup
 
 ```bash
-# 0. Where it lives. Any path, any name — every step below derives from this.
+# 0. Where it lives. Any path, any name - every step below derives from this.
 WORKSPACE=~/meshtastic
 
 # 1. Nix (flakes on by default)
 curl -fsSL https://install.determinate.systems/nix | sh -s -- install
 
-# 2. This repo — substitute your own fork if you have one
+# 2. This repo - substitute your own fork if you have one
 git clone https://github.com/jamesarich/nixtastic.git "$WORKSPACE"
 #    Private copy? The new machine needs credentials first:
 #      SSH key on the box:  git clone git@github.com:OWNER/nixtastic.git "$WORKSPACE"
@@ -53,9 +53,9 @@ git clone https://github.com/jamesarich/nixtastic.git "$WORKSPACE"
 #      ssh newbox "git clone -b main /tmp/nixtastic.bundle $WORKSPACE"
 cd "$WORKSPACE"
 
-# 3. Auto-activate on cd — do this, everything below assumes it
+# 3. Auto-activate on cd - do this, everything below assumes it
 #    Both packages: direnv is the binary, nix-direnv only the bash library
-#    it sources — installing nix-direnv alone leaves no `direnv` on PATH.
+#    it sources - installing nix-direnv alone leaves no `direnv` on PATH.
 #    Then hook it into your shell (once): https://direnv.net/docs/hook.html
 nix profile install nixpkgs#direnv nixpkgs#nix-direnv
 mkdir -p ~/.config/direnv
@@ -70,7 +70,7 @@ printf '.envrc\n.direnv/\n.envrc-workspace\n' >> ~/.config/git/ignore
 nix run .#sync          # then run the `direnv allow` lines it prints; also
                         # renders + installs the nixtastic plugin (restart claude once)
 
-# 6. Android SDK packages — works from NOTHING on x86_64-linux and
+# 6. Android SDK packages - works from NOTHING on x86_64-linux and
 #    Apple silicon (the pinned android-cli bootstraps the SDK itself);
 #    on aarch64-linux it tells you the sdkmanager fallback instead.
 nix run .#bootstrap-sdk
@@ -79,11 +79,11 @@ nix run .#bootstrap-sdk
 Step 3 points at [`direnvrc`](./direnvrc) in this repo rather than pasting a
 snippet: it sources nix-direnv *and* carries the override that keeps `firmware`
 on this workspace's PlatformIO rather than the one upstream's tracked `.envrc`
-selects. (Upstream is not wrong — it targets NixOS, where its choice is the
+selects. (Upstream is not wrong - it targets NixOS, where its choice is the
 correct one. See [Shells](#shells).) It is the one line that must name your
-checkout path — everything else derives.
+checkout path - everything else derives.
 
-Step 4 lists three files, and `.mcp.json` is deliberately not among them —
+Step 4 lists three files, and `.mcp.json` is deliberately not among them -
 plenty of projects track one, and a global ignore would hide it everywhere. It
 is handled per repo instead: `.#sync` and `.#worktree` write it into each
 repo's `.git/info/exclude`, and the root copy is caught by this repo's
@@ -94,7 +94,7 @@ Step 5 writes a `.envrc` into each repo, which is what makes `cd android` select
 `direnv allow` commands rather than running them.
 
 It also writes `bin/meshtastic-mcp-launch`, a stable launcher carrying the
-store paths, and `.mcp.json` at the workspace root pointing at it — approve
+store paths, and `.mcp.json` at the workspace root pointing at it - approve
 once via `/mcp`. The **user-scope** registration names the same launcher and
 carries the tools into `android/`, `firmware/` and every worktree (their
 upstream-tracked `.mcp.json` wins over project scope); same endpoint in both
@@ -114,7 +114,7 @@ nothing**. Set it manually if you skip step 3.
 
 ## The daily loop
 
-### Morning — see what moved
+### Morning - see what moved
 
 ```bash
 cd "$MESHTASTIC_WORKSPACE"
@@ -133,7 +133,7 @@ BEHIND    firmware     develop   .#firmware  -4 skipped, tree dirty
 
 Uppercase wants your attention; lowercase is informational.
 
-### Starting a task — orient first
+### Starting a task - orient first
 
 ```bash
 nix run .#brief -- android
@@ -153,7 +153,7 @@ cd android          # direnv activates .#android automatically
 ./gradlew :androidApp:assembleFdroidDebug
 ```
 
-Or isolate it in a worktree — the right move when you're juggling branches or
+Or isolate it in a worktree - the right move when you're juggling branches or
 running several agents:
 
 ```bash
@@ -161,12 +161,12 @@ nix run .#worktree -- android fix/6360-coarse-position
 cd android/.claude/worktrees/fix-6360-coarse-position && direnv allow
 ```
 
-The worktree arrives fully outfitted — **that repo's** shell plus its
+The worktree arrives fully outfitted - **that repo's** shell plus its
 generated files. One made any other way (`git worktree add`, an agent) is
 missing pieces, all silently; `nix run .#sync` adopts it and writes what's
-absent, and `doctor` warns about stragglers. The full accounting — what a
+absent, and `doctor` warns about stragglers. The full accounting - what a
 bare worktree lacks, and why upstream's tracked `.mcp.json` wins in `android`
-and `firmware` worktrees — is in [`AGENTS.md`](./AGENTS.md) → Worktrees.
+and `firmware` worktrees - is in [`AGENTS.md`](./AGENTS.md) → Worktrees.
 
 ### Wrapping up
 
@@ -177,7 +177,7 @@ nix run .#worktree -- --prune                      # clear dead registrations
 ```
 
 `--remove` deletes the branch too, but only when `git branch -d` agrees it is
-merged — an unmerged branch is the entire reason you made a worktree, so it is
+merged - an unmerged branch is the entire reason you made a worktree, so it is
 kept and the force command printed. It refuses outright on uncommitted changes,
 which is what `git worktree remove` does anyway; the difference is you get the
 `--force` line rather than a plumbing error.
@@ -196,7 +196,7 @@ cd android/.claude/worktrees/fix-6360-thing && direnv allow
 ./gradlew :androidApp:testFdroidDebugUnitTest
 ```
 
-**Change a protobuf** — the highest-blast-radius change here
+**Change a protobuf** - the highest-blast-radius change here
 
 ```bash
 cd protobufs
@@ -220,7 +220,7 @@ pio run -e heltec-v3 -t upload
 pio device monitor
 ```
 
-Code intelligence needs a compile database — once per environment, and again
+Code intelligence needs a compile database - once per environment, and again
 after changing `platformio.ini`:
 
 ```bash
@@ -240,7 +240,7 @@ cd meshtastic-sdk
 ./gradlew :core:build          # JVM + Android + iOS klibs, tests, ABI check
 ```
 
-iOS targets compile to klibs on Linux; linking and iOS tests are `SKIPPED` —
+iOS targets compile to klibs on Linux; linking and iOS tests are `SKIPPED` -
 that's correct, not a failure.
 
 **Talk to a node without a build toolchain**
@@ -251,7 +251,7 @@ uvx meshtastic --port /dev/ttyUSB0 --info
 esptool chip_id
 ```
 
-**Design standards** — work starts on the
+**Design standards** - work starts on the
 [board](https://github.com/orgs/meshtastic/projects/16), not in the tree
 
 ```bash
@@ -269,14 +269,14 @@ cd design && cd tokens && npm ci && npm run build
 | --- | --- |
 | `.#kotlin` | `meshtastic-sdk`, `MQTTastic-Client-KMP`, `kzstd`, `TAKPacket-SDK`, `gradle-flatpak-sources`, `meshtastic-node-kmp` |
 | `.#android` | `android` |
-| `.#firmware` | `firmware` — on any FHS host, i.e. every mainstream distro and macOS |
-| `.#firmware-fhs` | `firmware` — on NixOS and other non-FHS hosts |
+| `.#firmware` | `firmware` - on any FHS host, i.e. every mainstream distro and macOS |
+| `.#firmware-fhs` | `firmware` - on NixOS and other non-FHS hosts |
 | `.#python` | `meshtastic-mcp`, `labeltastic` (uv), `meshtastic-python` (Poetry) |
 | `.#protobufs` | `protobufs` |
 | `.#design` | `design` |
-| `.#api` | `api` (meshtastic.org backend — Node/pnpm/Prisma) |
-| `.#docs` | `meshtastic` (meshtastic.org — Docusaurus/pnpm/Playwright) |
-| `.#webflasher` | `web-flasher` (flasher.meshtastic.org — Nuxt/Vue/pnpm) |
+| `.#api` | `api` (meshtastic.org backend - Node/pnpm/Prisma) |
+| `.#docs` | `meshtastic` (meshtastic.org - Docusaurus/pnpm/Playwright) |
+| `.#webflasher` | `web-flasher` (flasher.meshtastic.org - Nuxt/Vue/pnpm) |
 | `.#apple` | `apple` (macOS only) |
 | `.#nodes` | serial/BLE/flashing, no build toolchain |
 | `.#default` | everything light, for roaming |
@@ -288,7 +288,7 @@ The two `firmware` shells differ only in which PlatformIO they carry, and the
 right one depends on the **host**, not the target. `.#firmware` ships
 `platformio-core`; `.#firmware-fhs` ships `pkgs.platformio`, whose `buildFHSEnv`
 wrapper is what lets PlatformIO's downloaded toolchains find a dynamic loader on
-a non-FHS system — and whose bubblewrap sandbox is what AppArmor denies on
+a non-FHS system - and whose bubblewrap sandbox is what AppArmor denies on
 Ubuntu. Each shell notices at startup when you have picked the wrong one and
 names the other. The flake does not choose for you, on purpose:
 [`AGENTS.md`](./AGENTS.md) has the reasoning.
@@ -298,12 +298,12 @@ names the other. The flake does not choose for you, on purpose:
 `devShells`, `packages` (the tool scripts) and `apps` (thin wrappers over
 them) per system, plus `formatter` (nixfmt, wrapped so bare `nix fmt` works),
 `checks` (the tools again, so they actually get built) and a non-standard
-`workspace` attribute — the repo list the tools are generated from.
+`workspace` attribute - the repo list the tools are generated from.
 
 The check is two commands, run by CI on push and PR:
 `nix flake check --all-systems --no-build` evaluates every output for all
 three systems, and plain `nix flake check` **builds** this system's `checks`
-— which is when writeShellApplication runs ShellCheck, so the scripts are
+- which is when writeShellApplication runs ShellCheck, so the scripts are
 gated for real, and when the fixture tests for `sync`/`worktree`'s git-state
 logic run (`tools-tests`, a fake ten-repo workspace exercised offline in the
 build sandbox). Shells are only ever **evaluated**; passing does not mean any
@@ -328,17 +328,17 @@ repo builds.
 | `just wt <repo> <name> <cmd>` / `just in <repo> <cmd>` | run a command inside a worktree or a primary checkout with its env, from any cwd |
 | `nix run .#bootstrap-sdk` | install Android SDK packages from the pinned list |
 | `nix run .#doctor` | check the wiring below; exits non-zero if anything is broken |
-| `bin/claude-ws <repo> [args]` | launch Claude Code with that repo's **skills** loaded (`--add-dir`); generated by `.#sync`. Per-repo *subagents* need no flag — `.#sync` copies them to `.claude/agents/`. |
+| `bin/claude-ws <repo> [args]` | launch Claude Code with that repo's **skills** loaded (`--add-dir`); generated by `.#sync`. Per-repo *subagents* need no flag - `.#sync` copies them to `.claude/agents/`. |
 
-Shorter spellings for all of these live in the [`justfile`](./justfile) —
-`just sync`, `just brief android`, `just doctor`, `just check` — and `just` is
+Shorter spellings for all of these live in the [`justfile`](./justfile) -
+`just sync`, `just brief android`, `just doctor`, `just check` - and `just` is
 in every dev shell.
 
 ---
 
 ## When something looks wrong
 
-These fail **quietly** — no error, just wrong behaviour. Run this first; it
+These fail **quietly** - no error, just wrong behaviour. Run this first; it
 checks most of the table and prints the exact command to fix what it finds:
 
 ```bash
@@ -351,16 +351,16 @@ nix run .#doctor
 | `cd <repo>` gives the wrong toolchain | that repo has no `.envrc`, so the workspace-root one loads and you get `.#default` | `nix run .#sync` |
 | `cd <repo>` prints a nix-direnv evaluation error, then an old environment | the generated `.envrc` names a dev shell `flake.nix` has since renamed | `nix run .#doctor` names it; `nix run .#sync` rewrites generated files, then `direnv allow` |
 | `pio` dies with `bwrap` in `firmware` | upstream's tracked `.envrc` (`use nix`) won over ours | check `~/.config/direnv/direnvrc` sources this repo's `direnvrc`, and that `firmware/.envrc-workspace` exists |
-| Worktree has no MCP tools, or `firmware` worktree hits `bwrap` | created by hand or by an agent harness — no `.mcp.json`, no sidecar | `nix run .#sync` adopts it; prefer `nix run .#worktree` next time |
+| Worktree has no MCP tools, or `firmware` worktree hits `bwrap` | created by hand or by an agent harness - no `.mcp.json`, no sidecar | `nix run .#sync` adopts it; prefer `nix run .#worktree` next time |
 | An agent's isolated worktree has no repos in it | harness worktree isolation clones the *workspace* repo; the org repos are untracked | use `nix run .#worktree -- <repo> <branch>` for repo work |
-| No `meshtastic-mcp` tools in the client | `.mcp.json` is per directory, and `android`/`firmware` track their own | register the stable launcher once, user-scope: `claude mcp add --scope user meshtastic -- $MESHTASTIC_WORKSPACE/bin/meshtastic-mcp-launch` — `doctor` checks it |
+| No `meshtastic-mcp` tools in the client | `.mcp.json` is per directory, and `android`/`firmware` track their own | register the stable launcher once, user-scope: `claude mcp add --scope user meshtastic -- $MESHTASTIC_WORKSPACE/bin/meshtastic-mcp-launch` - `doctor` checks it |
 | `meshtastic-mcp` server stops starting | `bin/meshtastic-mcp-launch` names store paths, which `nix flake update` invalidates | `nix run .#sync` rewrites it |
 | `/mcp` shows `meshtastic` as a scope conflict | an old `.mcp.json` names `uv` directly while user scope names the launcher | `nix run .#sync`; `doctor` reports it as `mcp registration` |
 | `./gradlew` can't start a daemon | repo needs a JDK vendor/version not present | all six JDKs must stay in `flake.nix` |
 | Compose UI tests all die with `LibraryLoadException` / `libGL.so.1` | Nix glibc can't see the host's mesa | the JVM shells export `libglvnd` on `LD_LIBRARY_PATH`; re-enter the shell |
 | A repo looks clean but is behind | single-branch clone | `nix run .#sync -- --pull` widens the refspec |
 | `firmware` dirty right after a pull | upstream moved the submodule pointer | `--pull` re-syncs automatically; else `git submodule update --init --recursive` |
-| `bwrap: setting up uid map` | FHS-wrapped `platformio` vs Ubuntu AppArmor | you are in `.#firmware-fhs` on an FHS host — use `.#firmware` |
+| `bwrap: setting up uid map` | FHS-wrapped `platformio` vs Ubuntu AppArmor | you are in `.#firmware-fhs` on an FHS host - use `.#firmware` |
 | PlatformIO's toolchains won't run on NixOS | `.#firmware` ships `platformio-core`, which has no FHS tree | use `.#firmware-fhs`; the shell says so at startup |
 | `nix: command not found` over SSH or in a script | Nix's profile snippet isn't sourced by non-interactive shells, **even with `bash -lc`** | use the absolute path: `export PATH=/nix/var/nix/profiles/default/bin:$PATH` |
 
@@ -370,7 +370,7 @@ Verify JDK pinning is live:
 cd meshtastic-sdk && ./gradlew javaToolchains   # auto-detect/download: Disabled
 ```
 
-[`AGENTS.md`](./AGENTS.md) explains why each constraint exists — every one was
+[`AGENTS.md`](./AGENTS.md) explains why each constraint exists - every one was
 found by a failing build.
 
 ---
@@ -378,7 +378,7 @@ found by a failing build.
 ## Housekeeping
 
 `.gitignore` denies everything by default and whitelists specific paths, so Nix
-copies only this repo's own tracked files into the store — a few hundred KB —
+copies only this repo's own tracked files into the store - a few hundred KB -
 rather than the tens of GB of checked-out repos sitting beside them. **A new file
 here is untracked until you whitelist it**, which is deliberate: forgetting is
 inert, whereas an accidental `git add` of `firmware/` would not be.
@@ -388,7 +388,7 @@ and grows to several GB. It's disposable; deleting it costs a re-download and a
 cold rebuild, nothing else.
 
 A scheduled workflow opens a weekly `chore: nix flake update` PR (Mondays),
-validated **inside its own run** — the ci workflow never fires on it, because
+validated **inside its own run** - the ci workflow never fires on it, because
 PRs created with `GITHUB_TOKEN` don't trigger other workflows. After merging,
 run `nix run .#sync` on each machine: the generated launcher names store
 paths the update invalidates.
@@ -397,7 +397,7 @@ paths the update invalidates.
 
 ## License
 
-GPL-3.0-only — see [LICENSE](./LICENSE). Chosen to match the Meshtastic org,
+GPL-3.0-only - see [LICENSE](./LICENSE). Chosen to match the Meshtastic org,
 where `firmware` and `meshtastic-mcp` are both GPL-3.0, so donating this repo
 upstream would need no relicensing conversation.
 

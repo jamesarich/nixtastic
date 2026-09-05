@@ -1,4 +1,4 @@
-# History archive — refs/old/*
+# History archive - refs/old/*
 
 When the pre-nixtastic workspaces (`~/StudioProjects`, `~/meshtastic`) were
 retired (2026-08-15), every local branch, stash, and dirty worktree that held
@@ -8,19 +8,19 @@ work not on any remote was preserved inside the new clones as git refs under
 **These refs are machine-local.** They exist only in the clones on the machine
 that ran the migration (James's laptop; the desktop ran its own gathering and
 may hold a different set). `git clone`/`fetch` never copies them. Losing the
-clone loses the archive — if any of it starts to matter, push it to a fork or
+clone loses the archive - if any of it starts to matter, push it to a fork or
 turn it into a real branch/PR.
 
 ## Namespaces
 
-- `refs/old/studio/<branch>` — branches from `~/StudioProjects` checkouts
+- `refs/old/studio/<branch>` - branches from `~/StudioProjects` checkouts
   whose tips were not on any remote. Agent/bot scratch (`claude/*`, `codex/*`,
   `renovate/*`) and fully-upstream branches were pruned; what survives is
   human-named work.
-- `refs/old/old-mesh/<branch>` — same, from `~/meshtastic` (kzstd only).
-- `refs/old/studio-stash/sN` — every git stash from the old checkouts,
+- `refs/old/old-mesh/<branch>` - same, from `~/meshtastic` (kzstd only).
+- `refs/old/studio-stash/sN` - every git stash from the old checkouts,
   converted to refs (the stash description is the commit subject).
-- `refs/old/studio-wip/<name>` — snapshot commits of dirty scratch worktrees
+- `refs/old/studio-wip/<name>` - snapshot commits of dirty scratch worktrees
   that held real uncommitted source at migration time.
 
 ## Browse and recover
@@ -44,7 +44,7 @@ git -C <repo> update-ref -d refs/old/studio/<branch>        # discard
 | protobufs | 2 | `jamesarich/kmp-proto-library` (10 commits) |
 | apple | 2 | pr-1898 spec work + its stash |
 | kzstd | 2 | old-mesh ci branch (content since landed) |
-| TAKPacket-SDK | 1 | **complete `takpacket-integrate` agent skill/plugin** (`studio-wip/takpacket-integrate-skill`) — exists nowhere else; a candidate to resurrect into the repo proper |
+| TAKPacket-SDK | 1 | **complete `takpacket-integrate` agent skill/plugin** (`studio-wip/takpacket-integrate-skill`) - exists nowhere else; a candidate to resurrect into the repo proper |
 
 Counts drift as refs get resurrected or discarded; the `for-each-ref` command
 above is the live truth.

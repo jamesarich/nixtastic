@@ -4,7 +4,7 @@ Workspace-local note. No `AGENTS.md` / `CLAUDE.md`; `CONTRIBUTING.md` (~2.2 KB)
 and `CODEOWNERS` are the only governance.
 
 - **Role:** Gradle plugin that generates Flathub-compliant **offline dependency
-  manifests** — the thing that lets a Gradle build run inside Flathub's
+  manifests** - the thing that lets a Gradle build run inside Flathub's
   network-isolated builder.
 - **Stack:** Kotlin, Gradle 9.7.1 wrapper (`-all`). Single `plugin/` module.
 - **Default branch:** `main`
@@ -21,7 +21,7 @@ packaging. Its output is consumed by the Flathub submission for
 
 - The `.#kotlin` shell provides `flatpak-builder` on Linux specifically so you
   can validate generated manifests rather than eyeballing them.
-- No daemon JVM criteria — any JDK from the flake's set will start the daemon.
+- No daemon JVM criteria - any JDK from the flake's set will start the daemon.
 - `CODEOWNERS` exists: expect review routing on PRs.
 
 ## Gotchas
@@ -42,7 +42,7 @@ packaging. Its output is consumed by the Flathub submission for
   was 9.5.1-only while the wrapper sat on 9.7.1, which is how two
   configuration-cache bugs shipped in 0.2.0 (PR #45): the task action captured
   the listener's live URL set, and the service's set was injected from outside
-  so a reused CC entry emitted an empty manifest. Now 9.5.1 / 9.6.1 / 9.7.1 —
+  so a reused CC entry emitted an empty manifest. Now 9.5.1 / 9.6.1 / 9.7.1 -
   floor, `android`'s pin, current. Add the consumer's version whenever it moves.
-- Small repo, low commit volume — check whether history is recent before
+- Small repo, low commit volume - check whether history is recent before
   assuming current conventions.

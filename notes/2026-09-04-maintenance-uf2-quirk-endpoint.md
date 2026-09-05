@@ -1,4 +1,4 @@
-# Maintenance-UF2 quirk endpoint, consumed by every client — cross-repo umbrella
+# Maintenance-UF2 quirk endpoint, consumed by every client - cross-repo umbrella
 
 Status: planned (dry run, not approved) | unproven: everything below
 Started: 2026-09-04

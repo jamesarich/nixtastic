@@ -1,6 +1,6 @@
 ---
 name: review-round
-description: Work a CodeRabbit review round on a Meshtastic PR to completion — read the unresolved threads, fix or answer each, push ONCE, reply and resolve every thread, confirm CodeRabbit actually reviewed the new head (not a reply wrapper), and only then wait on checks. Also the pre-PR step — a local `just review` on a finished change. Use whenever a PR has CodeRabbit threads, a merge is BLOCKED with everything green, or before opening a PR in a repo where CodeRabbit runs (org-wide since 2026-09).
+description: Work a CodeRabbit review round on a Meshtastic PR to completion - read the unresolved threads, fix or answer each, push ONCE, reply and resolve every thread, confirm CodeRabbit actually reviewed the new head (not a reply wrapper), and only then wait on checks. Also the pre-PR step - a local `just review` on a finished change. Use whenever a PR has CodeRabbit threads, a merge is BLOCKED with everything green, or before opening a PR in a repo where CodeRabbit runs (org-wide since 2026-09).
 ---
 
 # Review round
@@ -25,27 +25,27 @@ loop once, in the order that avoids the four known traps:
 ## Before the PR exists
 
 From the worktree, on a *finished* change: `just review`. It runs
-`coderabbit review --agent` locally (free tier: 3 per hour — do not spend one
+`coderabbit review --agent` locally (free tier: 3 per hour - do not spend one
 mid-implementation). Fix what it finds, commit, then open the PR. Most of a
 round's findings never reach GitHub this way.
 
 ## The round
 
-1. `just pr <repo> <n>` — read `review`, `threads`, `merge` lines. If
+1. `just pr <repo> <n>` - read `review`, `threads`, `merge` lines. If
    `review` says `skipped`, run `just pr <repo> <n> rereview` first and
    `just pr <repo> <n> wait --until reviewed`; there is nothing to address yet.
-2. `just pr <repo> <n> threads` — every unresolved thread with id, author,
+2. `just pr <repo> <n> threads` - every unresolved thread with id, author,
    file:line, body. Classify each, in a short table you keep for step 5:
-   - **fix** — the finding is right; note the change.
-   - **decline** — it is wrong or out of scope; note the one-sentence reason.
-   - **done** — an earlier push already addressed it.
+   - **fix** - the finding is right; note the change.
+   - **decline** - it is wrong or out of scope; note the one-sentence reason.
+   - **done** - an earlier push already addressed it.
 3. Make every *fix* in the worktree (`just wt <repo> <name> <cmd>` runs
-   there without cd), run that repo's own gate, commit — one commit or a few,
+   there without cd), run that repo's own gate, commit - one commit or a few,
    your call, but **one push**.
 4. Push once.
 5. For each thread: `just pr <repo> <n> resolve <id> --reply "<one line>"`.
    Fix: what changed and where. Decline: the reason. Done: which commit.
-   Terse, no attribution, no thanks — [[terse-pr-voice]].
+   Terse, no attribution, no thanks - [[terse-pr-voice]].
 6. `just pr <repo> <n> wait --until reviewed`. If it times out (exit 75),
    check `just pr <repo> <n>`: `skipped` → `rereview` and wait again;
    `running` → wait again; new threads → back to step 2.

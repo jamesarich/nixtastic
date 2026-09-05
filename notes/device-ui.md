@@ -1,7 +1,7 @@
-# device-ui — meshtastic/device-ui
+# device-ui - meshtastic/device-ui
 
-Workspace-local note. This repo has **no agent docs of any kind** — no
-`AGENTS.md`, no `CLAUDE.md`, no `CONTRIBUTING.md` — orientation comes from
+Workspace-local note. This repo has **no agent docs of any kind** - no
+`AGENTS.md`, no `CLAUDE.md`, no `CONTRIBUTING.md` - orientation comes from
 the code and from here.
 
 - **Role:** MUI, the LVGL touch UI for color devices (T-Deck, mesh-tab,
@@ -22,7 +22,7 @@ the code and from here.
 - **Embedded coexistence:** a USB-serial phone-API client works while MUI
   runs (verified live on T-Deck). **BLE does not**: `PacketAPI::runOnce`
   starves MUI into `programmingMode` whenever `config.bluetooth.enabled`
-  is set — the flag, not an active connection. **Portduino has no gate**
+  is set - the flag, not an active connection. **Portduino has no gate**
   (TCP client + MUI always coexist).
 - `USE_PACKET_API` is `#error`-incompatible with
   `MESHTASTIC_PHONEAPI_ACCESS_CONTROL` (lockdown builds).

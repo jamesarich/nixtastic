@@ -51,7 +51,7 @@ steps, not open work.
 - Create: `plugin/hooks/orient.sh`
 - Modify: `plugin/hooks/hooks.json`
 - Modify: `scripts/plugin.sh` (`plugin_render`)
-- Test: `scripts/tools-tests.sh` — T31
+- Test: `scripts/tools-tests.sh` - T31
 
 **Interfaces:**
 - Consumes: `NIXTASTIC_REPOS_TSV`; the rendered plugin dir from `plugin_render`.
@@ -62,7 +62,7 @@ steps, not open work.
 Append before `echo "all tests passed"`:
 
 ```bash
-echo "--- T31: orient hook — five cwd cases, silence elsewhere, valid additionalContext"
+echo "--- T31: orient hook - five cwd cases, silence elsewhere, valid additionalContext"
 oh="$root/.cache/agent-marketplace/nixtastic/hooks/orient.sh"
 [ -x "$oh" ] || { echo "T31: orient.sh not rendered"; exit 1; }
 [ "$(cat "$root/.cache/agent-marketplace/nixtastic/hooks/workspace-root")" = "$root" ] || { echo "T31: workspace-root not rendered"; exit 1; }
@@ -91,7 +91,7 @@ Run: `nix build .#checks.x86_64-linux.tools-tests --no-link 2>&1 | grep -E 'erro
 ```bash
 #!/usr/bin/env bash
 # SessionStart: say where this session is standing and how to reach the
-# workspace tools from there. Orients only — never tells the model to cd,
+# workspace tools from there. Orients only - never tells the model to cd,
 # never prints memory. Silent outside the workspace. Fails open.
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cat "$here/workspace-root" 2>/dev/null) || exit 0
@@ -173,7 +173,7 @@ Add `orient.sh` to the `plugin-lint` shellcheck line in `flake.nix` (it is cover
 
 ```bash
 git add plugin scripts/plugin.sh scripts/tools-tests.sh
-git commit -m "plugin: SessionStart orient hook — where the session is, and the just spellings that work from there"
+git commit -m "plugin: SessionStart orient hook - where the session is, and the just spellings that work from there"
 ```
 
 ---
@@ -183,7 +183,7 @@ git commit -m "plugin: SessionStart orient hook — where the session is, and th
 **Files:**
 - Modify: `scripts/worktree.sh` (usage + a `--path` case)
 - Modify: `justfile`
-- Test: `scripts/tools-tests.sh` — T34
+- Test: `scripts/tools-tests.sh` - T34
 
 - [ ] **Step 1: Failing test T34**
 
@@ -271,7 +271,7 @@ git commit -m "worktree: --path; just wt / just in run a command in a worktree o
 
 **Files:**
 - Modify: `scripts/brief.sh` (wrap the body in `brief_one`, add `brief_short`, loop)
-- Test: `scripts/tools-tests.sh` — T35
+- Test: `scripts/tools-tests.sh` - T35
 
 **Interfaces:**
 - Produces: `brief_short <dir>` printing one line `%-18s %-8s drift -N/+N  clean|dirty!  PRs N  pins: …`; the pins column reads `$NIXTASTIC_PINS` when set (Task 4 sets it), else `-`.
@@ -359,7 +359,7 @@ git commit -m "brief: several repos per call, and --short for one line each"
 - Modify: `flake.nix` (package `pins`, `python-lint` check, `pins` in tools-tests attrs, `NIXTASTIC_PINS` in brief's runtimeEnv)
 - Modify: `.gitignore` (`!/scripts/*.py`)
 - Modify: `scripts/brief.sh` (`PINS` line in `brief_one`)
-- Test: `scripts/tools-tests.sh` — T33
+- Test: `scripts/tools-tests.sh` - T33
 
 **Interfaces:**
 - Produces: `meshtastic-pins [--fetch] [--json] [--repo DIR] [--short]`. Rows as JSON objects `{kind: producer|consumer, repo, detail, pinned, resolves, verdict}`. `--repo DIR --short` prints one phrase such as `protobufs 2.8.0 current`, or `-` when DIR appears in no row.
@@ -367,7 +367,7 @@ git commit -m "brief: several repos per call, and --short for one line each"
 - [ ] **Step 1: Failing test T33**
 
 ```bash
-echo "--- T33: pins — submodule, toml, resolved, seed pairs; current/behind/unknown; --json; --repo --short"
+echo "--- T33: pins - submodule, toml, resolved, seed pairs; current/behind/unknown; --json; --repo --short"
 # protobufs producer with two tags; firmware submodule at the latest tag, python at the older.
 (cd "$root/protobufs" && git tag v2.7.26 && echo more > proto2 && git add proto2 && git commit -qm "v2.8.0" && git tag v2.8.0 && git push -q --tags origin main 2>/dev/null)
 old=$(git -C "$root/protobufs" rev-parse v2.7.26); new=$(git -C "$root/protobufs" rev-parse v2.8.0)
@@ -575,7 +575,7 @@ if __name__ == "__main__":
 `flake.nix`, next to `brief`:
 
 ```nix
-          # nix run .#pins — cross-repo pin state. Python (stdlib) because it
+          # nix run .#pins - cross-repo pin state. Python (stdlib) because it
           # merges five pin formats into one table; jq for that is pain.
           pins = pkgs.writeShellApplication {
             name = "meshtastic-pins";
@@ -609,7 +609,7 @@ fi
 
 ```bash
 git add scripts/pins.py scripts/brief.sh flake.nix .gitignore scripts/tools-tests.sh
-git commit -m "pins: cross-repo pin state in one screen — protobufs, TAKPacket-SDK, design, api seeds; brief shows its repo's rows"
+git commit -m "pins: cross-repo pin state in one screen - protobufs, TAKPacket-SDK, design, api seeds; brief shows its repo's rows"
 ```
 
 ---
@@ -619,7 +619,7 @@ git commit -m "pins: cross-repo pin state in one screen — protobufs, TAKPacket
 **Files:**
 - Create: `scripts/pr.py`
 - Modify: `flake.nix` (package `pr`, `pr` in tools-tests attrs)
-- Test: `scripts/tools-tests.sh` — T32 (with a stub `gh` and JSON fixtures written by the test)
+- Test: `scripts/tools-tests.sh` - T32 (with a stub `gh` and JSON fixtures written by the test)
 
 **Interfaces:**
 - Produces: `meshtastic-pr <repo|org/repo|url> <n> [status|threads|wait|rereview] [--json] [--deep] [--until X] [--timeout N] [--all]`. Env `NIXTASTIC_PR_POLL` (seconds, default 30) for tests.
@@ -627,7 +627,7 @@ git commit -m "pins: cross-repo pin state in one screen — protobufs, TAKPacket
 - [ ] **Step 1: Failing test T32**
 
 ```bash
-echo "--- T32: pr — status from the HEAD sha, threads, queue, conflicts, wait, rereview (stub gh)"
+echo "--- T32: pr - status from the HEAD sha, threads, queue, conflicts, wait, rereview (stub gh)"
 FIX="$HOME/prfix"; mkdir -p "$FIX" "$PWD/fakebin"
 cat > "$PWD/fakebin/gh" <<'EOF'
 #!/bin/sh
@@ -795,7 +795,7 @@ def render_status(d):
     bb = "" if d["behind_base"] is None else f"   behind base: {d['behind_base']}"
     print(f"head     {d['head'][:7]}   branch {d['head_branch']}   base {d['base']}{bb}")
     q = d["queue"]; qs = f"position {q['position']} ({q['state']})" if q else "not enqueued"
-    conf = {"CONFLICTING": "CONFLICTS — no workflows run until rebased", "MERGEABLE": "none"}.get(d["mergeable"], d["mergeable"] or "?")
+    conf = {"CONFLICTING": "CONFLICTS - no workflows run until rebased", "MERGEABLE": "none"}.get(d["mergeable"], d["mergeable"] or "?")
     print(f"merge    {d['merge_state']}   unresolved threads: {d['threads_unresolved']}   queue: {qs}   conflicts: {conf}")
     c = d["checks"]; names = ", ".join(c["pending_names"][:2]) or ", ".join(c["fail_names"][:2])
     print(f"checks@{d['head'][:7]}   ok {c['ok']}  fail {c['fail']}  pending {c['pending']}   {names}".rstrip())
@@ -877,11 +877,11 @@ if __name__ == "__main__":
 Next to `pins`:
 
 ```nix
-          # nix run .#pr — PR status for the HEAD sha; encodes six memories.
+          # nix run .#pr - PR status for the HEAD sha; encodes six memories.
           pr = pkgs.writeShellApplication {
             name = "meshtastic-pr";
             # gh is the user's install, resolved from PATH (like direnv for
-            # doctor) — so the fixture's stub gh is what the tests exercise.
+            # doctor) - so the fixture's stub gh is what the tests exercise.
             runtimeInputs = [ pkgs.coreutils pkgs.python313 ];
             runtimeEnv = { NIXTASTIC_PR_PY = "${./scripts/pr.py}"; NIXTASTIC_REPOS_TSV = reposTsv; };
             text = ''exec python3 "$NIXTASTIC_PR_PY" "$@"'';
@@ -896,7 +896,7 @@ Next to `pins`:
 
 ```bash
 git add scripts/pr.py flake.nix scripts/tools-tests.sh
-git commit -m "pr: PR status for the head SHA — checks, unresolved threads, queue, conflicts; threads, wait (exit 75), rereview"
+git commit -m "pr: PR status for the head SHA - checks, unresolved threads, queue, conflicts; threads, wait (exit 75), rereview"
 ```
 
 ---
@@ -929,11 +929,11 @@ git commit -m "cross-repo skill: pins before scoping, brief --short before full 
 **Files:**
 - Modify: `README.md` (tool table), `CLAUDE.md` (one line in protocol step 1, one line trimmed elsewhere), `AGENTS.md` (section), `notes/agent-tools.md` (amendments), `notes/agent-ergonomics-audit.md` ("built" column)
 
-- [ ] **Step 1: README tool table** — add rows for `nix run .#pins`, `nix run .#pr -- <repo> <n> [status|threads|wait|rereview]`, `nix run .#worktree -- --path`, `just wt`, `just in`, `nix run .#brief -- --short a b c`.
-- [ ] **Step 2: CLAUDE.md** — in protocol step 1, append: "Every session gets the same spellings injected by the plugin's orient hook; `just pins` and `just pr <repo> <n>` answer coupling and PR state without `gh`." Trim one line elsewhere (the `.#brief` invocation-form sentence is the candidate) so `wc -l` does not grow.
-- [ ] **Step 3: AGENTS.md** — under Agent surface add `### pr reads checks by SHA; the hook only orients` with three sentences: why attached checks lie, why threads come from GraphQL, why the hook never says `cd`.
-- [ ] **Step 4: Spec amendments in `notes/agent-tools.md`** — pins table: apple row `submodule protobufs @ cd1d340 = v2.8.0+2  ahead`; drop the sdk producer row; add `TAKPacket-SDK → android takpacket-sdk`; `wt`/`in` without `--`; `--short` pins column conditional on the `pins` binary. Evidence: `apple/.gitmodules` has `protobufs`; `meshtastic-sdk` pins `meshtasticProtobufs = "2.7.26"`; nothing pins the SDK by version.
-- [ ] **Step 5: Audit note** — add a `built` column to the "Do now" list: 1–5 → commit SHAs.
+- [ ] **Step 1: README tool table** - add rows for `nix run .#pins`, `nix run .#pr -- <repo> <n> [status|threads|wait|rereview]`, `nix run .#worktree -- --path`, `just wt`, `just in`, `nix run .#brief -- --short a b c`.
+- [ ] **Step 2: CLAUDE.md** - in protocol step 1, append: "Every session gets the same spellings injected by the plugin's orient hook; `just pins` and `just pr <repo> <n>` answer coupling and PR state without `gh`." Trim one line elsewhere (the `.#brief` invocation-form sentence is the candidate) so `wc -l` does not grow.
+- [ ] **Step 3: AGENTS.md** - under Agent surface add `### pr reads checks by SHA; the hook only orients` with three sentences: why attached checks lie, why threads come from GraphQL, why the hook never says `cd`.
+- [ ] **Step 4: Spec amendments in `notes/agent-tools.md`** - pins table: apple row `submodule protobufs @ cd1d340 = v2.8.0+2  ahead`; drop the sdk producer row; add `TAKPacket-SDK → android takpacket-sdk`; `wt`/`in` without `--`; `--short` pins column conditional on the `pins` binary. Evidence: `apple/.gitmodules` has `protobufs`; `meshtastic-sdk` pins `meshtasticProtobufs = "2.7.26"`; nothing pins the SDK by version.
+- [ ] **Step 5: Audit note** - add a `built` column to the "Do now" list: 1–5 → commit SHAs.
 - [ ] **Step 6: Commit**
 
 ```bash
@@ -945,10 +945,10 @@ git commit -m "docs: pins, pr, wt/in, brief --short and the orient hook; spec am
 
 ### Task 8: Rollout and acceptance
 
-- [ ] **Step 1: Desktop** — `nix run .#sync` (plugin `changed`, `update`), restart. Live proofs, recorded under Evidence → Acceptance runs in `notes/agent-tools.md`:
-  - `just pins` — python row `behind: v2.8.0`, apple `ahead`, sdk `behind`.
-  - `just pr android <open PR>` — compare `checks@` SHA with `gh pr view --json headRefOid`.
-  - Orient: `cd android/.claude/worktrees/<any> && claude -p "In one line: where are you and which primary checkout does this tree belong to?"` — answer names the worktree and `/home/james/meshtastic/android`.
+- [ ] **Step 1: Desktop** - `nix run .#sync` (plugin `changed`, `update`), restart. Live proofs, recorded under Evidence → Acceptance runs in `notes/agent-tools.md`:
+  - `just pins` - python row `behind: v2.8.0`, apple `ahead`, sdk `behind`.
+  - `just pr android <open PR>` - compare `checks@` SHA with `gh pr view --json headRefOid`.
+  - Orient: `cd android/.claude/worktrees/<any> && claude -p "In one line: where are you and which primary checkout does this tree belong to?"` - answer names the worktree and `/home/james/meshtastic/android`.
   - `just wt android <wt> pwd` prints the worktree path; `just in kzstd pwd`.
-- [ ] **Step 2: Laptop over ssh** (`zsh -lc`, `MESHTASTIC_WORKSPACE` exported): `git pull --ff-only`, `nix run .#sync`, then `just pins`, `just brief --short android apple firmware`, and the orient probe from `~/nixtastic/.claude/worktrees/android-unit-localization-626f77` — the answer must say the org repos are not there.
-- [ ] **Step 3: Record, push, memory** — append both machines' results; `git push`; update the shared memory `subproject-2-agent-surface-handoff` (or a new `subproject-3-agent-tools` memory) with status and remaining items.
+- [ ] **Step 2: Laptop over ssh** (`zsh -lc`, `MESHTASTIC_WORKSPACE` exported): `git pull --ff-only`, `nix run .#sync`, then `just pins`, `just brief --short android apple firmware`, and the orient probe from `~/nixtastic/.claude/worktrees/android-unit-localization-626f77` - the answer must say the org repos are not there.
+- [ ] **Step 3: Record, push, memory** - append both machines' results; `git push`; update the shared memory `subproject-2-agent-surface-handoff` (or a new `subproject-3-agent-tools` memory) with status and remaining items.

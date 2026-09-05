@@ -1,4 +1,4 @@
-# Audit — multi-transport mesh, 2026-09-05
+# Audit - multi-transport mesh, 2026-09-05
 
 Scope: firmware `spike/ble-mesh-transport` (27 commits, 36 files, +4.4k lines vs
 `develop`), `meshtastic-node-kmp` `main` (97 commits since 2026-08-28), the two
@@ -15,7 +15,7 @@ and the hardware proofs stand. What the audit found is at the edges the bench
 never exercised: a phone and a mesh peer on the same nRF52 radio at once
 (the nRF52 port assumed one link), a subscriber's MTU never reaching the
 peripheral role in node-kmp, two teardown races in code written this morning,
-and one release blocker that is not code at all — the protobuf enums the whole
+and one release blocker that is not code at all - the protobuf enums the whole
 feature depends on exist only in this machine's submodule checkout.
 
 ## Blocker
@@ -39,7 +39,7 @@ feature depends on exist only in this machine's submodule checkout.
 | F9 | med | node-kmp `GattLink.android.kt` | A `startScan` that throws (permission not yet granted, adapter mid-transition) skipped returning teardown, leaking the GATT server and advertiser; the next rebuild opened a second server. | Wrapped, reported as a fault, teardown always returned. `8bf28a2` |
 | F10 | low | node-kmp | `connectGatt` on `TRANSPORT_AUTO` against dual-mode phones (the classic status-133 source); log auto-scroll keyed on `log.size`, dead once the log hit its 500 cap; duplicate import; the claim that `onPhyUpdate` reports a 1M answer as a refusal (a 1M answer is `GATT_SUCCESS` with `txPhy=1`); a comment still calling the Apple write-size re-read unverified. | All fixed. `8bf28a2` |
 
-## Open — recorded, not fixed here
+## Open - recorded, not fixed here
 
 | # | Sev | Where | Finding | Why deferred |
 | --- | --- | --- | --- | --- |
@@ -54,9 +54,9 @@ feature depends on exist only in this machine's submodule checkout.
 | O9 | low | firmware `Router.cpp` | `callTransports()` runs before the `MAX_RADIO_PAYLOAD_LEN` drop, so an oversize frame is relayed to GATT/UDP peers but never LoRa. | Behavioural; decide whether transports should share LoRa's size cap. |
 | O10 | low | node-kmp | Monitor shows PHY chips on iOS where the value is ignored (a tap costs a rebuild for nothing); stats keyed by `MeshTransport.name` collapse two same-named transports; `Config` says "snapshotted" but keeps live lists; UDP `trySend` drops uncounted. | Small, separate. |
 | O11 | design | firmware nRF52 | With the GATT-peer bit on, the mesh UUID displaces TX power in the scan response and the advertised name shortens to "Meshtastic_" for every stock app in range. | Product decision: an extended advertising set (S140 supports it) or service discovery on connect instead of advertising it. |
-| O12 | low | node-kmp reassembly asymmetry | Firmware reassembles strictly in order, 2 in flight per peer; node-kmp any order, 4 per peer. A node-kmp sender interleaving 3+ packets' fragments to one radio gets the third refused. `GattMeshTransport` splits per send, so this needs sends serialised per link — confirm. | Behavioural; verify the sender never interleaves. |
+| O12 | low | node-kmp reassembly asymmetry | Firmware reassembles strictly in order, 2 in flight per peer; node-kmp any order, 4 per peer. A node-kmp sender interleaving 3+ packets' fragments to one radio gets the third refused. `GattMeshTransport` splits per send, so this needs sends serialised per link - confirm. | Behavioural; verify the sender never interleaves. |
 
-## Wire contract (firmware ↔ node-kmp) — verified identical
+## Wire contract (firmware ↔ node-kmp) - verified identical
 
 Company ID 0xFFFF, protocol version 1, adv budget 251/8/243, adv layout, fragment
 header `[ver][id lo][id hi][idx][total]` (id little-endian), `total==0 ||

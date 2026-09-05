@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2026 James Rich
 # SPDX-License-Identifier: GPL-3.0-only
 {
-  description = "Meshtastic workspace — dev shells for the Meshtastic org repos (firmware, apps, Kotlin libraries, MCP tooling)";
+  description = "Meshtastic workspace - dev shells for the Meshtastic org repos (firmware, apps, Kotlin libraries, MCP tooling)";
 
   # warn-dirty is deliberately NOT set via nixConfig here: an untrusted
   # nixConfig setting makes nix print an "ignoring untrusted flake
-  # configuration setting" warning on every run — trading one line of noise
+  # configuration setting" warning on every run - trading one line of noise
   # for two (verified). The suppression lives in .envrc as NIX_CONFIG,
   # which needs no trust because it is the user's own environment.
   inputs = {
@@ -41,14 +41,14 @@
       #############################################################
       # The workspace: every Meshtastic-org repo we work in, and
       # which dev shell it belongs to. `nix run .#sync` clones
-      # whatever is missing — this list is what makes the workspace
+      # whatever is missing - this list is what makes the workspace
       # portable to a fresh machine.
       #
       # Deliberately absent:
-      #   meshtastic-sniffer   — alphafox02/, not the org
-      #   meshtastic-backend   — Gradle 7.3.1 + Groovy DSL; predates
+      #   meshtastic-sniffer   - alphafox02/, not the org
+      #   meshtastic-backend   - Gradle 7.3.1 + Groovy DSL; predates
       #                          JDK 21 and won't share the kotlin shell
-      #   pluginmeshtastic     — needs the non-redistributable ATAK SDK
+      #   pluginmeshtastic     - needs the non-redistributable ATAK SDK
       #############################################################
       workspace = {
         firmware = {
@@ -103,7 +103,7 @@
           repo = "meshtastic/meshtastic-mcp";
         };
         # Contact-QR nametag kiosk: a mesh DM prints a Niimbot badge. Shares
-        # the python shell with meshtastic-mcp — same interpreter, uv and
+        # the python shell with meshtastic-mcp - same interpreter, uv and
         # ruff (whose formatter behaviour that repo treats as load-bearing),
         # the same serial hardware, and it needs that shell's LD_LIBRARY_PATH
         # for the same reason: Pillow ships manylinux wheels too.
@@ -111,7 +111,7 @@
           shell = "python";
           repo = "meshtastic/labeltastic";
         };
-        # The `meshtastic` CLI and API on PyPI — what labeltastic and
+        # The `meshtastic` CLI and API on PyPI - what labeltastic and
         # meshtastic-mcp both import to talk to a radio.
         #
         # Checked out as meshtastic-python, not `python`: the directory would
@@ -119,14 +119,14 @@
         # `nix develop .#python` are not the same thing. Renaming on checkout
         # is already how android and apple are handled.
         #
-        # Poetry, not uv — see the python shell. It also vendors protobufs as
+        # Poetry, not uv - see the python shell. It also vendors protobufs as
         # a submodule, exactly as firmware does.
         meshtastic-python = {
           shell = "python";
           repo = "meshtastic/python";
         };
         # Shared .proto definitions. Also vendored as a submodule inside
-        # firmware/protobufs — edit here, bump the pointer there.
+        # firmware/protobufs - edit here, bump the pointer there.
         protobufs = {
           shell = "protobufs";
           repo = "meshtastic/protobufs";
@@ -148,13 +148,13 @@
         # thebentern proposed moving android's bundled
         # androidApp/src/main/assets/device_bootloader_ota_quirks.json here
         # (2026-08-20) so both apps can fetch it instead of shipping a
-        # stale copy — not done yet, just the reason this repo joined the
+        # stale copy - not done yet, just the reason this repo joined the
         # workspace. See CLAUDE.md → Cross-repo coupling.
         api = {
           shell = "api";
           repo = "meshtastic/api";
         };
-        # Project website and docs (meshtastic.org) — Docusaurus 3,
+        # Project website and docs (meshtastic.org) - Docusaurus 3,
         # TypeScript/MDX, pnpm. Vendors design as a submodule at
         # static/design, same direction as firmware/meshtastic-python
         # vendoring protobufs. Has its own .specify/ like android, apple
@@ -165,18 +165,18 @@
         };
         # Meshtastic's fork (rebranded, org-owned as of 2026-08) of oltaco's
         # OTAFIX nRF52 bootloader. Bare Makefile/CMake + ARM GCC, not
-        # PlatformIO, so it does not fit the firmware shell — see the
-        # otafix devShell. See AGENTS.md ("OTAFIX bootloader — no longer
+        # PlatformIO, so it does not fit the firmware shell - see the
+        # otafix devShell. See AGENTS.md ("OTAFIX bootloader - no longer
         # third-party") for how this differs from before 2026-08-18.
         Adafruit_nRF52_Bootloader_OTAFIX = {
           shell = "otafix";
           repo = "meshtastic/Adafruit_nRF52_Bootloader_OTAFIX";
         };
-        # Official web-based flasher (flasher.meshtastic.org) — Nuxt 3 / Vue,
+        # Official web-based flasher (flasher.meshtastic.org) - Nuxt 3 / Vue,
         # pnpm, no engines/packageManager pin. Already calls api.meshtastic.org
         # for resource/deviceHardware and resource/eventFirmware, so it is a
         # natural second consumer (alongside apple) of the api repo's
-        # bootloaderOtaQuirks endpoint — not wired up yet, just named as the
+        # bootloaderOtaQuirks endpoint - not wired up yet, just named as the
         # reason this repo joined the workspace on 2026-08-20.
         web-flasher = {
           shell = "webflasher";
@@ -207,7 +207,7 @@
           #########################################################
           # JVM / Kotlin
           #
-          # Gradle itself is NOT installed — every repo pins its own
+          # Gradle itself is NOT installed - every repo pins its own
           # version via ./gradlew (9.5.1 / 9.6.1). Nix supplies the JDKs.
           #
           # MQTTastic-Client-KMP declares javaToolchain = 11 while
@@ -218,16 +218,16 @@
           #########################################################
           # Two DIFFERENT Gradle mechanisms both read this list:
           #
-          #  1. Toolchains — which JDK compiles the code. Driven by
+          #  1. Toolchains - which JDK compiles the code. Driven by
           #     jvmToolchain(...) in the build scripts.
-          #  2. Daemon JVM criteria — which JDK the daemon itself runs
+          #  2. Daemon JVM criteria - which JDK the daemon itself runs
           #     on. Declared per-repo in gradle/gradle-daemon-jvm.properties
           #     and NOT satisfiable by just any JDK:
           #
           #       meshtastic-sdk        vendor=JETBRAINS, version=21
           #       Meshtastic-Android    version=25
           #       MQTTastic-Client-KMP  version=21 (any vendor)
-          #       kzstd, gradle-flatpak-sources — no criteria
+          #       kzstd, gradle-flatpak-sources - no criteria
           #
           # So the JetBrains Runtime and JDK 25 are not optional extras;
           # without them those two repos cannot start a daemon at all
@@ -235,7 +235,7 @@
           # A third mechanism on top of the two above: individual modules
           # can demand their own toolchain vendor. Meshtastic-Android's
           # :desktopApp (Compose Desktop) asks for JetBrains 25 at
-          # desktopApp/build.gradle.kts:129 — its daemon runs happily on
+          # desktopApp/build.gradle.kts:129 - its daemon runs happily on
           # plain JDK 25, but that module will not compile without JBR.
           #
           # On Darwin, nixpkgs marks every jetbrains JDK broken (the
@@ -247,7 +247,7 @@
           # toolchain; when a flake update bumps pkgs.jetbrains.jdk*,
           # bump version/build/hash here to match. The plain jbrsdk
           # variant, not jbrsdk_jcef: Gradle only needs a JDK that
-          # reports vendor JetBrains — nothing here embeds Chromium.
+          # reports vendor JetBrains - nothing here embeds Chromium.
           jbrsdkDarwin =
             {
               version,
@@ -261,7 +261,7 @@
                 url = "https://cache-redirector.jetbrains.com/intellij-jbr/jbrsdk-${version}-osx-aarch64-${build}.tar.gz";
                 inherit hash;
               };
-              # Keep the signed bundle intact — Gradle wants the macOS
+              # Keep the signed bundle intact - Gradle wants the macOS
               # Contents/Home layout, exposed via .home like nixpkgs'
               # own JDKs (toolchainPaths below reads it).
               installPhase = ''
@@ -294,10 +294,10 @@
             pkgs.temurin-bin-11
             jetbrainsJdk21 # meshtastic-sdk daemon (vendor=JETBRAINS)
             pkgs.jdk25 # Meshtastic-Android daemon
-            jetbrainsJdk25 # JBR 25 — :desktopApp toolchain
+            jetbrainsJdk25 # JBR 25 - :desktopApp toolchain
           ];
           primaryJdk = pkgs.jdk21;
-          # .home where it exists — on Darwin it differs from the
+          # .home where it exists - on Darwin it differs from the
           # derivation root, and Gradle wants a real JAVA_HOME layout.
           # The JetBrains build has no .home, hence the fallback.
           toolchainPaths = lib.concatStringsSep "," (map (j: j.home or "${j}") jdks);
@@ -331,7 +331,7 @@
               # Compose Desktop tests (Skiko) dlopen libGL.so.1 at load time even
               # for CPU raster rendering. The Nix JVM's glibc never reads the
               # host's ld.so cache, so the host's own mesa is invisible and every
-              # Compose UI test in a jvmTest run dies with LibraryLoadException —
+              # Compose UI test in a jvmTest run dies with LibraryLoadException -
               # 26 at once in Meshtastic-Android's :feature:settings, none of them
               # naming libGL; the real cause is the last Caused-by line. libglvnd
               # (the GL dispatch library) satisfies the link; verified sufficient
@@ -346,7 +346,7 @@
             # this only engages when MESHTASTIC_WORKSPACE is set (i.e. via
             # the workspace .envrc). Your ~/.gradle is never touched.
             #
-            # Note it must NOT be derived from ./. — inside a flake that
+            # Note it must NOT be derived from ./. - inside a flake that
             # evaluates to the read-only /nix/store copy of this file.
             if [ -n "''${MESHTASTIC_WORKSPACE:-}" ]; then
               export GRADLE_USER_HOME="''${GRADLE_USER_HOME:-$MESHTASTIC_WORKSPACE/.cache/gradle}"
@@ -355,7 +355,7 @@
             ${gradleProperties}
             EOF
             else
-              echo "  !  MESHTASTIC_WORKSPACE unset — JDK toolchains are NOT pinned."
+              echo "  !  MESHTASTIC_WORKSPACE unset - JDK toolchains are NOT pinned."
               echo "     Gradle will auto-provision its own JDKs into ~/.gradle/jdks."
               echo "     Fix: run from the workspace root with direnv, or export"
               echo "     MESHTASTIC_WORKSPACE=/path/to/meshtastic first."
@@ -363,7 +363,7 @@
           '';
 
           #########################################################
-          # Android SDK — host-managed, NOT androidenv.
+          # Android SDK - host-managed, NOT androidenv.
           #
           # androidenv *does* carry build-tools 37.0.0 / platforms 37.1,
           # so currency is not the reason. The reason is write access:
@@ -388,7 +388,7 @@
             export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           '';
 
-          # android-cli deliberately appears in NO dev shell — it exists
+          # android-cli deliberately appears in NO dev shell - it exists
           # only inside `nix run .#bootstrap-sdk`, where the reasoning is
           # written out in full.
 
@@ -398,7 +398,7 @@
           python = pkgs.python313;
 
           # esptool (and friends) propagate their own interpreter, which
-          # can land ahead of ours on PATH — observed as `python3` being
+          # can land ahead of ours on PATH - observed as `python3` being
           # 3.14.6 while UV_PYTHON was 3.13.14. Prepend explicitly so the
           # bare `python3` and the one uv builds against are the same.
           pythonHook = ''
@@ -433,7 +433,7 @@
           #
           # --query-driver lets clangd execute the driver to extract them.
           # It is a clangd COMMAND-LINE flag; .clangd config cannot set it.
-          # So wrap the binary rather than ask every editor to pass it —
+          # So wrap the binary rather than ask every editor to pass it -
           # same reasoning as platformio-core over platformio: the shell
           # should hand you a tool that already works.
           #
@@ -461,7 +461,7 @@
 
           # The header names the SHELL you type, not an org/repo path. It used
           # to read "meshtastic/<name>", which was harmless while every name
-          # was a stack or an app — and became actively misleading the moment
+          # was a stack or an app - and became actively misleading the moment
           # a shell was called `python`, because meshtastic/python is a real
           # repo this shell serves alongside two others.
           banner = name: repos: ''
@@ -481,12 +481,12 @@
           # a flake cannot know the host: `builtins.pathExists /etc/NIXOS` does
           # evaluate, but making outputs depend on the evaluating machine means
           # the same flake and lock produce different derivations on NixOS than
-          # on Ubuntu — `nix flake check --all-systems` in CI would then be
+          # on Ubuntu - `nix flake check --all-systems` in CI would then be
           # answering a question no NixOS contributor asked. So both are built,
           # named, and checked, and the shellHook tells you when you picked the
           # one that cannot work here.
           #
-          # Upstream firmware's own flake selects `platformio` (verified — see
+          # Upstream firmware's own flake selects `platformio` (verified - see
           # firmware/flake.nix), which is the right call for the NixOS users it
           # targets and the wrong one everywhere AppArmor restricts user
           # namespaces.
@@ -498,7 +498,7 @@
             pkgs.mkShell {
               name = "meshtastic-firmware";
               # clangdPio comes FIRST so its wrapper shadows the plain clangd
-              # in clang-tools. Verified with `command -v clangd` — do not
+              # in clang-tools. Verified with `command -v clangd` - do not
               # reorder. clang-tools is still here for clang-tidy, clang-query
               # and the rest, which need no wrapping.
               packages = [
@@ -517,7 +517,7 @@
               shellHook =
                 serialHook
                 + pythonHook
-                + (banner "firmware" "firmware — default env: heltec-v3")
+                + (banner "firmware" "firmware - default env: heltec-v3")
                 + extraHook
                 + ''
                   export PLATFORMIO_CORE_DIR="''${PLATFORMIO_CORE_DIR:-$HOME/.platformio}"
@@ -526,7 +526,7 @@
                   # through SCons and never invokes it, and firmware's
                   # platformio.ini sets no build_cache_dir either. Its own
                   # object cache is the supported mechanism, and the env
-                  # override is honoured — verified with `pio project
+                  # override is honoured - verified with `pio project
                   # config`, which reports the value back. Workspace-local,
                   # beside the Gradle cache, because .cache/ is documented
                   # as disposable.
@@ -538,12 +538,12 @@
                     fw="$MESHTASTIC_WORKSPACE/firmware"
                     if [ ! -f "$fw/compile_commands.json" ]; then
                       echo ""
-                      echo "  !  no compile_commands.json — clangd cannot resolve includes."
+                      echo "  !  no compile_commands.json - clangd cannot resolve includes."
                       echo "     pio run -e heltec-v3 -t compiledb"
                     fi
                     if [ ! -f "$fw/.clangd" ]; then
                       echo ""
-                      echo "  !  no .clangd — clangd will reject the xtensa GCC flags."
+                      echo "  !  no .clangd - clangd will reject the xtensa GCC flags."
                       echo "     recreate it from AGENTS.md (Firmware / clangd)."
                     fi
                   fi
@@ -554,7 +554,7 @@
         in
         {
           #########################################################
-          # default — everything light, for roaming the workspace
+          # default - everything light, for roaming the workspace
           #########################################################
           default = pkgs.mkShell {
             name = "meshtastic";
@@ -571,7 +571,7 @@
               jvmHook
               + androidHook
               + serialHook
-              + (banner "default" "all toolchains — use a focused shell for real work")
+              + (banner "default" "all toolchains - use a focused shell for real work")
               + ''
                 echo "  .#kotlin    ${reposFor "kotlin"}"
                 echo "  .#android   Meshtastic-Android"
@@ -586,7 +586,7 @@
           };
 
           #########################################################
-          # kotlin — the KMP library repos
+          # kotlin - the KMP library repos
           #########################################################
           kotlin = pkgs.mkShellNoCC {
             name = "meshtastic-kotlin";
@@ -601,25 +601,25 @@
               + androidHook
               + (banner "kotlin" (reposFor "kotlin"))
               + ''
-                echo "  JDKs: 21 (default), 17, 11 — Gradle toolchains resolved from Nix"
+                echo "  JDKs: 21 (default), 17, 11 - Gradle toolchains resolved from Nix"
                 echo "  Build with ./gradlew (each repo pins its own Gradle: 9.5.1 / 9.6.1)"
                 echo ""
               '';
           };
 
           #########################################################
-          # android — the app; kotlin shell plus emulator plumbing
+          # android - the app; kotlin shell plus emulator plumbing
           #########################################################
           android = pkgs.mkShell {
             name = "meshtastic-android";
             # No android-tools here: androidHook puts the SDK's own
             # platform-tools first on PATH, so a Nix adb would just be a
-            # shadowed duplicate — and adb must match the SDK anyway.
+            # shadowed duplicate - and adb must match the SDK anyway.
             packages = common ++ jvmTools ++ lib.optionals isLinux [ pkgs.scrcpy ];
             shellHook =
               jvmHook
               + androidHook
-              + (banner "android" "Meshtastic-Android — compileSdk 37, minSdk 24")
+              + (banner "android" "Meshtastic-Android - compileSdk 37, minSdk 24")
               + ''
                 echo "  ./gradlew :androidApp:assembleFdroidDebug"
                 echo "  android emulator list / start <name>"
@@ -630,7 +630,7 @@
           };
 
           #########################################################
-          # firmware — PlatformIO
+          # firmware - PlatformIO
           #
           # PlatformIO fetches its own cross-toolchains into
           # PLATFORMIO_CORE_DIR. Don't add gcc-arm-embedded here; two
@@ -640,7 +640,7 @@
           # bubblewrap wrapper, and this host sets
           # kernel apparmor_restrict_unprivileged_userns=1 (Ubuntu
           # default), which denies unprivileged user namespaces to
-          # unconfined binaries — everything in /nix/store. Every pio
+          # unconfined binaries - everything in /nix/store. Every pio
           # invocation dies with:
           #     bwrap: setting up uid map: Permission denied
           # Verified this is the machine, not a tool sandbox.
@@ -653,7 +653,7 @@
           # clang-tools is the ONE exception to the "no second toolchain"
           # rule above, and it is safe for a specific reason: the package
           # ships no bare compiler driver. Its bin/ is clangd, clang-format,
-          # clang-tidy and friends — no `clang`, `clang++`, `cc` or `gcc` to
+          # clang-tidy and friends - no `clang`, `clang++`, `cc` or `gcc` to
           # shadow the cross-compilers PlatformIO downloads. Verified by
           # listing the derivation's bin/.
           #
@@ -665,7 +665,7 @@
           # Formatting stays with trunk: firmware's tracked
           # .vscode/settings.json sets editor.defaultFormatter to trunk.io
           # for [cpp], and trunk fetches its own clang-format. The
-          # clang-format landing on PATH here is incidental — don't wire an
+          # clang-format landing on PATH here is incidental - don't wire an
           # editor to it and end up fighting trunk over the same files.
           #########################################################
           # The default. platformio-core is the bare Python package: no FHS
@@ -703,13 +703,13 @@
           };
 
           #########################################################
-          # python — every Python repo: meshtastic-mcp (server + Node
+          # python - every Python repo: meshtastic-mcp (server + Node
           # web-ui), labeltastic (Niimbot nametag kiosk) and
           # meshtastic-python (the CLI and API on PyPI as `meshtastic`).
           #
           # Named for the stack rather than any one repo, the way .#kotlin
           # is. NB: this attribute and the interpreter bound in the let
-          # above share the name `python` and do NOT collide — this attrset
+          # above share the name `python` and do NOT collide - this attrset
           # is not `rec`, so `${python}` below is still pkgs.python313.
           # Making it rec would silently rebind it to this shell.
           #
@@ -723,7 +723,7 @@
           python = pkgs.mkShellNoCC {
             name = "meshtastic-python";
             # The android CLI comes from $ANDROID_HOME/cmdline-tools
-            # (androidHook puts it on PATH) — meshtastic-mcp's hardware-free
+            # (androidHook puts it on PATH) - meshtastic-mcp's hardware-free
             # e2e drives an emulator via `android emulator` / `android
             # layout` rather than hand-rolled avdmanager/adb calls.
             # The other two need none of that, but it costs nothing here and
@@ -736,7 +736,7 @@
               ++ [
                 python
                 pkgs.uv
-                pkgs.poetry # meshtastic-python — see the header
+                pkgs.poetry # meshtastic-python - see the header
                 pkgs.nodejs_22
                 pkgs.ruff
               ];
@@ -751,7 +751,7 @@
                 export UV_PYTHON="${python}/bin/python3"
                 export UV_PYTHON_DOWNLOADS=never
                 # ...which means the venv's manylinux wheels (numpy, opencv,
-                # torch — the [ui]/[sdr] extras) load against Nix's loader,
+                # torch - the [ui]/[sdr] extras) load against Nix's loader,
                 # and it cannot see the system libstdc++/libz they link. The
                 # import dies as "Importing the numpy C-extensions failed",
                 # naming neither library; the real cause is the last line of
@@ -762,7 +762,7 @@
                     pkgs.zlib
                   ]
                 }''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-                echo "  CPython ${python.version}, pinned — which manager a repo uses is its lock file:"
+                echo "  CPython ${python.version}, pinned - which manager a repo uses is its lock file:"
                 echo "    uv.lock      uv sync && uv run pytest"
                 echo "    poetry.lock  poetry install --with dev && poetry run pytest"
                 echo ""
@@ -772,7 +772,7 @@
                 # the NEWEST python satisfying requires-python. esptool puts a
                 # 3.14 on PATH here and meshtastic-python allows <3.15, so a
                 # fresh `poetry install` silently builds a 3.14 env while uv and
-                # bare python3 are pinned. Nothing errors — hence this check.
+                # bare python3 are pinned. Nothing errors - hence this check.
                 # Warn rather than run `poetry env use`: entering a shell must
                 # not mutate a venv (same rule as androidHook and serialHook).
                 if [ -f "$PWD/poetry.lock" ]; then
@@ -790,15 +790,15 @@
           };
 
           #########################################################
-          # otafix — Adafruit_nRF52_Bootloader_OTAFIX
+          # otafix - Adafruit_nRF52_Bootloader_OTAFIX
           #
-          # A bare Makefile/CMake nRF52 bootloader build, not PlatformIO —
+          # A bare Makefile/CMake nRF52 bootloader build, not PlatformIO -
           # the firmware shell's toolchain is entirely PIO-managed (no bare
           # arm-none-eabi-gcc on PATH), so this gets its own shell rather
           # than overloading that one.
           #
           # gcc-arm-embedded-13, not the default (15.2.rel1): verified by
-          # actually building wiscore_rak4631_board — 13.3.rel1 compiles
+          # actually building wiscore_rak4631_board - 13.3.rel1 compiles
           # clean, 15.2.rel1 does not (a newer -Werror=array-bounds false
           # positive in lib/sdk11/.../bootloader_settings.c reading a fixed
           # MBR address). CI itself pins ARM GCC 12.3.Rel1 exactly
@@ -821,8 +821,8 @@
               pythonHook
               + (banner "otafix" (reposFor "otafix"))
               + ''
-                # No lock file here (plain pip3 install in CI), so — unlike
-                # the python shell — UV_PYTHON is deliberately NOT pinned.
+                # No lock file here (plain pip3 install in CI), so - unlike
+                # the python shell - UV_PYTHON is deliberately NOT pinned.
                 # Verified the hard way: uv pip install honours UV_PYTHON
                 # over an active VIRTUAL_ENV, so pinning it here made every
                 # install target the read-only Nix store interpreter instead
@@ -836,14 +836,14 @@
                 echo "  tools/build_all.py   # builds every board, prints pass/fail + size"
                 echo ""
                 echo "  !  CMakeLists.txt only has a board.cmake for 4 of 17 boards"
-                echo "     (heltec_t096, heltec_t1, heltec_t114, thinknode_m1) —"
+                echo "     (heltec_t096, heltec_t1, heltec_t114, thinknode_m1) -"
                 echo "     use make, not cmake."
                 echo ""
               '';
           };
 
           #########################################################
-          # apple — Meshtastic-Apple
+          # apple - Meshtastic-Apple
           #
           # Xcode itself can't be packaged (not redistributable), so
           # this shell only supplies the linting/formatting layer and
@@ -861,7 +861,7 @@
                   xcbeautify
                 ]
               );
-            shellHook = (banner "apple" "Meshtastic-Apple — iOS · macOS · watchOS · visionOS") + ''
+            shellHook = (banner "apple" "Meshtastic-Apple - iOS · macOS · watchOS · visionOS") + ''
               if [ "$(uname)" != "Darwin" ]; then
                 echo "  !  This repo builds only on macOS with Xcode."
                 echo "     On Linux this shell gives you git/gh for review work."
@@ -873,7 +873,7 @@
           };
 
           #########################################################
-          # protobufs — the shared .proto definitions
+          # protobufs - the shared .proto definitions
           #
           # Deceptively multi-toolchain for a "just protos" repo:
           #   /              buf v2 (buf.yaml, buf.gen.yaml)
@@ -883,7 +883,7 @@
           #   nanopb.proto   consumed by firmware's vendored copy
           #
           # Codegen uses a REMOTE buf plugin (buf.build/bufbuild/es:v2.1.0),
-          # so `buf generate` needs network — protoc-gen-es is not resolved
+          # so `buf generate` needs network - protoc-gen-es is not resolved
           # locally and deliberately isn't pinned here.
           #########################################################
           protobufs = pkgs.mkShellNoCC {
@@ -902,11 +902,11 @@
             shellHook =
               jvmHook
               # packages/kmp targets Android, so `cd packages/kmp && ./gradlew
-              # build` — the command this shell's own banner prints — dies with
+              # build` - the command this shell's own banner prints - dies with
               # "SDK location not found" without ANDROID_HOME. Every other shell
               # whose repo has an Android target already carries this hook.
               + androidHook
-              + (banner "protobufs" "shared .proto definitions — buf · deno · gradle · cargo")
+              + (banner "protobufs" "shared .proto definitions - buf · deno · gradle · cargo")
               + ''
                 echo "  buf lint && buf generate     (generate needs network: remote plugin)"
                 echo "  cd packages/ts   && deno task …"
@@ -917,7 +917,7 @@
           };
 
           #########################################################
-          # design — cross-platform design standards and assets
+          # design - cross-platform design standards and assets
           #
           # Two real toolchains despite looking like an asset dump:
           #   tokens/   node + style-dictionary (`npm run build`)
@@ -928,7 +928,7 @@
           # differently and silently change shipped brand assets.
           #
           # Most work here starts from the org design board rather than the
-          # repo tree — `gh` (in common) is the primary tool.
+          # repo tree - `gh` (in common) is the primary tool.
           #########################################################
           design = pkgs.mkShellNoCC {
             name = "meshtastic-design";
@@ -940,23 +940,23 @@
               echo "  ./bin/generate-pngs.sh                 (inkscape)"
               echo ""
               echo "  standards/meshtastic_design_standards_latest.md is the"
-              echo "  authoritative spec — versioned copies sit beside it."
+              echo "  authoritative spec - versioned copies sit beside it."
               echo ""
             '';
           };
 
           #########################################################
-          # api — meshtastic/api (backend for meshtastic.org)
+          # api - meshtastic/api (backend for meshtastic.org)
           #
           # TypeScript/Node, pnpm-managed, tinyhttp server, Prisma ORM
-          # against Postgres, Redis cache. .nvmrc pins Node 22 — one major
+          # against Postgres, Redis cache. .nvmrc pins Node 22 - one major
           # behind docs' Node 24, so this does NOT share that shell.
           # buf-generated Connect/protobuf clients are consumed as
           # published @buf/meshtastic_* packages from buf.build's
           # registry, not vendored as a submodule (confirmed: no
           # .gitmodules; protobufs/ here is an ordinary source dir).
           #
-          # Postgres and Redis themselves are NOT provided by this shell —
+          # Postgres and Redis themselves are NOT provided by this shell -
           # local dev points at a docker-compose/hosted instance per the
           # repo's own README; Nix supplies only the JS toolchain and
           # Prisma CLI, the same boundary the python shell draws around
@@ -978,12 +978,12 @@
           };
 
           #########################################################
-          # docs — meshtastic/meshtastic (meshtastic.org)
+          # docs - meshtastic/meshtastic (meshtastic.org)
           #
           # Docusaurus 3 site: pnpm-managed TypeScript/MDX, oxlint/oxfmt,
           # Playwright e2e. .nvmrc pins Node 24; packageManager pins
           # pnpm@11.19.0, which happens to match nixpkgs' pnpm as of
-          # 2026-08-19 — verified with `pnpm --version` in this shell. Not
+          # 2026-08-19 - verified with `pnpm --version` in this shell. Not
           # pinned to that exact nixpkgs version here, so a flake update can
           # drift it, the same way the python shell's poetry/uv can drift
           # from a repo's lock.
@@ -1015,14 +1015,14 @@
           };
 
           #########################################################
-          # webflasher — meshtastic/web-flasher (flasher.meshtastic.org)
+          # webflasher - meshtastic/web-flasher (flasher.meshtastic.org)
           #
-          # Nuxt 3 / Vue 3, pnpm-managed, ESLint (not Biome — unlike api).
+          # Nuxt 3 / Vue 3, pnpm-managed, ESLint (not Biome - unlike api).
           # No engines/packageManager pin in package.json, so nodejs_22
           # (matching the rest of the org's unpinned Node repos) is a
           # choice, not a requirement. esptool-js drives ESP32 flashing
           # over WebSerial in-browser; nRF52/RP2040 go through a
-          # drag-and-drop UF2 flow — no server-side flashing toolchain
+          # drag-and-drop UF2 flow - no server-side flashing toolchain
           # for this shell to provide.
           #########################################################
           webflasher = pkgs.mkShellNoCC {
@@ -1042,7 +1042,7 @@
           };
 
           #########################################################
-          # nodes — no build toolchain, just talk to hardware
+          # nodes - no build toolchain, just talk to hardware
           #########################################################
           nodes = pkgs.mkShellNoCC {
             name = "meshtastic-nodes";
@@ -1071,20 +1071,20 @@
       #############################################################
       # The workspace tools, as buildable packages. `apps` below wraps
       # them for `nix run`, and `checks` lists them so `nix flake
-      # check` BUILDS them — which is when writeShellApplication runs
+      # check` BUILDS them - which is when writeShellApplication runs
       # ShellCheck. Keeping them only in `apps` meant CI never did.
       #
-      # nix run .#sync — clone any missing workspace repo, then
+      # nix run .#sync - clone any missing workspace repo, then
       # report the state of each one. Safe to re-run: git state is
       # only ever read (or fast-forwarded, under --pull), and the only
-      # writes are the generated workspace files — .envrc sidecars,
-      # .mcp.json, info/exclude patterns — regenerated idempotently.
+      # writes are the generated workspace files - .envrc sidecars,
+      # .mcp.json, info/exclude patterns - regenerated idempotently.
       #############################################################
       packages = forAllSystems (
         { pkgs, system, ... }:
         let
           #########################################################
-          # Google's android CLI — the agent-oriented front end over
+          # Google's android CLI - the agent-oriented front end over
           # adb / sdkmanager / avdmanager / AGP.
           #
           # Lives HERE and only here: used to bootstrap an SDK from
@@ -1111,7 +1111,7 @@
           entries = nixpkgs.lib.mapAttrsToList (dir: v: "${dir}\t${v.repo}\t${v.shell}") self.workspace;
 
           #########################################################
-          # The tool scripts are real files in scripts/*.sh — editable
+          # The tool scripts are real files in scripts/*.sh - editable
           # with shell tooling, shellcheck-able directly, and a 10 KB
           # read instead of this whole flake. writeShellApplication
           # concatenates lib.sh in front of sync/worktree, so ShellCheck
@@ -1120,7 +1120,7 @@
           # rationale for each generated file lives in scripts/lib.sh.
           #
           # Store paths go stale on `nix flake update`; re-run .#sync.
-          # MESHTASTIC_PIO_BIN is deliberately absent — doctor finds
+          # MESHTASTIC_PIO_BIN is deliberately absent - doctor finds
           # ~/.platformio unaided, verified before dropping it.
           #########################################################
           mcpPython = pkgs.python313; # must match the .#python shell
@@ -1144,7 +1144,7 @@
               pkgs.git
               pkgs.coreutils
               pkgs.jq
-              # cmp lives in diffutils, not coreutils — the subagent
+              # cmp lives in diffutils, not coreutils - the subagent
               # aggregation compares copies against their sources.
               pkgs.diffutils
               pkgs.gnused
@@ -1161,7 +1161,7 @@
               + builtins.readFile ./scripts/sync.sh;
           };
 
-          # nix run .#bootstrap-sdk — reconcile $ANDROID_HOME against
+          # nix run .#bootstrap-sdk - reconcile $ANDROID_HOME against
           # android-sdk-packages.txt. This is the portability answer for
           # the one thing Nix isn't managing: the SDK stays writable
           # (so AGP is happy) but its contents are declared in a file.
@@ -1177,7 +1177,7 @@
             };
             text = builtins.readFile ./scripts/bootstrap-sdk.sh;
           };
-          # nix run .#pins — cross-repo pin state. Python (stdlib) because it
+          # nix run .#pins - cross-repo pin state. Python (stdlib) because it
           # merges five pin formats into one table; jq for that is pain.
           pins = pkgs.writeShellApplication {
             name = "meshtastic-pins";
@@ -1192,11 +1192,11 @@
             text = ''exec python3 "$NIXTASTIC_PINS_PY" "$@"'';
           };
 
-          # nix run .#pr — PR status for the HEAD sha; encodes six memories.
+          # nix run .#pr - PR status for the HEAD sha; encodes six memories.
           pr = pkgs.writeShellApplication {
             name = "meshtastic-pr";
             # gh is the user's install, resolved from PATH (like direnv for
-            # doctor) — so the fixture's stub gh is what the tests exercise.
+            # doctor) - so the fixture's stub gh is what the tests exercise.
             runtimeInputs = [
               pkgs.coreutils
               pkgs.python313
@@ -1208,7 +1208,7 @@
             text = ''exec python3 "$NIXTASTIC_PR_PY" "$@"'';
           };
 
-          # nix run .#brief <repo> — orient before touching a repo.
+          # nix run .#brief <repo> - orient before touching a repo.
           #
           # Generated live rather than written down, so it cannot go stale the
           # way a hand-maintained index does. Its job is to say WHAT TO READ,
@@ -1219,7 +1219,7 @@
             # findutils and gnused are as load-bearing as git here (the spec
             # listing, .claude inventory and PR-title trim all shell out).
             # Undeclared they resolve off the ambient PATH, which works on a
-            # normal machine and vanishes in the build sandbox — so leaving
+            # normal machine and vanishes in the build sandbox - so leaving
             # them out silently made brief untestable by checks.tools-tests.
             runtimeInputs = [
               pkgs.git
@@ -1235,11 +1235,11 @@
             text = builtins.readFile ./scripts/brief.sh;
           };
 
-          # nix run .#worktree — worktrees that arrive fully outfitted.
+          # nix run .#worktree - worktrees that arrive fully outfitted.
           #
           # Since per-repo .envrc files exist, a bare worktree under the
           # repo already inherits the right shell from the nearest ancestor
-          # .envrc (verified — this was NOT true before f6b6888, and old
+          # .envrc (verified - this was NOT true before f6b6888, and old
           # claims that it gets the default shell are stale). What a bare
           # worktree still lacks: the .envrc-workspace sidecar where the
           # repo tracks its own .envrc (firmware), the per-directory
@@ -1266,13 +1266,13 @@
           };
 
           #########################################################
-          # nix run .#doctor — check the wiring the README's
+          # nix run .#doctor - check the wiring the README's
           # "When something looks wrong" table describes.
           #
           # Every failure mode in that table is silent: nothing errors,
           # you just get the wrong toolchain, an unpinned JDK, or an MCP
           # server that stopped starting. Reading a table to diagnose
-          # silence is the part worth automating — setup happens once
+          # silence is the part worth automating - setup happens once
           # per machine, but these recur.
           #
           # direnv is deliberately NOT in runtimeInputs. It is the
@@ -1336,8 +1336,8 @@
       );
 
       # What `nix flake check` actually BUILDS. devShells and apps are
-      # only evaluated — verified by feeding check an app with a
-      # guaranteed SC2086 failure, which passed — so without this
+      # only evaluated - verified by feeding check an app with a
+      # guaranteed SC2086 failure, which passed - so without this
       # output ShellCheck never gated the scripts in CI. The dev
       # shells stay out on purpose: building a mkShell realizes every
       # input, i.e. CI downloading six JDKs and Inkscape.
@@ -1347,16 +1347,16 @@
       #     nix flake check                            build yours
       # A bare `--all-systems` (without --no-build) tries to BUILD the
       # darwin and aarch64 checks on this machine too, and dies on
-      # "platform mismatch" — verified, not assumed.
+      # "platform mismatch" - verified, not assumed.
       checks = forAllSystems (
         { system, pkgs, ... }:
         self.packages.${system}
         // {
           formatter = self.formatter.${system};
 
-          # Fixture tests for the git-state logic in sync and worktree —
+          # Fixture tests for the git-state logic in sync and worktree -
           # drift reporting, fast-forward safety, adoption, tracked-file
-          # respect — against a fake workspace of ten tiny repos with
+          # respect - against a fake workspace of ten tiny repos with
           # local bare origins. Offline by construction, so the build
           # sandbox is a feature: every behaviour tested is pure git
           # state. runCommand attrs become env vars in the script.
@@ -1377,7 +1377,7 @@
 
           # statix + deadnix over this repo's own tracked files. ${self}
           # is the store copy, which the deny-by-default .gitignore
-          # keeps to exactly this repo — the cloned org repos (and their
+          # keeps to exactly this repo - the cloned org repos (and their
           # .direnv nixpkgs symlinks) never land there, so the linters
           # cannot wander into other people's code.
           nix-lint =
@@ -1416,7 +1416,7 @@
               }
               ''
                 # py_compile writes next to the source by default, and the
-                # store copy is read-only — send the bytecode to scratch.
+                # store copy is read-only - send the bytecode to scratch.
                 PYTHONPYCACHEPREFIX="$TMPDIR/pyc" python3 -m py_compile ${self}/scripts/*.py
                 touch "$out"
               '';
@@ -1425,7 +1425,7 @@
 
       # `nix fmt` passes the paths to format, and passes NOTHING when run bare.
       # Plain `pkgs.nixfmt` then falls back to stdin, reads an empty stream and
-      # dies with `unexpected end of input` — so bare `nix fmt` has never worked
+      # dies with `unexpected end of input` - so bare `nix fmt` has never worked
       # here, and nixfmt now warns that the bare invocation is deprecated at all.
       # CI caught it on its first run. Hence the wrapper.
       #

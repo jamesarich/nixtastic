@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** One workspace plugin, `nixtastic`, rendered locally by `sync`, installed on both machines, carrying the shared skills, forwarders to per-repo skills, the two workspace-rule guards, the memory hooks, the Gradle queue and the GitHub MCP server — plus a cross-repo process skill.
+**Goal:** One workspace plugin, `nixtastic`, rendered locally by `sync`, installed on both machines, carrying the shared skills, forwarders to per-repo skills, the two workspace-rule guards, the memory hooks, the Gradle queue and the GitHub MCP server - plus a cross-repo process skill.
 
 **Architecture:** Hand-written plugin source lives tracked at `plugin/`; `sync` renders it into gitignored `.cache/agent-marketplace/` together with generated forwarders and the bundled meshtastic-mcp skills, registers it as a local directory marketplace, migrates the old user-scope hooks out of `settings.json`, and links the queue script. `doctor` checks every step. Nothing for the plugin ever enters the shared memory store.
 
@@ -70,7 +70,7 @@ The laptop's originals are in this session's scratchpad (`scratchpad/laptop/`); 
 {
   "name": "nixtastic",
   "version": "0.0.0",
-  "description": "Meshtastic workspace: cross-repo process skill, forwarders to each repo's skills, worktree and Gradle guards, shared memory hooks, GitHub read-only MCP. Rendered by nix run .#sync — edit plugin/ in the workspace, never the render.",
+  "description": "Meshtastic workspace: cross-repo process skill, forwarders to each repo's skills, worktree and Gradle guards, shared memory hooks, GitHub read-only MCP. Rendered by nix run .#sync - edit plugin/ in the workspace, never the render.",
   "author": { "name": "James Rich" },
   "license": "GPL-3.0-only"
 }
@@ -106,7 +106,7 @@ Copy the laptop's `block-main-checkout-edits.sh` to `plugin/hooks/block-main-che
 #!/usr/bin/env bash
 # PreToolUse(Edit|Write|MultiEdit): inside a LINKED worktree, deny an edit whose
 # target lands in the main checkout or a sibling worktree. Fails open on any
-# internal error — its only job is the cross-tree mistake.
+# internal error - its only job is the cross-tree mistake.
 ```
 
 Replace the last paragraph of the `reason=` string so it ends:
@@ -204,7 +204,7 @@ Expected: succeeds. If ShellCheck reports on the ported scripts, fix in place (q
 
 ```bash
 git add plugin .gitignore flake.nix
-git commit -m "plugin: source tree for the nixtastic workspace plugin — manifest, hooks, ported guards and queue, GitHub MCP"
+git commit -m "plugin: source tree for the nixtastic workspace plugin - manifest, hooks, ported guards and queue, GitHub MCP"
 ```
 
 ---
@@ -213,9 +213,9 @@ git commit -m "plugin: source tree for the nixtastic workspace plugin — manife
 
 **Files:**
 - Create: `scripts/plugin.sh`
-- Modify: `flake.nix` — `toolEnv` gets `NIXTASTIC_PLUGIN_SRC`; `sync` and `doctor` `text` include `plugin.sh`; `tools-tests` gets `pluginSrc`
-- Modify: `scripts/sync.sh` — replace the `claude-ws` hint block and the skills-missing hint with `plugin_pass`
-- Test: `scripts/tools-tests.sh` — T24, T25
+- Modify: `flake.nix` - `toolEnv` gets `NIXTASTIC_PLUGIN_SRC`; `sync` and `doctor` `text` include `plugin.sh`; `tools-tests` gets `pluginSrc`
+- Modify: `scripts/sync.sh` - replace the `claude-ws` hint block and the skills-missing hint with `plugin_pass`
+- Test: `scripts/tools-tests.sh` - T24, T25
 
 **Interfaces:**
 - Consumes: `NIXTASTIC_REPOS_TSV` (dir, repo, shell), `$root/bin/nixtastic-memory-hook` written by `memory_pass`.
@@ -226,7 +226,7 @@ git commit -m "plugin: source tree for the nixtastic workspace plugin — manife
 Append to `scripts/tools-tests.sh` before `echo "all tests passed"`:
 
 ```bash
-echo "--- T24: plugin render — source copied, bundled skills copied, forwarders generated and prefixed, speckit skipped"
+echo "--- T24: plugin render - source copied, bundled skills copied, forwarders generated and prefixed, speckit skipped"
 # Two repos shipping the same skill name, one unique, one speckit, one symlinked.
 mkskill() { mkdir -p "$1"; printf -- '---\nname: %s\ndescription: %s\n---\nbody\n' "$2" "$3" > "$1/SKILL.md"; }
 mkskill "$root/android/.claude/skills/code-review"  code-review "Review android the repo way"
@@ -354,7 +354,7 @@ plugin_write_forwarder() {
     echo 'started inside it; this forwarder makes it visible from anywhere in the workspace.'
     echo
     printf '1. Run `just brief %s` from the workspace root (or `nix run .#brief -- %s`)\n' "$3" "$3"
-    echo '   and read what it prints — branch, drift, and the docs that repo expects read.'
+    echo '   and read what it prints - branch, drift, and the docs that repo expects read.'
     printf '2. Read and follow, exactly as written:\n\n       %s/SKILL.md\n\n' "$target"
     printf '   Its base directory is `%s`; its `references/` and\n' "$target"
     echo '   scripts resolve relative to that directory, not to this plugin.'
@@ -415,7 +415,7 @@ plugin_retire_root_skills() {
     [ -e "$e" ] || continue
     case " $NIXTASTIC_BUNDLED_SKILLS " in
       *" ${e##*/} "*) ;;
-      *) echo "  WARN      .claude/skills has ${e##*/}, not a bundled copy — left alone; move it into plugin/skills/ or delete it"; return 0 ;;
+      *) echo "  WARN      .claude/skills has ${e##*/}, not a bundled copy - left alone; move it into plugin/skills/ or delete it"; return 0 ;;
     esac
   done
   rm -rf "$d"
@@ -470,7 +470,7 @@ Expected: T24 and T25 pass; earlier tests still pass. Check the whole run printe
 ```bash
 just check
 git add scripts/plugin.sh scripts/sync.sh scripts/tools-tests.sh flake.nix
-git commit -m "sync: render the nixtastic plugin — forwarders per repo skill, bundled skills, memory hook, content-hash version"
+git commit -m "sync: render the nixtastic plugin - forwarders per repo skill, bundled skills, memory hook, content-hash version"
 ```
 
 ---
@@ -478,9 +478,9 @@ git commit -m "sync: render the nixtastic plugin — forwarders per repo skill, 
 ### Task 3: Register, migrate hooks, link the queue
 
 **Files:**
-- Modify: `scripts/plugin.sh` — add `plugin_installed_version`, `plugin_register`, `plugin_migrate_hooks`, `plugin_link_queue`; extend `plugin_pass`
-- Modify: `scripts/sync.sh` — `--install-hooks` prints a pointer
-- Test: `scripts/tools-tests.sh` — T26, T27
+- Modify: `scripts/plugin.sh` - add `plugin_installed_version`, `plugin_register`, `plugin_migrate_hooks`, `plugin_link_queue`; extend `plugin_pass`
+- Modify: `scripts/sync.sh` - `--install-hooks` prints a pointer
+- Test: `scripts/tools-tests.sh` - T26, T27
 
 **Interfaces:**
 - Consumes: `plugin_render_dir`, `plugin_name`, `claude_projects_dir` (memory.sh; `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects`).
@@ -491,7 +491,7 @@ git commit -m "sync: render the nixtastic plugin — forwarders per repo skill, 
 Append before `echo "all tests passed"`:
 
 ```bash
-echo "--- T26: hook migration — only after the plugin is installed; ours removed, others kept, backup once"
+echo "--- T26: hook migration - only after the plugin is installed; ours removed, others kept, backup once"
 cfg="$HOME/.claude/settings.json"
 cat > "$cfg" <<EOF
 { "model": "opus", "hooks": {
@@ -531,7 +531,7 @@ run "$sync" --install-hooks
 expect 'hooks ship in the nixtastic plugin'
 [ "$(jq '.hooks.SessionStart | length' "$cfg")" = 1 ] || { echo "T26: --install-hooks wrote entries"; exit 1; }
 
-echo "--- T27: queue symlink — created, idempotent, a real file is backed up; register reports version drift"
+echo "--- T27: queue symlink - created, idempotent, a real file is backed up; register reports version drift"
 q="$HOME/.claude/bin/gradle-queue"
 [ -L "$q" ] || { echo "T27: no symlink"; exit 1; }
 [ "$(readlink "$q")" = "$root/.cache/agent-marketplace/nixtastic/bin/gradle-queue" ] || { echo "T27: wrong target $(readlink "$q")"; exit 1; }
@@ -631,7 +631,7 @@ plugin_pass() {
   reg=$(plugin_register "$root" "$version")
   case "$reg" in
     current) printf '  plugin    register  current (%s)\n' "$version" ;;
-    skipped*) printf '  plugin    register  skipped — claude not on PATH; run:  %s\n' "${reg#*$'\t'}" ;;
+    skipped*) printf '  plugin    register  skipped - claude not on PATH; run:  %s\n' "${reg#*$'\t'}" ;;
     failed*)  printf '  WARN      plugin register failed; run by hand:  %s\n' "${reg#*$'\t'}" ;;
     *) printf '  plugin    register  %s\n' "$reg"; restart=true ;;
   esac
@@ -653,7 +653,7 @@ In `sync.sh`'s `memory_pass`, replace the `if [ "$hooks" = true ]; then ... fi` 
 
 ```bash
   if [ "$hooks" = true ]; then
-    echo '            hooks ship in the nixtastic plugin now — nothing to install; sync registers the plugin'
+    echo '            hooks ship in the nixtastic plugin now - nothing to install; sync registers the plugin'
   fi
 ```
 
@@ -662,7 +662,7 @@ Update the `--install-hooks` line in the header comment of `sync.sh` to: `#   --
 - [ ] **Step 4: Run tests**
 
 Run: `nix build .#checks.x86_64-linux.tools-tests --no-link 2>&1 | tail -5`
-Expected: T21 still passes (it tests the hook script itself, and `--install-hooks` is only asserted in T26 now — **edit T21**: remove the lines from `run "$sync" --install-hooks` through `[ "$(jq '.hooks.SessionStart | length' "$cfg")" = 2 ] || { echo "T21: second install duplicated the entry"; exit 1; }` and replace with `run "$sync"` plus `[ -x "$root/bin/nixtastic-memory-hook" ] || { echo "T21: hook script missing"; exit 1; }`). T22's `expect 'ok +memory hooks'` will change in Task 4; leave it for now and expect T22 to fail on that line only if doctor still checks user-scope hooks — it does, and the fixture cfg now lacks them. Fix by moving T26's migration to run *after* T22, or simplest: in T26 write the cfg fixture fresh (already does), and in T22 keep the assertion — T22 runs before T26 so it still sees the T21 state. Confirm order: T21, T22, T23, T24…T27. Good; no change needed.
+Expected: T21 still passes (it tests the hook script itself, and `--install-hooks` is only asserted in T26 now - **edit T21**: remove the lines from `run "$sync" --install-hooks` through `[ "$(jq '.hooks.SessionStart | length' "$cfg")" = 2 ] || { echo "T21: second install duplicated the entry"; exit 1; }` and replace with `run "$sync"` plus `[ -x "$root/bin/nixtastic-memory-hook" ] || { echo "T21: hook script missing"; exit 1; }`). T22's `expect 'ok +memory hooks'` will change in Task 4; leave it for now and expect T22 to fail on that line only if doctor still checks user-scope hooks - it does, and the fixture cfg now lacks them. Fix by moving T26's migration to run *after* T22, or simplest: in T26 write the cfg fixture fresh (already does), and in T22 keep the assertion - T22 runs before T26 so it still sees the T21 state. Confirm order: T21, T22, T23, T24…T27. Good; no change needed.
 
 - [ ] **Step 5: Gate and commit**
 
@@ -677,8 +677,8 @@ git commit -m "sync: register the plugin, migrate user-scope hooks into it, link
 ### Task 4: doctor lines
 
 **Files:**
-- Modify: `scripts/doctor.sh` — replace the `agent skills` check; add five plugin lines and the extras line; retire the `memory hooks` user-scope check in favour of the plugin hook check
-- Test: `scripts/tools-tests.sh` — T28; adjust T22's `expect 'ok +memory hooks'`
+- Modify: `scripts/doctor.sh` - replace the `agent skills` check; add five plugin lines and the extras line; retire the `memory hooks` user-scope check in favour of the plugin hook check
+- Test: `scripts/tools-tests.sh` - T28; adjust T22's `expect 'ok +memory hooks'`
 
 **Interfaces:**
 - Consumes: `plugin_input_hash`, `plugin_render_dir`, `plugin_name`, `plugin_installed_version`, `plugin_marketplace_known`, `plugin_config_dir`, `NIXTASTIC_PLUGIN_HOOK_NAMES`.
@@ -688,7 +688,7 @@ git commit -m "sync: register the plugin, migrate user-scope hooks into it, link
 Append before `echo "all tests passed"`:
 
 ```bash
-echo "--- T28: doctor — plugin render, install, hooks, queue, github mcp, extras"
+echo "--- T28: doctor - plugin render, install, hooks, queue, github mcp, extras"
 run_lax "$doctor"
 expect 'ok +plugin render'
 expect 'WARN +plugin install .*0\.1\.0'
@@ -738,7 +738,7 @@ if [ ! -f "$pj" ]; then
   warn "plugin render" "not rendered"
   fix "nix run .#sync"
 elif [ "$(cat "$rd/.hash" 2>/dev/null)" != "$(plugin_input_hash "$root")" ]; then
-  warn "plugin render" "stale — plugin/ or a repo skill changed since"
+  warn "plugin render" "stale - plugin/ or a repo skill changed since"
   fix "nix run .#sync"
 else
   ok "plugin render" "$rd  ($(find "$rd/$pname/skills" -mindepth 1 -maxdepth 1 -type d | wc -l) skills)"
@@ -771,7 +771,7 @@ if [ -f "$cfg" ]; then
   done
 fi
 if [ -n "$dup" ]; then
-  warn "plugin hooks" "also in user-scope settings.json — fire twice:$dup"
+  warn "plugin hooks" "also in user-scope settings.json - fire twice:$dup"
   fix "nix run .#sync   (migrates them once the plugin is installed)"
 else
   ok "plugin hooks" "plugin only, no user-scope duplicate"
@@ -784,7 +784,7 @@ else
   fix "nix run .#sync"
 fi
 if jq -e '.mcpServers.github' "$HOME/.claude.json" >/dev/null 2>&1; then
-  warn "github mcp" "registered in user scope too — the plugin ships it; tools appear twice"
+  warn "github mcp" "registered in user scope too - the plugin ships it; tools appear twice"
   fix "claude mcp remove -s user github"
 else
   ok "github mcp" "plugin only"
@@ -817,7 +817,7 @@ git commit -m "doctor: five plugin lines and an extras count replace the root sk
 **Files:**
 - Create: `plugin/skills/meshtastic-cross-repo/SKILL.md`
 - Create: `plugin/skills/meshtastic-cross-repo/references/umbrella-template.md`
-- Test: `scripts/tools-tests.sh` — extend T24 with two assertions
+- Test: `scripts/tools-tests.sh` - extend T24 with two assertions
 
 **Interfaces:**
 - Consumes: `just brief`, `nix run .#worktree`, `notes/cross-repo-contracts.md`, the repo table in `CLAUDE.md`.
@@ -833,14 +833,14 @@ grep -q '^name: meshtastic-cross-repo$' "$p/skills/meshtastic-cross-repo/SKILL.m
 [ -f "$p/skills/meshtastic-cross-repo/references/umbrella-template.md" ] || { echo "T24: umbrella template missing"; exit 1; }
 ```
 
-Run: `nix build .#checks.x86_64-linux.tools-tests --no-link 2>&1 | tail -3` — expected FAIL `cross-repo skill missing`.
+Run: `nix build .#checks.x86_64-linux.tools-tests --no-link 2>&1 | tail -3` - expected FAIL `cross-repo skill missing`.
 
 - [ ] **Step 2: Write SKILL.md**
 
 ```markdown
 ---
 name: meshtastic-cross-repo
-description: Drive a change that touches more than one Meshtastic repo in this workspace — a .proto or wire-contract change, a shared api.meshtastic.org resource, a firmware↔app handshake change, a version bump that must land in several repos, or any feature spanning firmware, protobufs, the SDK, android, apple, web-flasher, python or docs. Maps the request onto the coupling graph, briefs each repo, writes one umbrella note, gates on plan mode, then executes in release order with one worktree per repo and each repo's own conventions. Use from the workspace root; not for single-repo work.
+description: Drive a change that touches more than one Meshtastic repo in this workspace - a .proto or wire-contract change, a shared api.meshtastic.org resource, a firmware↔app handshake change, a version bump that must land in several repos, or any feature spanning firmware, protobufs, the SDK, android, apple, web-flasher, python or docs. Maps the request onto the coupling graph, briefs each repo, writes one umbrella note, gates on plan mode, then executes in release order with one worktree per repo and each repo's own conventions. Use from the workspace root; not for single-repo work.
 license: GPL-3.0-only
 ---
 
@@ -848,16 +848,16 @@ license: GPL-3.0-only
 
 You are at the root of a workspace of ~19 independent org repos. Nothing
 off the shelf knows they are coupled. This skill does. It **orchestrates**;
-it does not teach design, TDD or debugging — plan mode is the design gate,
+it does not teach design, TDD or debugging - plan mode is the design gate,
 each repo's own docs are the rules inside it.
 
 Read first, in this order, and keep them open:
 
-1. `CLAUDE.md` at the workspace root — the repo table (role, shell, default
+1. `CLAUDE.md` at the workspace root - the repo table (role, shell, default
    branch, commit style, agent docs) and the **Cross-repo coupling** section.
-2. `notes/cross-repo-contracts.md` — phone↔device handshake, proto change
+2. `notes/cross-repo-contracts.md` - phone↔device handshake, proto change
    rules, MQTT topics, **release order**.
-3. For each candidate repo: `just brief <repo>` (from the root) — live
+3. For each candidate repo: `just brief <repo>` (from the root) - live
    branch, drift, and the docs that repo expects read. Read those docs.
 4. If `<repo>/.specify/memory/constitution.md` exists, read it: it is that
    repo's governance and outranks other agent docs there. Do **not** create
@@ -896,7 +896,7 @@ Write `notes/<yyyy-mm-dd>-<feature-slug>.md` from
 cross-repo work and must be updated as things land. Commit it to the
 workspace repo (sentence-style message, no attribution footer).
 
-### 4. Design gate — plan mode
+### 4. Design gate - plan mode
 
 Enter plan mode. The plan lists, per repo in release order: files, the
 change, the contract it implements or consumes, its verification command,
@@ -908,7 +908,7 @@ after writing the umbrella note and the plan.
 
 For each repo: `nix run .#worktree -- <repo> <branch>` from the workspace
 root (never a hand-rolled `git worktree`; never the harness's own worktree
-isolation — see `CLAUDE.md` → Worktrees). Branch names follow that repo's
+isolation - see `CLAUDE.md` → Worktrees). Branch names follow that repo's
 convention (`feat/…`, `fix/…`; Conventional-commit repos use the type as
 prefix). Record each worktree path in the umbrella note.
 
@@ -949,7 +949,7 @@ repo), set status, commit the note. List what is still unproven.
 `plugin/skills/meshtastic-cross-repo/references/umbrella-template.md`:
 
 ```markdown
-# <Feature> — cross-repo umbrella
+# <Feature> - cross-repo umbrella
 
 Status: scoping | planned | in progress | landed | unproven: <what>
 Started: <yyyy-mm-dd>
@@ -973,7 +973,7 @@ rule from notes/cross-repo-contracts.md that each one satisfies.>
 
 ## Release order
 
-1. <producer> — <what must be published before the next step>
+1. <producer> - <what must be published before the next step>
 2. <consumer>
 3. …
 
@@ -989,7 +989,7 @@ Run: `nix build .#checks.x86_64-linux.tools-tests --no-link 2>&1 | tail -3` → 
 ```bash
 just check
 git add plugin/skills scripts/tools-tests.sh
-git commit -m "plugin: meshtastic-cross-repo skill — scope, brief, umbrella note, plan-mode gate, release-order execution"
+git commit -m "plugin: meshtastic-cross-repo skill - scope, brief, umbrella note, plan-mode gate, release-order execution"
 ```
 
 ---
@@ -997,7 +997,7 @@ git commit -m "plugin: meshtastic-cross-repo skill — scope, brief, umbrella no
 ### Task 6: Guard behaviour tests
 
 **Files:**
-- Test: `scripts/tools-tests.sh` — T29 (Gradle guard), T30 (worktree guard)
+- Test: `scripts/tools-tests.sh` - T29 (Gradle guard), T30 (worktree guard)
 
 **Interfaces:**
 - Consumes: `$pluginSrc` (store path, from Task 2's flake change), `bash`, `git`, `jq`.
@@ -1007,7 +1007,7 @@ git commit -m "plugin: meshtastic-cross-repo skill — scope, brief, umbrella no
 Append before `echo "all tests passed"`:
 
 ```bash
-echo "--- T29: gradle guard — raw gradlew denied, queued/bypass/introspection allowed, heredoc mention allowed, --stop denied"
+echo "--- T29: gradle guard - raw gradlew denied, queued/bypass/introspection allowed, heredoc mention allowed, --stop denied"
 gg="$pluginSrc/hooks/gradle-queue-guard.sh"
 decide() { printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(jq -Rn --arg c "$1" '$c')" | bash "$gg" | jq -r '.hookSpecificOutput.permissionDecision // "allow"'; }
 [ "$(decide './gradlew assembleDebug')" = deny ]  || { echo "T29: raw gradlew allowed"; exit 1; }
@@ -1020,7 +1020,7 @@ decide() { printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(jq -Rn -
 [ "$(decide 'ls')" = allow ] || { echo "T29: unrelated command denied"; exit 1; }
 printf '{"tool_name":"Bash","tool_input":{"command":"./gradlew build"}}' | bash "$gg" | jq -r .hookSpecificOutput.permissionDecisionReason | grep -q 'gradle-queue -- build' || { echo "T29: denial does not name the replacement"; exit 1; }
 
-echo "--- T30: worktree guard — cross-tree edit denied, in-tree and outside allowed, main checkout no-op"
+echo "--- T30: worktree guard - cross-tree edit denied, in-tree and outside allowed, main checkout no-op"
 wg="$pluginSrc/hooks/block-main-checkout-edits.sh"
 edit() { printf '{"tool_name":"Edit","cwd":%s,"tool_input":{"file_path":%s}}' "$(jq -Rn --arg c "$1" '$c')" "$(jq -Rn --arg c "$2" '$c')" | bash "$wg" | jq -r '.hookSpecificOutput.permissionDecision // "allow"'; }
 git -C "$root/kzstd" worktree add -q "$root/kzstd/.claude/worktrees/guard" -b guard
@@ -1052,7 +1052,7 @@ git commit -m "tests: decisions of the gradle and worktree guards"
 
 **Files:**
 - Modify (only if the spike fails): `plugin/.mcp.json`
-- Modify: `notes/agent-surface.md` — Evidence → Acceptance runs (desktop)
+- Modify: `notes/agent-surface.md` - Evidence → Acceptance runs (desktop)
 
 - [ ] **Step 1: Sync, install, restart**
 
@@ -1075,7 +1075,7 @@ Expected: the first lists `nixtastic:meshtastic-cross-repo`, `nixtastic:meshtast
 
 - [ ] **Step 3: Hooks and MCP**
 
-In an interactive `claude`, run `/hooks` and confirm the four plugin hooks are listed and no user-scope `nixtastic-memory-hook` remains. Run `/mcp` and confirm `github` connects. If it shows "requires authentication": run `~/.cache/agent-marketplace/nixtastic/bin/github-mcp-headers` by hand (must print the JSON header), then try the fallback — replace `headersHelper` in `plugin/.mcp.json` with `"headers": { "Authorization": "Bearer ${GITHUB_MCP_TOKEN}" }` and add `export GITHUB_MCP_TOKEN="$(gh auth token)"` to the workspace `.envrc`; re-run sync, restart, re-check. Record which form worked in the Evidence section.
+In an interactive `claude`, run `/hooks` and confirm the four plugin hooks are listed and no user-scope `nixtastic-memory-hook` remains. Run `/mcp` and confirm `github` connects. If it shows "requires authentication": run `~/.cache/agent-marketplace/nixtastic/bin/github-mcp-headers` by hand (must print the JSON header), then try the fallback - replace `headersHelper` in `plugin/.mcp.json` with `"headers": { "Authorization": "Bearer ${GITHUB_MCP_TOKEN}" }` and add `export GITHUB_MCP_TOKEN="$(gh auth token)"` to the workspace `.envrc`; re-run sync, restart, re-check. Record which form worked in the Evidence section.
 
 - [ ] **Step 4: Cross-repo dry run**
 
@@ -1083,7 +1083,7 @@ In an interactive `claude`, run `/hooks` and confirm the four plugin hooks are l
 claude -p 'Use the nixtastic:meshtastic-cross-repo skill, --dry-run: add a maintenance-UF2 quirk endpoint to the api and consume it in the clients. Stop after the umbrella note and plan; do not create worktrees or edit repos.'
 ```
 
-Expected: names `api`, `android`, `apple`, `web-flasher`; release order starts with `api`; writes `notes/<date>-maintenance-uf2-quirk.md`. Delete that note afterwards (`git status` must be clean of it) — it is a probe, not work.
+Expected: names `api`, `android`, `apple`, `web-flasher`; release order starts with `api`; writes `notes/<date>-maintenance-uf2-quirk.md`. Delete that note afterwards (`git status` must be clean of it) - it is a probe, not work.
 
 - [ ] **Step 5: Record and commit**
 
@@ -1091,7 +1091,7 @@ Append the outcomes (probe outputs summarised, headersHelper result, doctor outp
 
 ```bash
 git add notes/agent-surface.md plugin/.mcp.json .envrc
-git commit -m "notes(agent-surface): desktop acceptance — plugin live, probes, headersHelper result"
+git commit -m "notes(agent-surface): desktop acceptance - plugin live, probes, headersHelper result"
 ```
 
 ---
@@ -1100,10 +1100,10 @@ git commit -m "notes(agent-surface): desktop acceptance — plugin live, probes,
 
 **Files:**
 - Modify: `CLAUDE.md` lines 115–119 (Spec Kit paragraph) and 184–194 (skills bullet)
-- Modify: `AGENTS.md` — new `## Agent surface` section before `## Git across repos`
+- Modify: `AGENTS.md` - new `## Agent surface` section before `## Git across repos`
 - Modify: `README.md` lines 70–73 and 104–106
 - Modify: `notes/agent-memory-sync.md` Follow-ups
-- Modify: `notes/agent-surface.md` — the three spec amendments
+- Modify: `notes/agent-surface.md` - the three spec amendments
 
 - [ ] **Step 1: CLAUDE.md**
 
@@ -1119,12 +1119,12 @@ with:
 
 ```
 `android`, `apple`, `meshtastic-sdk` and `meshtastic` carry it. Their
-`.specify/memory/constitution.md` (8–12 KB) **outranks** other agent docs —
+`.specify/memory/constitution.md` (8–12 KB) **outranks** other agent docs -
 read it. The specify→plan→tasks lifecycle is not used in practice (measured
 2026-09, `notes/agent-surface.md`); do not create its files.
 ```
 
-Replace the bullet starting `- **Per-repo *skills* are not aggregated — launch with` (through `need the launcher.`) with:
+Replace the bullet starting `- **Per-repo *skills* are not aggregated - launch with` (through `need the launcher.`) with:
 
 ```
 - **Per-repo *skills* reach every session as forwarders.** A skill directory's
@@ -1153,7 +1153,7 @@ Insert before `## Git across repos`:
 forwarders, the bundled meshtastic-mcp skills and the per-machine memory hook
 into `.cache/agent-marketplace/`, and registers that directory as a local
 marketplace. Everything in the render is derived from this repo and the local
-checkouts, so it never crosses machines — rendering it into `~/.nixtastic-agent`
+checkouts, so it never crosses machines - rendering it into `~/.nixtastic-agent`
 would have two machines pushing different forwarder sets to one tracked path
 and breaking the memory push. Memory is state; the plugin is a build artefact.
 
@@ -1209,7 +1209,7 @@ memory hooks ship in the `nixtastic` plugin `sync` renders and installs; see
 
 - [ ] **Step 4: Follow-ups and spec amendments**
 
-In `notes/agent-memory-sync.md`, replace the `**Agent-surface consolidation.**` bullet body with: `Done — [agent-surface.md](./agent-surface.md).`
+In `notes/agent-memory-sync.md`, replace the `**Agent-surface consolidation.**` bullet body with: `Done - [agent-surface.md](./agent-surface.md).`
 
 In `notes/agent-surface.md`: in Layout, change the three `moved from .claude/skills/` lines to `copied at render from meshtastic-mcp/src/meshtastic_mcp/skills/ (the source the root copies were installed from)`; add under Layout: "Forwarders skip `speckit-*` (decision 3: nine descriptions per session for an unused lifecycle)." In Hooks and MCP, change the memory hook row's origin to `copied by sync from bin/nixtastic-memory-hook, which memory_pass writes`.
 
@@ -1228,7 +1228,7 @@ git push
 ### Task 9: Laptop rollout
 
 **Files:**
-- Modify: `notes/agent-surface.md` — Evidence → Acceptance runs (laptop)
+- Modify: `notes/agent-surface.md` - Evidence → Acceptance runs (laptop)
 
 - [ ] **Step 1: Pull and sync over ssh**
 

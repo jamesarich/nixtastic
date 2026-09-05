@@ -1,6 +1,6 @@
 ---
 name: meshtastic-cross-repo
-description: Drive a change that touches more than one Meshtastic repo in this workspace — a .proto or wire-contract change, a shared api.meshtastic.org resource, a firmware↔app handshake change, a version bump that must land in several repos, or any feature spanning firmware, protobufs, the SDK, android, apple, web-flasher, python or docs. Maps the request onto the coupling graph, briefs each repo, writes one umbrella note, gates on plan mode, then executes in release order with one worktree per repo and each repo's own conventions. Use from the workspace root; not for single-repo work.
+description: Drive a change that touches more than one Meshtastic repo in this workspace - a .proto or wire-contract change, a shared api.meshtastic.org resource, a firmware↔app handshake change, a version bump that must land in several repos, or any feature spanning firmware, protobufs, the SDK, android, apple, web-flasher, python or docs. Maps the request onto the coupling graph, briefs each repo, writes one umbrella note, gates on plan mode, then executes in release order with one worktree per repo and each repo's own conventions. Use from the workspace root; not for single-repo work.
 license: GPL-3.0-only
 ---
 
@@ -8,16 +8,16 @@ license: GPL-3.0-only
 
 You are at the root of a workspace of ~19 independent org repos. Nothing
 off the shelf knows they are coupled. This skill does. It **orchestrates**;
-it does not teach design, TDD or debugging — plan mode is the design gate,
+it does not teach design, TDD or debugging - plan mode is the design gate,
 each repo's own docs are the rules inside it.
 
 Read first, in this order, and keep them open:
 
-1. `CLAUDE.md` at the workspace root — the repo table (role, shell, default
+1. `CLAUDE.md` at the workspace root - the repo table (role, shell, default
    branch, commit style, agent docs) and the **Cross-repo coupling** section.
-2. `notes/cross-repo-contracts.md` — phone↔device handshake, proto change
+2. `notes/cross-repo-contracts.md` - phone↔device handshake, proto change
    rules, MQTT topics, **release order**.
-3. For each candidate repo: `just brief <repo>` (from the root) — live
+3. For each candidate repo: `just brief <repo>` (from the root) - live
    branch, drift, and the docs that repo expects read. Read those docs.
 4. If `<repo>/.specify/memory/constitution.md` exists, read it: it is that
    repo's governance and outranks other agent docs there. Do **not** create
@@ -61,7 +61,7 @@ Write `notes/<yyyy-mm-dd>-<feature-slug>.md` from
 cross-repo work and must be updated as things land. Commit it to the
 workspace repo (sentence-style message, no attribution footer).
 
-### 4. Design gate — plan mode
+### 4. Design gate - plan mode
 
 Enter plan mode. The plan lists, per repo in release order: files, the
 change, the contract it implements or consumes, its verification command,
@@ -73,7 +73,7 @@ after writing the umbrella note and the plan.
 
 For each repo: `nix run .#worktree -- <repo> <branch>` from the workspace
 root (never a hand-rolled `git worktree`; never the harness's own worktree
-isolation — see `CLAUDE.md` → Worktrees). Branch names follow that repo's
+isolation - see `CLAUDE.md` → Worktrees). Branch names follow that repo's
 convention (`feat/…`, `fix/…`; Conventional-commit repos use the type as
 prefix). Record each worktree path in the umbrella note.
 

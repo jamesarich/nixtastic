@@ -1,7 +1,7 @@
 # Agent surface consolidation
 
 One workspace plugin, installed on both machines, carrying the skills, hooks
-and one MCP server that every Meshtastic session here actually uses — plus the
+and one MCP server that every Meshtastic session here actually uses - plus the
 one thing nothing off the shelf provides: a process layer that knows this is a
 directory of nineteen coupled repos, not one.
 
@@ -13,19 +13,19 @@ three spikes the design rests on are in [Evidence](#evidence).
 ## The problem
 
 The two machines share exactly one plugin (`i-have-adhd`). Everything else on
-the agent surface — process skills, per-repo skills, hooks that enforce
-workspace rules, MCP registrations — exists on one machine only, was installed
+the agent surface - process skills, per-repo skills, hooks that enforce
+workspace rules, MCP registrations - exists on one machine only, was installed
 by hand, and is invisible to `doctor`. Three consequences:
 
 **The per-repo skills are unreachable from where sessions start.**
 `android/.claude/skills` (5) and `apple/.claude/skills` (10) load only when the
 session's cwd is inside that repo. On the desktop that happened in 4 of 84
 workspace sessions; the rest started at the root, where those skills do not
-exist. Nested-skill discovery does not help — it stops at the git-repo boundary
+exist. Nested-skill discovery does not help - it stops at the git-repo boundary
 (spike 2 below), and the org repos are separate repos.
 
 **Workspace rules live in one machine's `~/.claude`.** The laptop has two
-PreToolUse guards — one denies edits that land in the main checkout from a
+PreToolUse guards - one denies edits that land in the main checkout from a
 worktree session, one routes every Gradle build through a machine-wide queue.
 Both encode rules that the desktop has been corrected on, and the desktop has
 neither. They are untracked, untested and unknown to `sync`.
@@ -33,8 +33,8 @@ neither. They are untracked, untested and unknown to `sync`.
 **No process layer knows about more than one repo.** `superpowers` (desktop
 only, 18 calls this month) assumes one repo. Anthropic's own `feature-dev`
 assumes one repo. Spec Kit is per repo by construction. A change that touches
-`protobufs`, `firmware`, the SDK and both apps — the shape of every wire-level
-change in this workspace — has no owner anywhere, and the release-order rules
+`protobufs`, `firmware`, the SDK and both apps - the shape of every wire-level
+change in this workspace - has no owner anywhere, and the release-order rules
 in [cross-repo-contracts.md](./cross-repo-contracts.md) are applied from memory
 or not at all.
 
@@ -66,8 +66,8 @@ Two facts from the same data shaped the design more than any count:
   at the workspace root effectively does not exist.
 - **Subagent aggregation already works.** The `.claude/agents/<repo>--<agent>.md`
   copies that `sync` lays at the root are the most-used agent surface on both
-  machines. Skills cannot follow that pattern by copying — a skill directory's
-  name is its identity and `code-review` exists in three places — so the
+  machines. Skills cannot follow that pattern by copying - a skill directory's
+  name is its identity and `code-review` exists in three places - so the
   question was how skills get the same reach.
 
 ## Decisions
@@ -80,7 +80,7 @@ Made in the brainstorm, in order, with the alternative each one rejected:
 2. **The process layer is bespoke, built on Anthropic-native primitives**
    (plan mode, subagents, `/code-review`, `.#worktree`). Not `superpowers` plus
    an adapter, not `feature-dev`, not `craft`: all three are single-repo, and
-   the workspace's gap is the cross-repo shape. Nothing generic is rebuilt —
+   the workspace's gap is the cross-repo shape. Nothing generic is rebuilt -
    the layer orchestrates, it does not teach brainstorming or TDD.
 3. **Spec Kit: read the constitution, ignore the lifecycle.** Measured over
    90 days: 18 of 1119 android commits touched `specs/`, 57 of 1055 apple
@@ -140,9 +140,9 @@ agent naming is undocumented, and bare-name dispatch of `gradle-runner` from
 A forwarder is one paragraph. Its frontmatter `name` is `<repo>-<skill>`; its
 `description` is `[<repo>] ` followed by the target's own description, so the
 model selects it on the same words it would have selected the original. Its
-body names the absolute target directory — the harness announces a skill's
+body names the absolute target directory - the harness announces a skill's
 base directory when it loads normally, and a forwarder loses that, so the
-target's `references/` and scripts would otherwise resolve wrong — and says to
+target's `references/` and scripts would otherwise resolve wrong - and says to
 run `just brief <repo>` first, then read and follow the target `SKILL.md`.
 
 Forwarders skip `speckit-*` (decision 3: nine descriptions per session for an
@@ -164,7 +164,7 @@ already knows.
 **Eight steps:**
 
 1. **Scope.** From the request, list the repos touched and why, then add the
-   ones the coupling graph implies — a proto edit implies the two submodule
+   ones the coupling graph implies - a proto edit implies the two submodule
    bumps and an `android` version bump. Confirm the list.
 2. **Brief.** `just brief` per repo. Stop and say so if a checkout is dirty
    or drifted; another session may own it.
@@ -188,7 +188,7 @@ already knows.
 replace plan mode. A `--dry-run` form stops after step 4.
 
 **Acceptance test, from a real feature.** Given "add a maintenance-UF2 quirk
-endpoint and consume it" — the bootloader-quirks work `CLAUDE.md` describes —
+endpoint and consume it" - the bootloader-quirks work `CLAUDE.md` describes -
 the dry run must name `api`, `android`, `apple` and `web-flasher`, put `api`
 first in the release order, and write the umbrella note. That run, not a
 description of it, is the pass criterion.
@@ -367,7 +367,7 @@ Manual acceptance on both machines, recorded under [Evidence](#evidence):
   inside, and an unlinked memory slug, so those sessions start blind and
   their memory hooks do nothing. Decide whether `sync` should link those
   slugs anyway, or whether the app can be steered to `.#worktree`. **Done
-  2026-09-05:** both — the orient hook tells such a session what it is, and
+  2026-09-05:** both - the orient hook tells such a session what it is, and
   `sync` links those slugs; the memory hook links a brand-new worktree at its
   first session. Details in `notes/agent-memory-sync.md` → Hooks.
 
@@ -391,7 +391,7 @@ slash commands came from `~/.claude/history.jsonl`. The laptop was measured
 over ssh on the LAN (`james@192.168.1.138`); there is no ssh config entry for
 it.
 
-**Spike 1 — plugin reload semantics (desktop, 2026-09-04).** A throwaway
+**Spike 1 - plugin reload semantics (desktop, 2026-09-04).** A throwaway
 marketplace with one plugin and one canary skill was added from a scratch
 directory and installed. The install copied the plugin to
 `~/.claude/plugins/cache/<mkt>/<plugin>/0.0.1/`. The canary's description was
@@ -402,10 +402,10 @@ after a version bump it copied a `0.0.2/` and the new text showed there too.
 Conclusion: for a directory-source marketplace, source edits are live at the
 next session. The official docs say plugins are copied to the cache and are
 silent on when directory-source edits show, so the design bumps the version
-and runs `update` when the content hash changes — the documented path — and
+and runs `update` when the content hash changes - the documented path - and
 treats live-read as a bonus, not a dependency. Uninstalled and removed after.
 
-**Spike 2 — nested skill discovery across a repo boundary (desktop).** From
+**Spike 2 - nested skill discovery across a repo boundary (desktop).** From
 the workspace root, `claude -p` was asked to list skills containing
 `baseline`, `proto-bump` or `crashlytics` (all in `android/.claude/skills`):
 NONE, both before and after reading `android/AGENTS.md`. Invoking
@@ -413,7 +413,7 @@ NONE, both before and after reading `android/AGENTS.md`. Invoking
 docs' on-demand nested discovery (`packages/api:skill-name`) does not cross a
 git-repo boundary. Forwarders stay.
 
-**Spike 3 — official documentation review (code.claude.com/docs, 2026-09-04).**
+**Spike 3 - official documentation review (code.claude.com/docs, 2026-09-04).**
 Confirmed: plugin components and manifest fields, `version` optional,
 `${CLAUDE_PLUGIN_ROOT}` in hooks and `.mcp.json`, `${VAR}` expansion in MCP
 `headers`, `headersHelper` for dynamic headers, plugin `bin/` on the Bash PATH
@@ -445,7 +445,7 @@ templates only.
 forwarder(s)`, `retired .claude/skills`, `register added+installed`, `hooks
 migrated 2 user-scope entr(ies)`, `queue linked`. `doctor`: all five plugin
 lines ok, `agent extras 4 other plugin(s), 0 user skill(s)`, all clear. A fresh
-`claude -p` listed all ten `nixtastic:` skills (six forwarders — five android,
+`claude -p` listed all ten `nixtastic:` skills (six forwarders - five android,
 one apple; the three bundled meshtastic-mcp skills; `meshtastic-cross-repo`).
 Asked, without file access, which skill fits "bump the protobufs pin everywhere
 and land it in firmware, python, android and apple", it answered
@@ -465,7 +465,7 @@ each, put `api` first in the release order with `apple` and `web-flasher`
 independent after their pending apiv2 PRs (#2393, #429), and wrote and committed
 `notes/2026-09-04-maintenance-uf2-quirk-endpoint.md` (3b7e8a6) without creating
 a worktree or touching a repo. It also found that the endpoints already exist
-and android already consumes them, so the real work is the two other clients —
+and android already consumes them, so the real work is the two other clients -
 which is why that note was kept rather than deleted as a probe.
 
 *MacBook Air, 2026-09-04, over ssh from the desktop (login shell,
@@ -501,4 +501,4 @@ Desktop app (160 of the laptop's 244) do load plugin hooks: with the store's
 an `sdk-cli` one in an unlinked temp cwd, which the hook's slug gate ignores.
 A first attempt was inconclusive because the Desktop app had opened the
 session inside `~/nixtastic/.claude/worktrees/android-unit-localization-626f77`,
-a worktree of the *workspace* repo whose slug is unlinked — see Follow-ups.
+a worktree of the *workspace* repo whose slug is unlinked - see Follow-ups.

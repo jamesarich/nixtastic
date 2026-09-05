@@ -1,4 +1,4 @@
-# <Feature> — cross-repo umbrella
+# <Feature> - cross-repo umbrella
 
 Status: scoping | planned | in progress | landed | unproven: <what>
 Started: <yyyy-mm-dd>
@@ -22,7 +22,7 @@ rule from notes/cross-repo-contracts.md that each one satisfies.>
 
 ## Release order
 
-1. <producer> — <what must be published before the next step>
+1. <producer> - <what must be published before the next step>
 2. <consumer>
 3. …
 

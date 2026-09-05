@@ -1,7 +1,7 @@
-# meshtastic-python — meshtastic/python
+# meshtastic-python - meshtastic/python
 
-Workspace-local note. This repo publishes **no agent docs of any kind** — no
-`AGENTS.md`, no `CLAUDE.md`, no Spec Kit, no `CONTRIBUTING.md` — so
+Workspace-local note. This repo publishes **no agent docs of any kind** - no
+`AGENTS.md`, no `CLAUDE.md`, no Spec Kit, no `CONTRIBUTING.md` - so
 orientation has to come from the code.
 
 - **Role:** the `meshtastic` CLI and Python API on PyPI. `labeltastic` and
@@ -9,7 +9,7 @@ orientation has to come from the code.
   every Python-side device test in this workspace.
 - **Default branch:** `master`
 - **Shell:** `.#python`
-- **Checked out as `meshtastic-python`, not `python`** — the upstream repo is
+- **Checked out as `meshtastic-python`, not `python`** - the upstream repo is
   `meshtastic/python`, but a `python/` directory sitting next to a `.#python`
   shell reads as the same thing and is not. Renaming on checkout is how
   `android` and `apple` are handled too.
@@ -17,7 +17,7 @@ orientation has to come from the code.
 ## The one that catches people: Poetry, not uv
 
 The `.#python` shell serves three repos and ships **both** managers. This one
-is Poetry — `poetry.lock`, `[tool.poetry]` tables, `poetry-core` build
+is Poetry - `poetry.lock`, `[tool.poetry]` tables, `poetry-core` build
 backend. `uv sync` cannot read a `poetry.lock`.
 
 ```bash
@@ -43,16 +43,16 @@ even when everything else is cached.
   `firmware` has. `nix run .#sync` clones `--recurse-submodules` and re-syncs
   pointers after a fast-forward; a submodule left uninitialised fails later as
   missing proto sources rather than as a clone error. Note the `.gitmodules`
-  URL is `http://`, not `https://` — upstream's, not ours to change here.
+  URL is `http://`, not `https://` - upstream's, not ours to change here.
 - **Commit style is sentence-style and merged via PR** ("Skip node DB fetch
   during `--ota-update`", "Improve CI job to fail faster"). Not Conventional
-  Commits — match recent history on the branch.
+  Commits - match recent history on the branch.
 - **Tests are marker-gated**, and most markers want hardware:
 
   | Marker | Needs |
   | --- | --- |
-  | `unit` | nothing — `make test` |
-  | `smokevirt` | the virtual/simulated radio — `make virt` |
+  | `unit` | nothing - `make test` |
+  | `smokevirt` | the virtual/simulated radio - `make virt` |
   | `smoke1`, `smokemesh` | a real device, factory-reset and replugged |
 
   `make -j3 --output-sync=target ci` is the full gate CI runs (pylint, mypy

@@ -2,15 +2,15 @@
 
 Canonical detail for this workspace. Start elsewhere:
 
-- [`CLAUDE.md`](./CLAUDE.md) — the router: repo index, protocol, coupling
-- [`README.md`](./README.md) — daily workflow and commands
+- [`CLAUDE.md`](./CLAUDE.md) - the router: repo index, protocol, coupling
+- [`README.md`](./README.md) - daily workflow and commands
 
 This file is the **why**. Every constraint below was found by a failing build,
 not reasoned about in advance. Do not "simplify" them away.
 
 One rule keeps it from going stale: prose here records **decisions and
-reasons**, which age well. Live state — branches, drift, doc inventories,
-wiring — belongs to the tools (`brief`, `sync`, `doctor`), which cannot go
+reasons**, which age well. Live state - branches, drift, doc inventories,
+wiring - belongs to the tools (`brief`, `sync`, `doctor`), which cannot go
 stale. If a fact can be asked live, ask the tool; don't restate it here.
 
 This repo tracks **only** the workspace definition. The Meshtastic repos inside
@@ -24,17 +24,17 @@ it are independent git repos and must never be committed here.
 
 JDK pinning and `GRADLE_USER_HOME` only engage when it is; `direnv` sets it.
 Without it Gradle auto-provisions its own JDKs into `~/.gradle/jdks` and the
-pinning is silently inert — no error, just unpinned builds.
+pinning is silently inert - no error, just unpinned builds.
 
 ### Six JDKs, three separate mechanisms
 
 Gradle resolves JDKs three different ways and **all three must be satisfied**:
 
-1. **Compile toolchains** — `jvmToolchain(...)` in build scripts.
-2. **Daemon JVM criteria** — per-repo `gradle/gradle-daemon-jvm.properties`.
+1. **Compile toolchains** - `jvmToolchain(...)` in build scripts.
+2. **Daemon JVM criteria** - per-repo `gradle/gradle-daemon-jvm.properties`.
    Stricter than a version: `meshtastic-sdk` requires vendor **JETBRAINS** 21,
    `android` requires **25**. Without a match the daemon will not start at all.
-3. **Per-module vendor toolchains** — `android`'s `:desktopApp` requires
+3. **Per-module vendor toolchains** - `android`'s `:desktopApp` requires
    JetBrains **25** (`desktopApp/build.gradle.kts:129`), even though its daemon
    runs happily on plain 25.
 
@@ -61,25 +61,25 @@ Every repo pins its own via `./gradlew` (9.5.1 / 9.6.1). Nix supplies JDKs only.
 ### Compose Desktop tests need `libGL` on the loader path
 
 Skiko dlopens `libGL.so.1` at load time even for CPU raster rendering, and the
-Nix JVM's glibc never reads the host's ld.so cache — so the host's mesa is
+Nix JVM's glibc never reads the host's ld.so cache - so the host's mesa is
 invisible and every Compose UI test in a `jvmTest` run dies with
 `LibraryLoadException` (26 at once in Meshtastic-Android's
 `:feature:settings`), the real cause buried in the last `Caused by:` line. The
-JVM shells therefore put `libglvnd` on `LD_LIBRARY_PATH` on Linux — verified
+JVM shells therefore put `libglvnd` on `LD_LIBRARY_PATH` on Linux - verified
 sufficient for headless raster tests. Same failure class as the manylinux
 wheels in `.#python`.
 
 ### The desktop app inherits the Gradle daemon's environment, not yours
 
 `./gradlew :desktopApp:hotRun` forks the app from the **Gradle daemon**, so the
-app sees the daemon's environment — and Gradle reuses any *compatible* daemon,
+app sees the daemon's environment - and Gradle reuses any *compatible* daemon,
 where compatibility covers JVM args and JDK but never environment variables. A
 single daemon started from a non-graphical shell (an agent tool call, CI, a
 plain `ssh`) therefore poisons the pool: every later `hotRun`, including one
 launched from a desktop terminal that plainly has a display, dies with
 `java.awt.HeadlessException: No X11 DISPLAY variable was set`. The error blames
 X11 and the terminal, never the daemon, which is what makes it expensive.
-`-Djava.awt.headless=true` in `android/gradle.properties` is a red herring — it
+`-Djava.awt.headless=true` in `android/gradle.properties` is a red herring - it
 applies to the daemon JVM only.
 
 Check which daemon would serve you before believing anything else:
@@ -92,11 +92,11 @@ Check which daemon would serve you before believing anything else:
 The bracket in `Gradle[D]aemon` is load-bearing: a plain `pgrep -f GradleDaemon`
 also matches the shell running it, so it reports a phantom `NONE` daemon and you
 go hunting a daemon that is really your own command line. (`pkill -f` has the
-same trap and kills that shell — it exits 144 with no output.)
+same trap and kills that shell - it exits 144 with no output.)
 
 Run with `--no-daemon` and the display exported, which sidesteps the pool. AWT
 reaches a Wayland session through XWayland, so `DISPLAY` and `XAUTHORITY` are
-what matter — `WAYLAND_DISPLAY` alone does nothing:
+what matter - `WAYLAND_DISPLAY` alone does nothing:
 
     export DISPLAY=:0 XAUTHORITY=/run/user/1000/.mutter-Xwaylandauth.*
     direnv exec . ./gradlew --no-daemon :desktopApp:hotRun
@@ -110,8 +110,8 @@ GObject refuses to re-register its types (`cannot register existing type
 
 ### The Nix JDK SIGSEGVs linking Kotlin/Native test binaries
 
-`linkDebugTest{MingwX64,LinuxX64,LinuxArm64}` — so any `./gradlew build` or
-`allTests` in a KMP repo here — kills the Gradle daemon outright:
+`linkDebugTest{MingwX64,LinuxX64,LinuxArm64}` - so any `./gradlew build` or
+`allTests` in a KMP repo here - kills the Gradle daemon outright:
 
     Gradle build daemon disappeared unexpectedly
 
@@ -125,11 +125,11 @@ daemon with it, so the reported failure names no cause at all.
 tasks minutes apart: the shell's default `21.0.12+8-nixos` crashed twice (the
 second time under `--rerun-tasks`) with 21 GB free on a 60 GB machine, while
 Temurin `21.0.10+7-LTS` built all three link tasks in 36 s. Two repos filed this
-separately — kzstd#56 blaming memory pressure, MQTTastic#119 correctly ruling
-memory out — and both are the same bug. CI never sees it: GitHub runners use
+separately - kzstd#56 blaming memory pressure, MQTTastic#119 correctly ruling
+memory out - and both are the same bug. CI never sees it: GitHub runners use
 Temurin.
 
-**Workaround** — point Gradle at the Temurin JDK the toolchain resolver already
+**Workaround** - point Gradle at the Temurin JDK the toolchain resolver already
 downloaded:
 
     ./gradlew -Dorg.gradle.java.home="$HOME/.gradle/jdks/eclipse_adoptium-21-amd64-linux.2" <task>
@@ -137,7 +137,7 @@ downloaded:
 Keep it per-invocation. `org.gradle.java.home` in a repo's `gradle.properties`
 would also work, but that file is committed and would push a developer-machine
 workaround onto CI, which does not have the bug. Note the daemon is selected by
-its JVM, so a crashing daemon is already running until you stop it — pass the
+its JVM, so a crashing daemon is already running until you stop it - pass the
 flag from the first invocation, or run `./gradlew --stop` first.
 
 ### A comma in a backtick test name breaks Kotlin/Native, not the JVM
@@ -145,10 +145,10 @@ flag from the first invocation, or run `./gradlew --stop` first.
 Kotlin/Native rejects `,` inside a backtick-quoted identifier. JVM and Android
 accept it, so a `commonTest` function named ``fun `parses lat, lon`()`` compiles
 and passes locally and on every Android check, then fails the iOS compile in
-CI — the one target most likely to be running last, or on someone else's PR.
+CI - the one target most likely to be running last, or on someone else's PR.
 
 It has bitten this workspace twice in Meshtastic-Android alone (`435173767`,
-then `b3ca2e940` "no comma in a common-test name — illegal in Kotlin/Native",
+then `b3ca2e940` "no comma in a common-test name - illegal in Kotlin/Native",
 with `a821039e0` repairing the fallout). Every KMP repo here shares the
 exposure: `meshtastic-sdk`, `MQTTastic-Client-KMP`, `kzstd`, `TAKPacket-SDK`
 and `android` all publish an Apple target from `commonTest`.
@@ -163,7 +163,7 @@ treat "the iOS job failed but nothing else did" as this until proven otherwise.
 ### The SDK is host-managed on purpose
 
 Not `androidenv`. An `androidenv` SDK is read-only in `/nix/store` while AGP
-wants to write into `$ANDROID_HOME` — the documented `aapt2FromMavenOverride`
+wants to write into `$ANDROID_HOME` - the documented `aapt2FromMavenOverride`
 problem. Versions are declared in
 [`android-sdk-packages.txt`](./android-sdk-packages.txt) and applied with
 `nix run .#bootstrap-sdk`.
@@ -175,7 +175,7 @@ Trade-off, stated plainly: pinned by version, **not** by hash.
 
 ### `android-cli` is not pinned by Nix
 
-Two compounding reasons — never treat its version as reproducible:
+Two compounding reasons - never treat its version as reproducible:
 
 1. The nixpkgs binary is only a **launcher**. It unpacks the real ~84 MB CLI
    into `~/.android/bin/android-cli` and self-updates it there.
@@ -194,7 +194,7 @@ The dev shells therefore do **not** carry `android-cli`. It exists only in
 
 `pkgs.platformio` is a `buildFHSEnv` **bubblewrap** wrapper. Ubuntu sets
 `apparmor_restrict_unprivileged_userns=1`, denying unprivileged user namespaces
-to unconfined binaries — everything in `/nix/store`. Every invocation dies with:
+to unconfined binaries - everything in `/nix/store`. Every invocation dies with:
 
 ```
 bwrap: setting up uid map: Permission denied
@@ -205,13 +205,13 @@ PlatformIO's downloaded, dynamically-linked toolchains run on NixOS; Ubuntu is
 already FHS, so it buys nothing.
 
 Both are built. `.#firmware` ships `platformio-core` and suits any host that is
-already FHS — every mainstream Linux, and macOS. `.#firmware-fhs` ships
+already FHS - every mainstream Linux, and macOS. `.#firmware-fhs` ships
 `pkgs.platformio` for NixOS and anything else non-FHS, where those downloaded
 toolchains cannot otherwise find `/lib64/ld-linux-x86-64.so.2`.
 
 This is **not** conditional on the evaluating machine, and deliberately so.
-`builtins.pathExists /etc/NIXOS` does evaluate inside a flake — checked, it does
-not throw in pure eval — but branching on it would make the same flake and lock
+`builtins.pathExists /etc/NIXOS` does evaluate inside a flake - checked, it does
+not throw in pure eval - but branching on it would make the same flake and lock
 produce different derivations on NixOS than on Ubuntu. `nix flake check
 --all-systems` in CI would then be answering a question no NixOS contributor
 asked, and two developers would silently get different `pio` binaries. So the
@@ -219,38 +219,38 @@ choice is a shell name, and each shell's hook detects the mismatch at *runtime*
 and names the other one.
 
 Worth knowing where upstream stands: `firmware/flake.nix` selects
-`pkgs.platformio` — right for the NixOS users it targets, wrong on every host
+`pkgs.platformio` - right for the NixOS users it targets, wrong on every host
 that restricts user namespaces. That divergence is the whole reason the
 workspace `direnvrc` overrides upstream's tracked `use nix`.
 
 Also: do not add `gcc-arm-embedded`. PlatformIO fetches its own cross-toolchains
 into `PLATFORMIO_CORE_DIR`, and two on PATH produces baffling link errors.
 
-### `ccache` did nothing here — PlatformIO's own object cache replaced it
+### `ccache` did nothing here - PlatformIO's own object cache replaced it
 
 `ccache` sat in this shell's packages for a while and never once served a hit.
 PlatformIO drives the compilers through SCons and never invokes it, and
 firmware's `platformio.ini` sets no `build_cache_dir` either, so both halves of
-the mechanism were absent — a package that looks like a build accelerator and
+the mechanism were absent - a package that looks like a build accelerator and
 is inert costs more than it saves, because it stops anyone asking why the
 rebuild is still slow.
 
 The supported mechanism is PlatformIO's own object cache, and the environment
-override is honoured — verified with `pio project config`, which reports the
+override is honoured - verified with `pio project config`, which reports the
 value back. The shell exports `PLATFORMIO_BUILD_CACHE_DIR` into `.cache/`
 beside the Gradle home, since that directory is already documented as
 disposable. Do not re-add `ccache` on the assumption it was an oversight.
 
 ### `yaml-cpp` is in the shell for the native target
 
-`variants/native/portduino.ini` links `-lyaml-cpp`, so `pio run -e native` —
-the hardware-free virtual radio — needs the headers. `meshtastic-mcp doctor`
+`variants/native/portduino.ini` links `-lyaml-cpp`, so `pio run -e native` -
+the hardware-free virtual radio - needs the headers. `meshtastic-mcp doctor`
 tells you to `sudo apt install libyaml-cpp-dev`, which would install it on one
 machine, outside the flake, invisibly.
 
 It sits in `packages`, not `buildInputs`: this is a native build, so
 nativeBuildInputs contribute `-isystem` too. `bluez` already demonstrated that
-— it is in `nodeTools` and its include dir was already reaching
+- it is in `nodeTools` and its include dir was already reaching
 `NIX_CFLAGS_COMPILE`, which is what made the one-line addition enough.
 
 Since meshtastic-mcp `a156611`, `doctor` reads the compiler's include path
@@ -263,7 +263,7 @@ nothing has put yaml-cpp on that host's include path.
 
 `clang-tools` is the one deliberate exception to the rule above, and it is safe
 for a checkable reason: the package ships **no bare compiler driver**. Its
-`bin/` holds `clangd`, `clang-format`, `clang-tidy` and friends — no `clang`,
+`bin/` holds `clangd`, `clang-format`, `clang-tidy` and friends - no `clang`,
 `clang++`, `cc` or `gcc` to shadow PlatformIO's cross-compilers.
 
 Getting from "clangd is installed" to "clangd works" took three pieces. Each
@@ -277,7 +277,7 @@ was invisible until the previous one was fixed, and the error count on
 2. **`--query-driver`.** The database records
    `xtensa-esp32s3-elf-g++` invocations, and clangd cannot guess that driver's
    builtin system include paths. Without it every translation unit dies at the
-   first libc header — `'machine/endian.h' file not found`. This is a clangd
+   first libc header - `'machine/endian.h' file not found`. This is a clangd
    **command-line flag**; `.clangd` config cannot set it. So the flake wraps
    the binary (`clangdPio`) rather than asking each editor to pass it, and that
    wrapper is listed **first** in the firmware shell so it shadows the plain
@@ -317,7 +317,7 @@ Read the `[diagnostic_name]` lines, not the total.
 **Formatting is not clangd's job here.** firmware's tracked
 `.vscode/settings.json` sets `editor.defaultFormatter` to `trunk.io` for
 `[cpp]`, and trunk fetches its own `clang-format`. The `clang-format` on PATH
-from `clang-tools` is incidental — do not wire an editor to it and end up
+from `clang-tools` is incidental - do not wire an editor to it and end up
 fighting trunk over the same files.
 
 ---
@@ -325,22 +325,22 @@ fighting trunk over the same files.
 ## The bench
 
 The radios on this machine's USB are shared mutable state, and the sharing is
-invisible from inside a session. Operational detail — recovery, identity,
-known-bad pairings, where the fleet tooling lives — is in
+invisible from inside a session. Operational detail - recovery, identity,
+known-bad pairings, where the fleet tooling lives - is in
 [`notes/bench-fleet.md`](./notes/bench-fleet.md). Two invariants belong here,
 because they are properties of *this workspace's wiring*, not of the hardware.
 
 ### Every session builds and flashes out of one `firmware/` checkout
 
 `scripts/lib.sh` exports `MESHTASTIC_FIRMWARE_ROOT="$root/firmware"` from both
-MCP entry points — the generated `.mcp.json` and the user-scope launcher
+MCP entry points - the generated `.mcp.json` and the user-scope launcher
 `bin/meshtastic-mcp-launch`. Deliberately not worktree-relative: the flash and
 build tools must reach a real firmware tree from any cwd on the machine.
 
 Nothing prints the consequence. A session in `android/.claude/worktrees/x`
 builds in the primary `firmware/.pio`; so does every other concurrent session;
 so does a `meshtastic-mcp` test whose mocked upload leaks. Both failure modes
-were seen live on 2026-08-26 — another session's build wiped a finished
+were seen live on 2026-08-26 - another session's build wiped a finished
 8-minute artifact between `build_poll` reporting `done` and the next `ls`, and
 an orphaned `pio run -t upload` carrying an *invalid* port went to PlatformIO's
 auto-detect fallback with real boards on the bus. Check `pgrep -af 'pio run'`
@@ -350,7 +350,7 @@ before a flash session, and flash the moment a build reports done.
 
 `/dev/ttyACM*` is assignment order. It changes on every replug, power cycle and
 lockup recovery, and two boards of the same model are separable only by USB
-serial — which has already mattered here (two RAK4631s on the bus at once,
+serial - which has already mattered here (two RAK4631s on the bus at once,
 2026-08-22). Resolve through `/dev/serial/by-id/` at the point of use. Any
 tool, script or note that stores a port number across a session boundary is
 storing a guess.
@@ -364,17 +364,17 @@ storing a guess.
 `meshtastic-mcp`, `labeltastic` and `meshtastic-python` want the same things:
 CPython 3.13, the serial/USB tools, and the `LD_LIBRARY_PATH` that keeps
 manylinux wheels loadable (numpy and opencv in the first, Pillow in the
-second — same failure, same fix). Separate shells would have meant
+second - same failure, same fix). Separate shells would have meant
 maintaining that list three times, and the divergence would only show up as a
 wheel that imports in one repo and not the others.
 
 So the shell is `.#python`, not `.#mcp`. It was renamed when `labeltastic`
 was registered: a shell named after one of the repos it serves invites the
-assumption that the others are misconfigured. `.#kotlin` — five repos, no
-repo of that name — was already the precedent. `reposFor` derives the banner
+assumption that the others are misconfigured. `.#kotlin` - five repos, no
+repo of that name - was already the precedent. `reposFor` derives the banner
 from the workspace table so it cannot drift as repos are added.
 
-What a given repo does not need — `nodejs_22`, `androidHook` — it gets
+What a given repo does not need - `nodejs_22`, `androidHook` - it gets
 anyway, and that is deliberate: both are already paid for by `meshtastic-mcp`
 and neither costs the others anything at runtime. `nodeTools` is not in that
 category; **all three** need it. Each talks to a USB serial radio, and
@@ -384,18 +384,18 @@ category; **all three** need it. Each talks to a USB serial radio, and
 ### Both uv and Poetry, on purpose
 
 `meshtastic-mcp` and `labeltastic` are uv projects (`uv.lock`).
-`meshtastic-python` is Poetry — `poetry.lock`, `[tool.poetry]` tables, and
+`meshtastic-python` is Poetry - `poetry.lock`, `[tool.poetry]` tables, and
 `poetry install --all-extras --with dev,powermon` in its CI. uv cannot
 install from a `poetry.lock`, so shipping only `uv` would leave that repo
-unbuildable in a shell that looked correctly configured — the silent-failure
+unbuildable in a shell that looked correctly configured - the silent-failure
 class this workspace exists to eliminate. The shell prints the rule rather
 than the repo names, so it cannot go stale: **the lock file tells you which
 manager to use.**
 
-### Poetry does not inherit the pinned interpreter — pin it per repo
+### Poetry does not inherit the pinned interpreter - pin it per repo
 
 `UV_PYTHON`/`UV_PYTHON_DOWNLOADS` bind **uv only**. Poetry ignores them, and
-Poetry 2.4 has no config key to say otherwise — `poetry config
+Poetry 2.4 has no config key to say otherwise - `poetry config
 virtualenvs.python` answers *"There is no virtualenvs.python setting"*. What
 it does instead is scan for interpreters and take the **newest** one
 satisfying the project's `requires-python`.
@@ -403,7 +403,7 @@ satisfying the project's `requires-python`.
 That turns two facts already recorded elsewhere in this file into a silent
 wrong answer. `esptool` propagates its own CPython 3.14 onto `PATH` (the
 reason `pythonHook` prepends ours at all), and `meshtastic-python` declares
-`^3.9,<3.15` — so 3.14 is *allowed and newer*. Observed on a fresh clone:
+`^3.9,<3.15` - so 3.14 is *allowed and newer*. Observed on a fresh clone:
 bare `python3` and `uv` were the pinned 3.13.14 while `poetry install`
 quietly built `…/virtualenvs/meshtastic-AkUHFRTl-py3.14`. Nothing errors; the
 CLI runs; the repo is simply not being built against the interpreter Nix
@@ -416,7 +416,7 @@ The fix is explicit, and one-time per repo:
 poetry env use "$UV_PYTHON"     # verified: yields 3.13.14
 ```
 
-The `.#python` shellHook checks this on entry — when the directory has a
+The `.#python` shellHook checks this on entry - when the directory has a
 `poetry.lock` and the active env is off the pin, it prints that exact
 command. A warning rather than an automatic `poetry env use`, matching
 `androidHook` and `serialHook`: entering a shell should not mutate a venv.
@@ -425,7 +425,7 @@ command. A warning rather than an automatic `poetry env use`, matching
 
 The devShells attrset now has a `python` attribute while the let block above
 it binds `python = pkgs.python313`. They do not collide, because that attrset
-is not `rec` — `${python}` inside the shell still resolves to the
+is not `rec` - `${python}` inside the shell still resolves to the
 interpreter. Adding `rec` would silently rebind it to the shell derivation.
 Verified by `nix flake check`; the comment in `flake.nix` says so at the site.
 
@@ -440,7 +440,7 @@ reusable audit prompt are at `b936d8c:notes/kmp-audit/`.
 
 ### `meshtastic/.github` supplies no community-health defaults
 
-It holds only `LICENSE`, `README.md` and `profile/` — none of the filenames
+It holds only `LICENSE`, `README.md` and `profile/` - none of the filenames
 GitHub inherits org-wide (`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`,
 `SECURITY.md`, `ISSUE_TEMPLATE/`, `PULL_REQUEST_TEMPLATE.md`, `FUNDING.yml`,
 `SUPPORT.md`). Confirmed 2026-08-17 via
@@ -450,7 +450,7 @@ There is no safety net: a repo without a `SECURITY.md` has none, and only ~10
 of 155 repos do. Every repo ships its own. `CODE_OF_CONDUCT.md` points at
 `meshtastic.org/docs/legal/conduct/` rather than restating one.
 `.github/FUNDING.yml` names the **org** (`github: meshtastic`,
-`open_collective: meshtastic`), never an individual — `apple`'s names a
+`open_collective: meshtastic`), never an individual - `apple`'s names a
 person, which is the drift.
 
 ### `main` is the convention; the `master` plurality is vendored code
@@ -465,11 +465,11 @@ renamed, leaving `protobufs` the last first-party holdout.
 
 Every published artifact and Kotlin package root in the org is
 `org.meshtastic`. The Android app's `applicationId` is still
-`com.geeksville.mesh` — legacy-locked Play Store identity, since changing it
+`com.geeksville.mesh` - legacy-locked Play Store identity, since changing it
 loses the listing. Never copy it into anything new.
 
 Dependency automation is **Renovate**, not Dependabot, in every Kotlin repo.
-Tags are `v`-prefixed semver, and immutable — see
+Tags are `v`-prefixed semver, and immutable - see
 [`notes/cross-repo-contracts.md`](./notes/cross-repo-contracts.md).
 
 ### Three ways KMP CI reports green over an unguarded surface
@@ -484,7 +484,7 @@ Tags are `v`-prefixed semver, and immutable — see
 - **A tag→publish workflow that has never fired.** `protobufs` and `kzstd`
   both had one while every release was in fact manual.
 
-Publishing runs on a **macOS runner** — Apple targets build nowhere else — and
+Publishing runs on a **macOS runner** - Apple targets build nowhere else - and
 vanniktech's maven-publish plugin is configuration-cache incompatible, so
 publish tasks need `--no-configuration-cache`. Central accepts a 261-byte
 empty javadoc stub without complaint; wire Dokka into the javadoc jar.
@@ -495,7 +495,7 @@ It is not multiplatform coverage; do not advertise it as such.
 
 The coverage gate is a **Codecov project-status regression gate**
 (`target: auto`, `threshold: 1%`), chosen over a fixed `koverVerify` floor
-because it self-calibrates against each PR's base commit — no per-repo
+because it self-calibrates against each PR's base commit - no per-repo
 threshold to pick or maintain. It is still `informational`, never flipped to
 blocking.
 
@@ -503,7 +503,7 @@ blocking.
 
 CLI 2.26.1 rejects Kotlin 2.4.10 as "too recent" and the `java-kotlin`
 autobuild fails. Every `codeql.yml` in the org's Kotlin repos therefore scans
-`actions` only, with `java-kotlin` committed-but-commented — still the case in
+`actions` only, with `java-kotlin` committed-but-commented - still the case in
 all five on 2026-08-17. Upstream merged a 2.4.20 ceiling; re-enable when a CLI
 carrying it ships.
 
@@ -536,7 +536,7 @@ claim with an expiry date.
 forwarders, the bundled meshtastic-mcp skills and the per-machine memory hook
 into `.cache/agent-marketplace/`, and registers that directory as a local
 marketplace. Everything in the render is derived from this repo and the local
-checkouts, so it never crosses machines — rendering it into `~/.nixtastic-agent`
+checkouts, so it never crosses machines - rendering it into `~/.nixtastic-agent`
 would have two machines pushing different forwarder sets to one tracked path
 and breaking the memory push. Memory is state; the plugin is a build artefact.
 
@@ -589,7 +589,7 @@ that edits belong to the tree it started in.
 ### Default branches differ
 
 `main`, `master` (`meshtastic-mcp`, `protobufs`, `design`, `meshtastic`, `api`)
-and `develop` (`firmware`) are all in use. Resolve `origin/HEAD` per repo —
+and `develop` (`firmware`) are all in use. Resolve `origin/HEAD` per repo -
 never hardcode.
 
 ### Single-branch clones hide drift
@@ -608,11 +608,11 @@ bumps the pointer. `--pull` re-syncs submodules automatically and reports
 ### `git stash` ignores submodule state
 
 A submodule checked out at a different commit than recorded is **not** stashable
-content — `git stash` returns "No local changes to save" and the state persists.
+content - `git stash` returns "No local changes to save" and the state persists.
 
 ### A CRLF blob in the index makes a clean worktree read dirty
 
-`.#worktree --remove` refuses on uncommitted changes, which is correct — except
+`.#worktree --remove` refuses on uncommitted changes, which is correct - except
 when the change is not one you made. A file committed with CRLF while
 `.gitattributes` (or `core.autocrlf`) says LF re-reads as modified the instant
 it is checked out, in every fresh clone and every new worktree, with nothing to
@@ -627,8 +627,8 @@ blob's line endings before believing the worktree is dirty.
 ### Per-repo `.envrc` files are generated, never hand-written
 
 direnv loads only the **nearest** `.envrc`. A repo with none falls back to the
-workspace-root file and gets `.#default` — wrong toolchain, no error. So
-`nix run .#sync` writes one per repo, idempotently, never clobbering — with
+workspace-root file and gets `.#default` - wrong toolchain, no error. So
+`nix run .#sync` writes one per repo, idempotently, never clobbering - with
 one exception: a file **it wrote** (generated header) whose `use flake` shell
 the table has since renamed is rewritten and reported as `envrc updated`,
 because the old never-clobber rule kept `meshtastic-mcp/.envrc` pointing at
@@ -639,7 +639,7 @@ only warned about; `doctor` reports the same drift as `envrc shells`.
 Two ordering constraints, both silent when violated:
 
 1. **`export MESHTASTIC_WORKSPACE` must precede `use flake`.** nix-direnv runs
-   the flake's `shellHook` during `use_flake` — verified, not assumed: entering
+   the flake's `shellHook` during `use_flake` - verified, not assumed: entering
    `meshtastic-sdk` via `direnv exec` yields `GRADLE_USER_HOME` set and
    `./gradlew javaToolchains` reporting auto-detect and auto-download
    `Disabled`, with all six JDKs `Detected by: Gradle property`. Export it
@@ -649,7 +649,7 @@ Two ordering constraints, both silent when violated:
    levels down, so `.#worktree` hardcodes the root instead.
 
 **The hook only fires in interactive shells.** Scripts, CI steps and agent
-subshells get none of this environment — Gradle then runs with unpinned JDKs,
+subshells get none of this environment - Gradle then runs with unpinned JDKs,
 the exact failure the `.envrc` exists to prevent, silently. From any
 non-interactive context, run repo commands as
 `direnv exec <repo-or-worktree> <cmd>`.
@@ -666,20 +666,20 @@ as a conflict, and the user-scope entry below names the launcher. The store
 paths live only in the launcher now.
 
 A bare `claude mcp add` would instead put **store paths** in `~/.claude.json`
-— outside the workspace, where `.#sync` cannot rebuild them, going stale on
-every flake update — and its default (local) scope binds the server to a
+- outside the workspace, where `.#sync` cannot rebuild them, going stale on
+every flake update - and its default (local) scope binds the server to a
 single directory, leaving every worktree silently without the tools.
 
 **User scope is different, and sanctioned.** `.#sync` also writes
-`bin/meshtastic-mcp-launch` — a *stable path* whose contents (the moving
+`bin/meshtastic-mcp-launch` - a *stable path* whose contents (the moving
 store paths) sync rewrites every run. Registering **that** once,
 
 ```bash
 claude mcp add --scope user meshtastic -- "$MESHTASTIC_WORKSPACE/bin/meshtastic-mcp-launch"
 ```
 
-puts the meshtastic tools in **every** directory on the machine — including
-the repos and worktrees project scope can never reach (below) — and survives
+puts the meshtastic tools in **every** directory on the machine - including
+the repos and worktrees project scope can never reach (below) - and survives
 `nix flake update`, because the registration names the launcher, not the
 store. Project and user scope now name the same endpoint, so `/mcp` shows
 one `meshtastic` server and no conflict. `doctor` checks both; `sync` prints
@@ -694,7 +694,7 @@ symlink target rather than a synced directory: `notes/agent-memory-sync.md`.
 
 Three consequences worth knowing:
 
-- **The launcher names store paths** — `uv`, the interpreter, and the loader
+- **The launcher names store paths** - `uv`, the interpreter, and the loader
   path are resolved at generation time, so `nix flake update` invalidates them.
   Re-run `.#sync`, exactly as for anything else generated here; the
   `.mcp.json` files themselves no longer change.
@@ -704,17 +704,17 @@ Three consequences worth knowing:
 - **Project-scope servers need consent once per machine**, the same model as
   direnv. `.#sync` prints the reminder; approve with `/mcp`.
 
-**Upstream may track its own `.mcp.json`** — `android`, `firmware` and
+**Upstream may track its own `.mcp.json`** - `android`, `firmware` and
 `meshtastic-mcp` all do (android's registers context7 for the team). A tracked
 file always wins: neither `.#worktree` nor `.#sync` will write ours where one
 exists, because overwriting would dirty the tree and stomp the team's
-registrations. (`.#worktree` used to do exactly that, unconditionally — the
+registrations. (`.#worktree` used to do exactly that, unconditionally - the
 same failure class the `.envrc` sidecar exists to avoid, one file over.) The
 consequence: in an `android` or `firmware` worktree the meshtastic-mcp tools
-are never *project*-registered — the user-scope launcher registration above
+are never *project*-registered - the user-scope launcher registration above
 is what carries them there.
 
-The bundled agent skills are *not* installed from here — on a fresh machine that
+The bundled agent skills are *not* installed from here - on a fresh machine that
 would trigger a full `uv sync` inside a git tool. `.#sync` prints the command
 when `.claude/skills/` is missing.
 
@@ -723,7 +723,7 @@ when `.claude/skills/` is missing.
 Claude Code resolves project subagents by walking `.claude/agents/` from the
 cwd up to the enclosing repo root. The org repos are **not** ancestors of the
 workspace root, so a session rooted here cannot see them: `.#brief -- android`
-would list `gradle-runner` while the Agent tool answered "not found" —
+would list `gradle-runner` while the Agent tool answered "not found" -
 advertised and unusable. That gap sent a Gradle baseline to a generic
 subagent on 2026-08-01, which returned a report with no verdict in it and cost
 a full re-run.
@@ -735,17 +735,17 @@ a full re-run.
 - **Copies, not symlinks.** Skills document symlink support; subagents do
   not. An agent that silently fails to load is the exact failure class this
   workspace refuses to ship, and byte-identical copies also put staleness one
-  `cmp` away — which is how `doctor` checks them.
+  `cmp` away - which is how `doctor` checks them.
 - **The frontmatter `name:` is kept verbatim.** That, not the filename, is
   what the Agent tool resolves, so `android/CLAUDE.md`'s "dispatch the
   `gradle-runner` subagent" keeps working from the root. The `<repo>--`
   filename prefix is for humans and to stop two repos overwriting each other.
 - **Duplicate names are warned about, never resolved.** Two repos shipping
-  one `name:` resolve by filesystem read order — undefined. `sync` says so;
+  one `name:` resolve by filesystem read order - undefined. `sync` says so;
   prefixed filenames cannot fix it.
 - **Deletions propagate.** A copy whose source is gone is removed, because an
   orphan that keeps answering is worse than one that is absent. The drop pass
-  runs even when *no* repo has agents left — nesting it under "any agents
+  runs even when *no* repo has agents left - nesting it under "any agents
   exist" was a real bug, caught by `T12`.
 
 `doctor` reports missing or stale copies with `.#sync` as the fix. `lib.sh`
@@ -759,7 +759,7 @@ subagent fix made on a **branch** does not reach root sessions until that PR
 merges, `main` is pulled, and `sync` runs again. Both directions bite: an agent
 repaired in a worktree keeps failing at the root, and a checkout left on a
 feature branch quietly publishes that branch's agents workspace-wide. Fixing a
-subagent is therefore not done when the commit lands locally — it is done when
+subagent is therefore not done when the commit lands locally - it is done when
 `doctor` says the root copy matches.
 
 ### Per-repo skills need `bin/claude-ws`, and it names one repo at a time
@@ -767,7 +767,7 @@ subagent is therefore not done when the commit lands locally — it is done when
 Skills could not take the same route. A skill is a *directory* whose name is
 its identity, so copying `android`'s four and `apple`'s ten to the root would
 fork fourteen living directories against their upstreams. Symlinks are
-documented to work for skills — but the only mechanism that loads a skill
+documented to work for skills - but the only mechanism that loads a skill
 *and* keeps it where it lives is `--add-dir`, and there is no `settings.json`
 equivalent: it must be passed at launch.
 
@@ -777,7 +777,7 @@ added to the table is picked up):
 ```bash
 bin/claude-ws android          # android's skills + subagents, from the root
 bin/claude-ws android apple -p "…"   # several repos, then claude's own args
-bin/claude-ws                  # no repo named — exactly plain claude
+bin/claude-ws                  # no repo named - exactly plain claude
 ```
 
 Leading arguments matching a repo become `--add-dir`; the first non-repo
@@ -788,7 +788,7 @@ argument stops the scan and everything after it reaches `claude` untouched.
 is a deliberately small router *precisely because* the per-repo agent docs are
 too large to all be loaded. Blanket-adding ten repos would defeat the thing
 this workspace is built around. `claude-ws android` pays for android and
-nothing else — the same "load only what this task needs" rule `.#brief`
+nothing else - the same "load only what this task needs" rule `.#brief`
 exists to enforce.
 
 Note the asymmetry that follows: **subagents work from a bare `claude`**
@@ -799,7 +799,7 @@ preference, it is what each mechanism supports.
 
 `firmware/.envrc` is **upstream-tracked** and contains direnv's legacy
 `use nix`. That resolves through `firmware/shell.nix` → flake-compat →
-firmware's own `flake.nix:45`, whose devShell uses `pkgs.platformio` — the
+firmware's own `flake.nix:45`, whose devShell uses `pkgs.platformio` - the
 bwrap-wrapped build that cannot run here. Allowing it hands you the exact
 failure this workspace exists to avoid.
 
@@ -818,29 +818,29 @@ is empty even with `--untracked-files=all`.
 `direnv status` prints `Found RC allowed 0` for **allowed** and `1` for
 **blocked**. Reading it the intuitive way inverts the meaning of every
 diagnosis. Confirm with `direnv exec <dir> true`, which errors plainly if
-blocked. Editing an `.envrc` revokes its approval — expect to re-`allow`
+blocked. Editing an `.envrc` revokes its approval - expect to re-`allow`
 after any change here.
 
-### Worktrees need outfitting — and `sync` now adopts strays
+### Worktrees need outfitting - and `sync` now adopts strays
 
-An earlier claim here — that a hand-made `git worktree` gets the **default**
-shell — went stale when the per-repo `.envrc` files landed (f6b6888) and has
+An earlier claim here - that a hand-made `git worktree` gets the **default**
+shell - went stale when the per-repo `.envrc` files landed (f6b6888) and has
 been re-verified the other way: a bare worktree **under** the repo (e.g.
 `android/.claude/worktrees/x`) inherits the repo's own `.envrc` from the
 nearest ancestor, evaluated with cwd at the repo, so it gets the right shell
 *and* the right `MESHTASTIC_WORKSPACE`. What a bare worktree still lacks, all
 silent:
 
-- **`.mcp.json`** — it is per directory, so without a user-scope
+- **`.mcp.json`** - it is per directory, so without a user-scope
   registration the MCP tools are simply absent. (Where upstream tracks its
   own, as `android` and `firmware` do, theirs wins and ours is never written
-  beside it — the user-scope launcher registration is the only route in;
+  beside it - the user-scope launcher registration is the only route in;
   see the `.mcp.json` section above.)
 - **The `.envrc-workspace` sidecar** where the repo tracks its own `.envrc`.
   A bare `firmware` worktree runs upstream's `use nix` → bwrap-broken
   platformio. (`.#worktree` writes the sidecar rather than overwriting the
   tracked file, which would leave the worktree dirty at creation.)
-- **Any shell at all** if parked outside the repo tree — nothing to inherit.
+- **Any shell at all** if parked outside the repo tree - nothing to inherit.
 
 `nix run .#worktree` writes all of this up front; `nix run .#sync` **adopts**
 worktrees created behind its back (hand-made, agent skills, harness
@@ -852,63 +852,63 @@ isolation), writing whichever of the three pieces is missing, idempotently.
 `doctor` answers "is every worktree outfitted", never "should this one still
 exist". As of 2026-08-27 that gap reads: 71 worktrees workspace-wide, 38 of
 them under `android`, 57 GB on disk, and 21 `android` branches with no upstream
-at all — 17 of those untouched for two weeks or more.
+at all - 17 of those untouched for two weeks or more.
 
 Do not classify them with `git merge-base --is-ancestor <branch> origin/main`.
 Every repo here that merges through a queue **squashes**, so a fully merged
 branch is never an ancestor of `main`; the branches that *are* ancestors are
 mostly fresh worktrees cut at main-tip whose work is not committed yet. That
-test inverts the answer. Ask GitHub instead — verified 2026-08-27:
+test inverts the answer. Ask GitHub instead - verified 2026-08-27:
 
     gh pr list --head <branch> --state merged --json number,mergedAt
 
 Read an empty result carefully: it means "no merged PR ever had this head",
-which covers a live branch and one that was **never pushed** alike — and
+which covers a live branch and one that was **never pushed** alike - and
 never-pushed is the common case here (21 of `android`'s local branches have no
 upstream at all). For those, GitHub knows nothing and the local branch is the
 only copy of the work.
 
 `--prune` does not close this either: `git worktree prune` drops **dead
 registrations** (a directory already deleted), not live worktrees whose work
-landed. Removing a live one is a judgement call about unpushed work — an
-unpushed branch is the only copy of it — so it stayed manual until
+landed. Removing a live one is a judgement call about unpushed work - an
+unpushed branch is the only copy of it - so it stayed manual until
 2026-09-05, when `--gc` made the *provable* part mechanical: a clean tree
 whose branch has a **merged** PR whose head SHA **is** the local HEAD holds
 nothing unpublished, and a clean tree with no commits beyond the default
 branch, older than a day, holds nothing at all. `--gc` reports those as
-reapable and removes them under `--apply`; everything else — dirty, open
+reapable and removes them under `--apply`; everything else - dirty, open
 PR, commits past the PR head, created today, or parked outside the repo by
-herdr/paseo — is kept and says why. The first run reaped 23 of 47 across
+herdr/paseo - is kept and says why. The first run reaped 23 of 47 across
 both machines (2026-09-05). `sync` prints the open-worktree count with a pointer to it.
 
 ### Agent-harness worktree isolation makes a decoy workspace
 
 An agent harness's worktree isolation (Claude Code's `isolation: "worktree"`,
 `EnterWorktree`) run at the workspace root makes a worktree **of the
-workspace repo** — verified: it lands in `.claude/worktrees/agent-*` with the
+workspace repo** - verified: it lands in `.claude/worktrees/agent-*` with the
 tracked files and **none of the org repos**, which are untracked. Its copy of
 the tracked root `.envrc` would have pointed every cache and clone at that
 decoy; the root `.envrc` now resolves the **main checkout** via
 `git rev-parse --git-common-dir` and exports that instead (in the real root
-the two are identical). `use flake` stays bare on purpose — a workspace
+the two are identical). `use flake` stays bare on purpose - a workspace
 worktree exists to test its own flake edits.
 
 Even with that guard, harness isolation is the wrong tool for **repo** work:
 the repos are not in the worktree. Use `nix run .#worktree -- <repo>
 <branch>`. A session that lands in one anyway is told so by the plugin's
-orient hook, and its memory slug is linked — by `sync` for existing
+orient hook, and its memory slug is linked - by `sync` for existing
 worktrees, by the memory hook itself at the first session of a new one.
 
-Ignoring is done two ways, neither of them a tracked `.gitignore` — editing one
+Ignoring is done two ways, neither of them a tracked `.gitignore` - editing one
 in an org repo is not ours to do. `.claude/worktrees/` and `.mcp.json` go in
 `.git/info/exclude` (local, never committed) because only `android` ignores the
 former upstream, and `.mcp.json` is a file plenty of projects legitimately
-track — a global ignore would hide it everywhere. The direnv files do go in
-`~/.config/git/ignore` — git's default excludesfile location, so no
+track - a global ignore would hide it everywhere. The direnv files do go in
+`~/.config/git/ignore` - git's default excludesfile location, so no
 `core.excludesfile` setting is needed.
 
 That first mechanism did not actually work until `7388ecb`. `rev-parse -C <p>
---git-common-dir` answers *relative to `<p>`* — plain `.git` — and the result
+--git-common-dir` answers *relative to `<p>`* - plain `.git` - and the result
 was being used relative to the caller's cwd, so every pattern landed in the
 **workspace** repo's `info/exclude` and none ever reached the repo it was meant
 for. `kzstd/.git/info/exclude` held nothing at all. It stayed invisible because
@@ -926,7 +926,7 @@ verified one.
 
 ---
 
-## OTAFIX bootloader — no longer third-party (2026-08-18)
+## OTAFIX bootloader - no longer third-party (2026-08-18)
 
 Until 2026-08-18 this section documented `oltaco/Adafruit_nRF52_Bootloader_OTAFIX`
 as a third-party artifact fetched via `gh release download`, kept out of the
@@ -935,49 +935,49 @@ maintains its own org fork,
 [`meshtastic/Adafruit_nRF52_Bootloader_OTAFIX`](https://github.com/meshtastic/Adafruit_nRF52_Bootloader_OTAFIX)
 (rebranded, MeshCore/Ripple content stripped, org-convention files added),
 and it is a workspace entry with a dedicated `.#otafix` shell (`gcc-arm-embedded-13`,
-not the nixpkgs default — see the shell's own comment for why). `git submodule
+not the nixpkgs default - see the shell's own comment for why). `git submodule
 update --init --recursive` is required before the first build.
 
 Meshtastic's separate `Adafruit_nRF52_Bootloader` fork remains a **different
-lineage without** the OTAFIX patches — the two are not interchangeable.
+lineage without** the OTAFIX patches - the two are not interchangeable.
 
 No release has been cut on the new fork yet, so there is no prebuilt UF2 to
-`gh release download` — build from source via `.#otafix` until one exists.
+`gh release download` - build from source via `.#otafix` until one exists.
 
 ---
 
 ## Verification status
 
-A report, not a promise — these were run on x86_64-linux, 2026-07-29 through
+A report, not a promise - these were run on x86_64-linux, 2026-07-29 through
 2026-07-31:
 
 | Repo | Verified |
 | --- | --- |
-| — | `nix flake check --all-systems --no-build` + `nix flake check` (builds the tools, ShellCheck gates them) |
-| `meshtastic-sdk` | `./gradlew :core:build` — JVM + Android + iOS klibs, tests, Kover, ABI check |
-| `android` | `./gradlew :androidApp:assembleFdroidDebug` — 3 APKs |
-| `firmware` | `pio run -e heltec-v3` — flashable factory image, 7m40s |
+| - | `nix flake check --all-systems --no-build` + `nix flake check` (builds the tools, ShellCheck gates them) |
+| `meshtastic-sdk` | `./gradlew :core:build` - JVM + Android + iOS klibs, tests, Kover, ABI check |
+| `android` | `./gradlew :androidApp:assembleFdroidDebug` - 3 APKs |
+| `firmware` | `pio run -e heltec-v3` - flashable factory image, 7m40s |
 | `protobufs` | `buf lint` |
 | `meshtastic-mcp` | `uv sync --frozen` |
 
-**Not verified:** `.#apple` — needs macOS + Xcode; nothing on Linux can close it.
+**Not verified:** `.#apple` - needs macOS + Xcode; nothing on Linux can close it.
 
 ### Fresh-machine bootstrap
 
 Verified 2026-07-29 on a second x86_64 Ubuntu host with nothing but Nix
-installed — empty store, no `~/.gradle`, no Android SDK, no `~/.platformio`:
+installed - empty store, no `~/.gradle`, no Android SDK, no `~/.platformio`:
 
-- `nix flake check --all-systems` — clean (a historical record: that single
-  command predates the `checks` output and now fails on purpose — see
+- `nix flake check --all-systems` - clean (a historical record: that single
+  command predates the `checks` output and now fails on purpose - see
   Conventions below for the two-command form that replaced it)
 - all seven Linux shells (`kotlin`, `android`, `firmware`, `protobufs`,
-  `python` — then named `mcp` — `design`, `nodes`) entered successfully,
+  `python` - then named `mcp` - `design`, `nodes`) entered successfully,
   built cold
-- **path-agnostic** — ran from `~/meshtastic-workspace`, not `~/meshtastic`.
+- **path-agnostic** - ran from `~/meshtastic-workspace`, not `~/meshtastic`.
   Nothing may hardcode the directory name; derive from
   `MESHTASTIC_WORKSPACE` or `$(dirname "$PWD")`.
 - `.#android` with **no SDK at all** enters fine and prints the `sdkmanager`
-  hint — confirming `androidHook`'s missing-SDK path warns rather than fails.
+  hint - confirming `androidHook`'s missing-SDK path warns rather than fails.
 
 That run is also what exposed three documentation defects invisible on a
 machine that already satisfies them: the workspace repo is private and needs
@@ -985,7 +985,7 @@ credentials before step 2; `nix` is absent from `PATH` in non-interactive
 shells even under `bash -lc`; and the per-repo `.envrc` examples hardcoded
 `~/meshtastic`.
 
-Still open: `.#python` under `mkShellNoCC` is unproven — both test machines have
+Still open: `.#python` under `mkShellNoCC` is unproven - both test machines have
 `/usr/bin/cc`, so `uv sync` never had to build a wheel from source. Settling it
 needs a container without `build-essential`. `uv sync --all-extras` (5.1 GB,
 torch and scipy included) does **not** settle it: those all ship prebuilt
@@ -995,11 +995,11 @@ That run did expose the neighbouring problem, which is now fixed. Those same
 prebuilt wheels fail to **load** under the Nix interpreter `UV_PYTHON` pins:
 they link `libstdc++`/`libz`, Nix's loader cannot see either, and numpy, opencv,
 torch and easyocr end up installed but not importable. The failure names neither
-library — it reads `Importing the numpy C-extensions failed`, with the real
+library - it reads `Importing the numpy C-extensions failed`, with the real
 cause only on the traceback's last line. Hence `LD_LIBRARY_PATH` in the
 `.#python` shellHook, and again in the generated `.mcp.json` because the MCP
 client launches the server outside that shell. It covers `labeltastic` for
-free — Pillow ships manylinux wheels on the same terms.
+free - Pillow ships manylinux wheels on the same terms.
 
 ---
 
@@ -1009,23 +1009,23 @@ free — Pillow ships manylinux wheels on the same terms.
 - Changed `flake.nix` → two checks before committing, because they answer
   different questions:
   `nix flake check --all-systems --no-build` (evaluates every output for all
-  three systems) and `nix flake check` (builds this system's `checks` — the
+  three systems) and `nix flake check` (builds this system's `checks` - the
   tool scripts). `--all-systems` without `--no-build` does not work: it tries
   to build the darwin/aarch64 checks on your machine and dies on "platform
   mismatch". Eval only **evaluates** shells; passing does not mean a repo
   builds.
-- `writeShellApplication` runs ShellCheck and fails the build on warnings —
+- `writeShellApplication` runs ShellCheck and fails the build on warnings -
   **at build time**. `nix flake check` builds only the `checks` output;
   devShells and apps are merely evaluated (verified by feeding it an app with
   a guaranteed SC2086 failure, which passed). That is why every tool script is
-  listed in `checks` — remove one and ShellCheck silently stops gating it.
+  listed in `checks` - remove one and ShellCheck silently stops gating it.
 - The tool scripts are real files in [`scripts/`](./scripts), not flake
-  strings — edit them there. The flake assembles each tool (`lib.sh` is
+  strings - edit them there. The flake assembles each tool (`lib.sh` is
   prepended to `sync` and `worktree`; everything Nix must supply arrives as
   `NIXTASTIC_*` env vars via `runtimeEnv`), so ShellCheck still sees each
   tool whole when `checks` builds. New scripts must be whitelisted in
   `.gitignore` **and** at least `git add`ed, or pure eval cannot see them.
-- The git-state logic in `sync`, `worktree` and `doctor` has fixture tests —
+- The git-state logic in `sync`, `worktree` and `doctor` has fixture tests -
   [`scripts/tools-tests.sh`](./scripts/tools-tests.sh), built as
   `checks.<system>.tools-tests` against a fake workspace, one tiny repo per
   entry in the real table, with local
@@ -1040,5 +1040,5 @@ free — Pillow ships manylinux wheels on the same terms.
   cmdline-tools"). Before committing a change that moves code, renames a
   mechanism, or alters tool behaviour: grep `CLAUDE.md`, `AGENTS.md`,
   `README.md`, `notes/` and the `flake.nix`/`scripts/` comments for the names
-  touched, and re-verify each affected claim **by running its command** — the
+  touched, and re-verify each affected claim **by running its command** - the
   maxim above applies to the docs themselves.

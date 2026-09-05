@@ -1,4 +1,4 @@
-# Handoff — multi-transport mesh (resume here)
+# Handoff - multi-transport mesh (resume here)
 
 Rewritten 2026-09-04 at the end of the session that put all four bearers in one
 Android node, instrumented them per bearer, and found the dead-UDP bug that
@@ -6,25 +6,25 @@ instrumentation exists to find. **Start a new session here.** Everything below
 is committed; push state is stated per repo.
 
 **Updated 2026-09-05 (afternoon):** the **availability seam** landed in
-`meshtastic-node-kmp` and is pushed (`0885f03`, `30d12c4`, `d2d0baa`) — a
+`meshtastic-node-kmp` and is pushed (`0885f03`, `30d12c4`, `d2d0baa`) - a
 transport now declares whether it can carry anything and why not, which closes
 item 13's "fix first" and the state/fault half of item 12. See "Availability
 seam" below. Verified on the desktop and the Pixel; the iPad's rows are
 eyeball-only, because iOS 26 has no working screenshot path.
 
 **Updated 2026-09-05 (morning):** the Apple-central bootloop is **fixed** on the
-spike (`fcc3c0582`, 1M-only PHY on ESP32-S3/C3); **nRF52 is a full peer** — BLE-adv
+spike (`fcc3c0582`, 1M-only PHY on ESP32-S3/C3); **nRF52 is a full peer** - BLE-adv
 both ways and the mesh-peer GATT service both ways with Android *and* iOS on a
 WisMesh Pocket (`df1ae63bf`, env `rak4631_blemesh`); the ESP32-C3 links (build-only,
 no board); Android's 5-minute BLE scan downgrade is worked around in node-kmp
-(`d669e8d`). An audit of the whole feature ran 2026-09-05 — see "Audit findings".
+(`d669e8d`). An audit of the whole feature ran 2026-09-05 - see "Audit findings".
 All three repos are pushed, and the `protobufs` submodule commits are on
 `meshtastic/protobufs` `spike/ble-mesh-transport` (next steps, item 0).
 The audit's findings, fixes and open items: [`audit-multi-transport-2026-09-05.md`](./audit-multi-transport-2026-09-05.md).
 
 ## Read first
 
-1. [`multi-transport-mesh.md`](./multi-transport-mesh.md) — the canonical plan
+1. [`multi-transport-mesh.md`](./multi-transport-mesh.md) - the canonical plan
    (**one protocol, many bearers**; LoRa stays first-class) with the live
    `## Implementation status` and a dated section per bench sitting (the
    2026-09-04 one is last). This handoff is the pointer; that doc is truth.
@@ -45,11 +45,11 @@ The audit's findings, fixes and open items: [`audit-multi-transport-2026-09-05.m
 
 | Phase | State | Where |
 | --- | --- | --- |
-| 1 — client N-transport node | **done; four bearers (gatt, ble-adv, udp, lora) in one Android node, instrumented per bearer, PROVEN live** | `meshtastic-node-kmp` `main`, **pushed** (`8427db6` + the docs commit) |
-| 2 — firmware transport registry | done, green (native 1392/1392) | `firmware` `spike/ble-mesh-transport` (through `df1ae63bf`, pushed) |
-| 3 — firmware BLE-GATT mesh-peer edge | **PROVEN both ways on ESP32-S3 (Android; iOS after the 1M-PHY fix) and on nRF52 (Android and iOS, two phones at once)** | `ESP32BLEGattMesh`, `NRF52BLEGattMesh`; `BLEGattMeshHandler` shared |
+| 1 - client N-transport node | **done; four bearers (gatt, ble-adv, udp, lora) in one Android node, instrumented per bearer, PROVEN live** | `meshtastic-node-kmp` `main`, **pushed** (`8427db6` + the docs commit) |
+| 2 - firmware transport registry | done, green (native 1392/1392) | `firmware` `spike/ble-mesh-transport` (through `df1ae63bf`, pushed) |
+| 3 - firmware BLE-GATT mesh-peer edge | **PROVEN both ways on ESP32-S3 (Android; iOS after the 1M-PHY fix) and on nRF52 (Android and iOS, two phones at once)** | `ESP32BLEGattMesh`, `NRF52BLEGattMesh`; `BLEGattMeshHandler` shared |
 | LoRa transport (CH341A + SX1262, Meshtadpole) | **PROVEN bidirectional on hardware**, merged to `main`, in the monitor | `meshtastic-node-kmp` `main` |
-| 4 — new bearers (Wi-Fi Aware, anti-entropy) | future | — |
+| 4 - new bearers (Wi-Fi Aware, anti-entropy) | future | - |
 
 **Proven on hardware (2026-09-04), from the Pixel's own log:**
 
@@ -62,7 +62,7 @@ relay suppressed !d1d90f21 (beaten by 101)                    ← cancel-on-over
 ```
 
 plus a three-node, three-bearer chain: the desktop logged `rx[udp] text chan
-from !6337995d` — the Pixel's probe — while the Pixel's own UDP tx was 0, so it
+from !6337995d` - the Pixel's probe - while the Pixel's own UDP tx was 0, so it
 went Pixel →GATT/BLE-adv→ V3 →UDP→ desktop.
 
 ## Settled (do not re-investigate)
@@ -74,8 +74,8 @@ plan doc's last section has the exact readings, the three wrong turns it took to
 get there, and the bench state.
 
 **The Apple-central bootloop is FIXED on the spike (2026-09-04, `fcc3c0582`).** The
-V3's BLE **controller** asserted ~200 ms after an Apple central connected — before
-discovery or the CCCD write — and rebooted, 0 of ~170 connects surviving. Decoded
+V3's BLE **controller** asserted ~200 ms after an Apple central connected - before
+discovery or the CCCD write - and rebooted, 0 of ~170 connects surviving. Decoded
 from 22 panics, 11 sharing a remote-PHY-update signature
 (`r_llc_rem_phy_upd_proc_continue_eco` → `ll_phy_update_ind_handler_hack`),
 matching `BLE assert lld_con.c 3397`. It is Espressif's open esp-idf#15311 (same
@@ -84,9 +84,9 @@ iOS app, so it was never the spike. Ruled out on the bench: serial (one held-ope
 port and a closed port both crash), the mesh-peer service (phone-API set crashes),
 `LL_CFG_FEAT_LE_2M_PHY` (host-only, never reaches the S3 controller), the
 controller's `BT_CTRL_BLE_LLCP_*` flags (1/27), a newer controller blob (none
-exists through IDF v6.1). A Pixel requesting 2M PHY never crashes it — the
+exists through IDF v6.1). A Pixel requesting 2M PHY never crashes it - the
 trigger is what the A16 does inside the procedure, not the procedure itself.
-**Fix:** Apple's own accessory guidance — indicate 1M-only PHY preferences —
+**Fix:** Apple's own accessory guidance - indicate 1M-only PHY preferences -
 sent as raw HCI `LE Set Default PHY` after `ble_hs_synced()` in
 `NimbleBluetooth::setup()` (the NimBLE wrapper is compiled out). 9/9 iPad
 connects survive, subscribe and carry frames (`GATT mesh RX from=0x9ebca8df`).
@@ -96,14 +96,14 @@ after the app is killed *and* uninstalled; Settings > Bluetooth off (not the
 Control Center toggle) clears it.
 
 **Also settled, so nobody re-attempts it:** the **desktop monitor cannot do GATT**
-— `GattLink.jvm.kt` is `UnsupportedGattLink` (the JVM has no BLE), so its `gatt`
+- `GattLink.jvm.kt` is `UnsupportedGattLink` (the JVM has no BLE), so its `gatt`
 row can never move. macOS has a real CoreBluetooth path via
 `appleMain`/`macosArm64` (`GattLiveTest`), which the JVM desktop app does not
 reach. Desktop's testable bearer is UDP, and that needs the V3's WiFi **on**,
-which turns BLE **off** — the two cannot be tested in one sitting.
+which turns BLE **off** - the two cannot be tested in one sitting.
 
 **Still unverified on-device:** the `failed` column lighting up at all (no way was
-found to make a bearer *throw* on this device — see the traps) and
+found to make a bearer *throw* on this device - see the traps) and
 `transport[udp] FAILED: …`. The Apple MTU re-read is now verified: the iPad held
 links at chunk 512 against the V3 and 244 against the Pocket.
 
@@ -114,7 +114,7 @@ links at chunk 512 against the V3 and 244 against the Pocket.
    `spike/ble-mesh-transport`; a clone of the firmware spike now resolves its
    submodule. Still to do before anything ships: land them on `master` and publish
    the `org.meshtastic:protobufs` artifact so node-kmp can name the values.
-1. **Develop PR from `fcc3c0582` — ON HOLD, James's call when.** It fixes stock
+1. **Develop PR from `fcc3c0582` - ON HOLD, James's call when.** It fixes stock
    firmware too (develop and the nightly bootloop on this iPad with the stock iOS
    app); the trade to state when it goes up: iOS phone-API links run at 1M on
    ESP32-S3/C3. Until then the fix lives only on the spike branch.
@@ -126,7 +126,7 @@ links at chunk 512 against the V3 and 244 against the Pocket.
    Region US and `enabled_protocols=7` were restored over serial; the **`olm3sh`
    channel and the WiFi credentials are James's to re-enter from the app** (never
    written by the agent). WiFi is **off** (BLE on).
-4. **nRF52 — done.** Gate passed (`rak4631`: RAM 39.8% / flash 91.4%; `rak4631_blemesh`
+4. **nRF52 - done.** Gate passed (`rak4631`: RAM 39.8% / flash 91.4%; `rak4631_blemesh`
    with GATT: RAM 41.1% / flash 92.0%). BLE-adv RX and TX proven with the Pixel;
    the mesh-peer GATT service proven both ways with the Pixel and the iPad, both
    subscribed at once; 305 s, zero asserts. Details and the bench recipe:
@@ -134,13 +134,13 @@ links at chunk 512 against the V3 and 244 against the Pocket.
    Audit fixes `ca0a39c51`: the phone is the link that uses the phone API (not the
    last connect), a free slot is always advertised, disconnect markers never drop.
    Left on this track: the iOS-central connect flakiness (two of three connects
-   dropped after 2 s before one stuck) and the **advertised-name decision** —
+   dropped after 2 s before one stuck) and the **advertised-name decision** -
    with the GATT-peer bit on, S140's single advertising set carries the mesh UUID
    in the scan response in place of TX power and the name shortens to
    "Meshtastic_" for every stock app in range; fine on a bench, not in a release
    (an extended advertising set on nRF52, or discovering the service on connect
    instead of advertising it, are the options).
-5. **ESP32-C3 — links, untestable here.** `heltec-ht62-esp32c3-sx1262` builds with
+5. **ESP32-C3 - links, untestable here.** `heltec-ht62-esp32c3-sx1262` builds with
    the mesh section: RAM 34.2%, flash 87.2%. No C3 on the bench, so on-device
    stays open until someone has one.
 6. **The Apple app's restoration handler** (`BLETransport.swift`
@@ -148,11 +148,11 @@ links at chunk 512 against the V3 and 244 against the Pocket.
    with no check that it is the preferred device and never cancels; harmless with
    a healthy radio, an infinite hammer against one that dies mid-connect. A small
    PR against `apple`, independent of the controller bug.
-7. **Parity and coverage plan** — the design note's "Parity and coverage plan
+7. **Parity and coverage plan** - the design note's "Parity and coverage plan
    (2026-09-05)" section is the sequenced plan from here: persistence seam
    (NodeDB + config) → reliable delivery → scheduled NodeInfo/Position/Telemetry
    → PKI DMs → desktop LoRa then desktop BLE → traceroute/waypoints/neighbors →
-   MQTT bridge + iOS UDP — preceded by **step 0: the node is a radio to the apps**
+   MQTT bridge + iOS UDP - preceded by **step 0: the node is a radio to the apps**
    (section D of the plan: neither app consumes `meshtastic-sdk` today; all three
    speak ToRadio/FromRadio; the node's NodeDB is the mesh-layer DB, the app's the
    client-layer mirror, same as with a radio). **Step 0 server landed 2026-09-05**
@@ -163,7 +163,7 @@ links at chunk 512 against the V3 and 244 against the Pocket.
    `IRadioInterface` adapter, the Apple `Transport`/`Connection` pair, the SDK
    `RadioTransport` module, and `AdminMessage` handling. Two facts the stock
    app taught: its TCP transport drops a radio silent for 90 s (18 read
-   timeouts, reset only by received bytes) — the session answers heartbeats and
+   timeouts, reset only by received bytes) - the session answers heartbeats and
    sends a `queueStatus` every 30 s; and without Routing ACK/NAK from the node
    its sent messages sit at "Sending..." and end as "Failed to deliver to mesh",
    so step 2 (reliable delivery) owes the phone the implicit ACK and the
@@ -173,23 +173,23 @@ links at chunk 512 against the V3 and 244 against the Pocket.
    connection arbitration + a low connection cap; per-peer send-queue concurrency;
    the send-dedup asymmetry (repeated `Send test` shared a packet id on the Pixel).
 9. **Bigger pieces:** desktop BLE (BlueZ D-Bus on Linux / a CoreBluetooth binding
-   on macOS) and LoRa (libusb `UsbBulkPipe`) JVM backends — today the desktop
+   on macOS) and LoRa (libusb `UsbBulkPipe`) JVM backends - today the desktop
    lists four bearers and only UDP moves bytes; iOS UDP (multicast entitlement +
    a native socket the app supplies); **iOS LoRa-over-USB is blocked by iOS**.
 10. **Dogfood API gaps still open:** `GattMeshTransport` clock default; a
    `MeshNode` peer `Flow`. Done since last time: a `MeshTransport` display label
    (`name`); and the note that Compose chips ignore synthetic taps was **wrong**
-   — `android_tap` registers fine.
+   - `android_tap` registers fine.
 11. **Monitor polish:** the tuning panel squeezes the log to nothing on a phone
    (a sheet, or collapse peers too); the LoRa stale claim after the device tests
    (`SX1262 command 0x80 failed, status 0xf7` retrying) and the post-TX bulk-IN
    retry.
 12. **Commonize the transports before filling more platform gaps** (James,
    2026-09-05). **Started 2026-09-05: the state/fault seam is done and pushed**
-   (`meshtastic-node-kmp` `0885f03`, `30d12c4`, `d2d0baa`) — see "Availability
-   seam" below. The rest of this item stands. The per-platform matrix is ragged — UDP: JVM+Android, no iOS;
+   (`meshtastic-node-kmp` `0885f03`, `30d12c4`, `d2d0baa`) - see "Availability
+   seam" below. The rest of this item stands. The per-platform matrix is ragged - UDP: JVM+Android, no iOS;
    BLE-adv: Android+Apple, no desktop; BLE-GATT: Android+Apple, desktop stub;
-   LoRa: Android USB only — and each gap has so far been filled by writing the
+   LoRa: Android USB only - and each gap has so far been filled by writing the
    whole transport again in an `actual`. Before the next backend, pull what is
    medium-agnostic into `commonMain` so a platform supplies only its I/O seam:
    framing (`FrameAdapter`s already are), per-peer send queues and their
@@ -201,7 +201,7 @@ links at chunk 512 against the V3 and 244 against the Pocket.
    adapter of a few hundred lines, not a fourth copy of the transport. Audit
    open items O1–O12 map onto this; do them once, in common.
 13. **Monitor honesty and UX** (James, 2026-09-05). **The "fix first" half is
-   done and pushed** — see "Availability seam" below. The Material 3 pass and
+   done and pushed** - see "Availability seam" below. The Material 3 pass and
    the live mesh diagram remain, and are the whole of what is left here. Then a real
    Material 3 pass: the screen is a tuning panel plus a text log, which is a
    debugger's view, not a monitor's. Decide what monitoring the node needs:
@@ -215,7 +215,7 @@ links at chunk 512 against the V3 and 244 against the Pocket.
    Compose Canvas is enough; the data is already in `MeshEvent` (bearer
    stamped on every rx/tx/relay). Keep the log, but as a secondary tab.
 
-## Tier-1 node parity — in progress 2026-09-05 (`meshtastic-node-kmp`, pushed)
+## Tier-1 node parity - in progress 2026-09-05 (`meshtastic-node-kmp`, pushed)
 
 Working the "Parity and coverage plan" sequence in `multi-transport-mesh.md`.
 Research for it ran as a 7-agent fan-out over firmware module semantics and
@@ -227,10 +227,10 @@ all of which had let real defects through:
 - The `api/` dumps had been stale for four commits. BCV was wired for klib **and**
   JVM all along; the documented gate never named `apiCheck`.
 - **Spotless does not read `.editorconfig`.** The 120-column limit it appeared to
-  honour is ktlint's own `intellij_idea` default, so every override in that file —
-  including two per-file exemptions already sitting there — had never bound.
+  honour is ktlint's own `intellij_idea` default, so every override in that file -
+  including two per-file exemptions already sitting there - had never bound.
   Settings that must bind are now an explicit `editorConfigOverride` map.
-- The gate ran `jvmTest` and only *compiled* the native targets — the org's named
+- The gate ran `jvmTest` and only *compiled* the native targets - the org's named
   KMP anti-pattern verbatim. It hid four comma-bearing test names that
   Kotlin/Native rejects, so `gradle build` was broken on `main` while everything
   read green. Gate is now `spotlessCheck detekt apiCheck allTests testAndroidHostTest`.
@@ -239,20 +239,20 @@ all of which had let real defects through:
 - **Identity + keypair persistence** (`ef264e5`, `894bc39`). `NodeIdentityRecord`
   holds the address seed and X25519 pair as one record written in a single save,
   so "persist the address and the keypair together" is structural rather than
-  advisory. The node had **no keypair in production at all** — `Config.privateKey`
+  advisory. The node had **no keypair in production at all** - `Config.privateKey`
   had no caller outside tests, so `LocalRadio` told every phone `hasPKC=false`.
   Desktop/Android/iOS stores each state what protects the key. A failed load is
   fatal to the node on purpose: minting a replacement discards the address every
-  peer pinned. Bench-proven — first run adopted the migration seed and kept
+  peer pinned. Bench-proven - first run adopted the migration seed and kept
   `!a6e88506`, second run read without rewriting, a corrupted record produced
   "identity unavailable" with the file left untouched.
 - **Keyless-first eviction** (`ef264e5`). `BoundedLru` evicted strict-LRU, so
-  keyless chatter evicted the peers whose keys we hold — the inverse of firmware.
+  keyless chatter evicted the peers whose keys we hold - the inverse of firmware.
 - **`pki_encrypted` derived, not trusted** (`9da2e8e`). `toMeshPacket` copied the
   wire's bit through and never set `public_key`, so anyone with the channel PSK
   could hand a phone a channel message wearing a private message's lock icon.
-- **Telemetry decoded** (`522e76b`). Was reported as `Opaque` — "could not be
-  read" — when it had been read. Nullable fields throughout, because the wire's
+- **Telemetry decoded** (`522e76b`). Was reported as `Opaque` - "could not be
+  read" - when it had been read. Nullable fields throughout, because the wire's
   `optional` exists to separate "not measured" from "measured zero".
 - **Reliable delivery** (`e9ca481`). Firmware budgets (5 unicast / 3 broadcast,
   total attempts). The hard part is not retrying but refusing to stop wrongly: a
@@ -265,46 +265,46 @@ all of which had let real defects through:
   02.444 s.
 
 **Later slices (same sitting):**
-- **Traceroute, waypoints, neighbour info decoded** (`ccf3677`) — all three were
+- **Traceroute, waypoints, neighbour info decoded** (`ccf3677`) - all three were
   surfacing as `Opaque` ("could not be read") having in fact been read. Decode
   only; answering a traceroute is a routing behaviour and is not implemented.
 - **Self-telemetry over the phone API** (`ccf3677`). An attached app showed a blank
   battery/uptime row for "my node" for ever. What it sends is bounded by what it
   can honestly measure: uptime always; battery/voltage only from a host that can
   read them; `channel_utilization` and `air_util_tx` **never**, because they
-  describe a shared radio medium and a node on GATT/BLE-adv/UDP occupies no air —
+  describe a shared radio medium and a node on GATT/BLE-adv/UDP occupies no air -
   0.0 there is a claim about someone else's channel being idle, not an
   approximation. `time` stays 0 rather than copying the firmware's habit of
   sending seconds-since-boot as an epoch.
 - **Position beacon with a host seam** (`8814a85`). `PositionSource` is a pull, so
   a phone is never obliged to keep GPS warm. Smart position measures movement from
-  the last position **sent**, not the last read — against the last read a slow walk
+  the last position **sent**, not the last read - against the last read a slow walk
   never crosses the threshold and 300 m goes unreported. Precision rounds to the
   cell **centre**, so the error is symmetric and the true point cannot be recovered
   from the rounding direction. Off by default.
 - **NAKs decoded** (`1edbeef`). A Routing packet with an error fell through to
   `Other`, so a rejection was invisible *and* did not stop the retransmit queue.
   Also fixed a latent bug: the ack test read `error_reason == NONE`, but the field
-  is nullable and a plain ack leaves it **unset** — testing only for NONE loses
+  is nullable and a plain ack leaves it **unset** - testing only for NONE loses
   every real acknowledgement.
 - **Desktop LoRa over libusb** (`393a527`). JNA straight to libusb, chosen by
   running usb4java and watching it die on Apple silicon (no `darwin-aarch64`
   native, last release 2018). Hot-plug is a 1 s poll, not libusb's callback.
 - **DUAL-role GATT arbitration** (`393a527`). The obvious "lower nodeNum is
-  central" cannot work — a `GattLink` is below the mesh layer and its peer ids are
+  central" cannot work - a `GattLink` is below the mesh layer and its peer ids are
   per-connection tokens, not identities. Settled by an in-band HELLO on the
   characteristic the link already has. Advertising the id was rejected: Apple
   cannot advertise arbitrary payload, and a stable advertised id is passively
   trackable.
 
-**BENCH PROOF, 2026-09-05 — the beacon works end to end.** Pixel and desktop, both
+**BENCH PROOF, 2026-09-05 - the beacon works end to end.** Pixel and desktop, both
 on UDP: `0:46.657 rx[udp] peer !a6e88506 MON`, and the Pixel's peer list shows
 `!a6e88506 MON`. One node announced on its schedule and another listed it by name.
 The Pixel's GATT also held two peers ready with notify enabled *after* the
 arbitration change, so the HELLO chunk did not break the working GATT path.
 
 **Bench condition worth knowing (not a code defect):** UDP multicast is
-**asymmetric on this network** — the Pixel receives the desktop's frames, the
+**asymmetric on this network** - the Pixel receives the desktop's frames, the
 desktop receives none of the Pixel's (`udp tx 6 rx 0` while the Pixel reads them
 fine). Classic wired↔wireless AP behaviour. It worked on 2026-09-04, so it is the
 network, not the transport; do not diagnose a dead UDP bearer from it.
@@ -446,37 +446,37 @@ DUAL nodes at once).
 **Still owed on hardware:** a DM round-trip to the Pocket now a keypair exists, and
 the GATT arbitration bench run.
 
-## Availability seam — done 2026-09-05 (`meshtastic-node-kmp`, pushed)
+## Availability seam - done 2026-09-05 (`meshtastic-node-kmp`, pushed)
 
 Items 12's state/fault half and 13's "fix first", which turned out to be one
 change. Three commits: `0885f03`, `30d12c4`, `d2d0baa`.
 
-Every bearer published the same thing dead as idle — `rx 0 tx 0 failed 0` — so
+Every bearer published the same thing dead as idle - `rx 0 tx 0 failed 0` - so
 the desktop offered four live toggles while only UDP had a backend, and an
 Android node with Bluetooth off looked untouched rather than broken (the audit's
 "a dead bearer is a callback, not a throw").
 
-- `MeshTransport.availability: Flow<TransportAvailability>` — `Unavailable(reason)`,
+- `MeshTransport.availability: Flow<TransportAvailability>` - `Unavailable(reason)`,
   `NeedsPermission(permission)`, `Ready`, `Active`. Defaulted on the interface,
   the additive shape `name` took.
 - Platform seams supply the base: `GattLink.availability`, `BleMeshRadio.availability`,
   `LoraDeviceSource.unavailableReason` (which separates "no stick plugged in" from
   "this platform has no USB backend"). `TransportActivity` in `node-core` adds the
-  one fact no platform knows — whether anything is collecting the cold flow — and
+  one fact no platform knows - whether anything is collecting the cold flow - and
   is the only place `Active` is decided. Only a `Ready` base becomes `Active`.
 - The two `bluetoothAvailability` helpers live in `node-core` (`androidMain` /
   `appleMain`) for the reason `BleMeshAdvert` does: both BLE modules need them and
-  share no other module. Apple's is narrower on purpose —
+  share no other module. Apple's is narrower on purpose -
   `CBPeripheralManager.authorization` is a class property, so it reads authorization
   *without* constructing a manager, and constructing one is what raises the prompt.
   The cost: Apple cannot see the power state, which only a live manager carries.
 - `absentTransports()` names bearers a platform never builds. A transport can only
-  speak for itself, so iOS silently omitted UDP and LoRa — making "iOS refuses this"
+  speak for itself, so iOS silently omitted UDP and LoRa - making "iOS refuses this"
   and "nobody wrote it yet" look identical. They now render greyed with a reason.
-- `MeshTransport.receiveOnly` — a **constant**, for a bearer that can never transmit
+- `MeshTransport.receiveOnly` - a **constant**, for a bearer that can never transmit
   (Apple's advertisement radio). Explicitly *not* `canTransmit`, which is a live
   sample: an Apple GATT link answers false until CoreBluetooth powers on, and the
-  Apple availability flow emits once, at start — so sampling `canTransmit` cached
+  Apple availability flow emits once, at start - so sampling `canTransmit` cached
   that transient false and labelled the iPad's healthy `gatt` row "rx only". A
   commonTest holds the line.
 
@@ -484,7 +484,7 @@ Proven on hardware, not just compiled: desktop greys all three with reasons and
 drops the `GATT:` header line; the Pixel's BLE rows flipped from carrying real
 frames off `!3061b02e` to `needs permission: Bluetooth to be switched on` the
 instant Bluetooth went off and back on return (the live `ACTION_STATE_CHANGED`
-path). **Outstanding: the iPad's four rows are eyeball-only** — iOS 26 has no
+path). **Outstanding: the iPad's four rows are eyeball-only** - iOS 26 has no
 working screenshot path (`idb`'s screenshotr returns `0xe8000022`, `devicectl`
 has no equivalent), so a future iOS UI check needs a human or new tooling.
 
@@ -492,33 +492,33 @@ Design decisions recorded in `meshtastic-node-kmp/AGENTS.md` → Design decision
 
 ## The bench
 
-- **WisMesh Pocket** (RAK4631, nRF52840) — `/dev/cu.usbmodem1101`, node `!7263cc65`
+- **WisMesh Pocket** (RAK4631, nRF52840) - `/dev/cu.usbmodem1101`, node `!7263cc65`
   "956a", running spike `ca0a39c51` env `rak4631_blemesh`, `enabled_protocols=6`
   (BLE broadcast + GATT peer), stock config otherwise, default channel. Console:
   USB CDC prints **only with DTR asserted** (`cdc-holder.py`), a `--set`/`--reboot`
   re-enumerates USB under an open handle, and **any CLI session silences the
   console until the next reboot** (the phone API takes the port; the API still
   answers). Flash by `meshtastic --enter-dfu` then `cp *.uf2 /Volumes/RAK4631/`.
-- **Heltec v3** (ESP32-S3) — **unplugged since 2026-09-05 morning.** Last state:
+- **Heltec v3** (ESP32-S3) - **unplugged since 2026-09-05 morning.** Last state:
   spike `fcc3c0582` (1M-only PHY), WiFi off, BLE on, `region=US`,
   `enabled_protocols=7`, primary channel `LongFast` until James re-shares `olm3sh`,
   empty node DB. When plugged: `/dev/cu.usbserial-0001`, console via the one-open
   pyserial holder with **DTR/RTS low** (every open resets the board).
-- **Pixel 6a** (Android 17, SDK 37) — on USB adb as `24201JEGR04964` since
+- **Pixel 6a** (Android 17, SDK 37) - on USB adb as `24201JEGR04964` since
   2026-09-05; over wifi-adb it is `adb-24201JEGR04964-pey7fQ._adb-tls-connect._tcp`
   (the **full** mDNS serial). Runs the monitor with the 3-minute scan refresh.
   `mcp__meshtastic__android_ui_dump` / `android_tap` **must pass `serial=`**; taps
   register on the monitor's Compose chips and buttons (Send test is at
   `(897,2211)`). The Meshtadpole hangs off its OTG port. Node `!6337995d`.
-- **Desktop monitor** — `java -jar monitor/build/compose/jars/MeshMonitor-macos-arm64-0.1.0.jar`
+- **Desktop monitor** - `java -jar monitor/build/compose/jars/MeshMonitor-macos-arm64-0.1.0.jar`
   with the Temurin 21 JDK after `gradle-queue -- :monitor:packageUberJarForCurrentOS`.
   Window opens at (111,87) 720×900; Send test is `cliclick c:757,938`; capture it
   with `screencapture -x -R111,87,720,900 out.png` after making it frontmost via
   System Events (`capture_screen` MCP has no backend on this Mac). **Never
   `gradlew :monitor:run` for the bench** (never exits, pins a shared queue slot);
-  **one instance at a time** (same `user@host` identity — two drop each other's
+  **one instance at a time** (same `user@host` identity - two drop each other's
   frames as "heard myself"). Node `!a6e88506`.
-- **iPad** — devicectl UDID `EF386CA9-5DC4-551F-9D9E-ABDE7F5CF166`; **hardware**
+- **iPad** - devicectl UDID `EF386CA9-5DC4-551F-9D9E-ABDE7F5CF166`; **hardware**
   UDID `00008120-001C1D820A61A01E` (what `idevicesyslog` wants). Bundle
   `org.meshtastic.node.monitor`, wrapper in `meshtastic-node-kmp/tools/monitor-ios/`;
   installed and trusted as of 2026-09-05, Bluetooth permission granted.
@@ -528,7 +528,7 @@ Design decisions recorded in `meshtastic-node-kmp/AGENTS.md` → Design decision
   device process launch --console --terminate-existing --device <UDID>
   org.meshtastic.node.monitor` (background it, sleep, kill).
 - **Monitor defaults:** the node starts as an **island (no relay)** with LoRa
-  **UNSET (rx-only)** — flip `relay` and pick a region in the tuning panel to make
+  **UNSET (rx-only)** - flip `relay` and pick a region in the tuning panel to make
   it bridge and speak on the air. `relayed` sitting at 0 next to
   `relay suppressed … (beaten by N)` is correct cancel-on-overhear, not a bug.
 
@@ -538,7 +538,7 @@ Design decisions recorded in `meshtastic-node-kmp/AGENTS.md` → Design decision
   `adb shell dumpsys platform_compat | grep RESTRICT_LOCAL_NETWORK` reads
   `disabled` on this Pixel (Android 17), and UDP works with
   `ACCESS_LOCAL_NETWORK` revoked. Hold the permission anyway, but **do not
-  diagnose with it** — I recorded it as the cause of a dead `udp` bearer on
+  diagnose with it** - I recorded it as the cause of a dead `udp` bearer on
   2026-09-04 and the revoke test disproved it. What fixed that bearer is still
   unknown.
 - **On Android a dead bearer is a callback, not a throw.** With Bluetooth off, the
@@ -547,7 +547,7 @@ Design decisions recorded in `meshtastic-node-kmp/AGENTS.md` → Design decision
   health; the `GATT:` line's `fault:` is what actually reports it.
 - **On ESP32, WiFi on means BLE off.** `main-esp32.cpp` brings up NimBLE only when
   `bluetooth.enabled && !network.wifi_enabled`, so a V3 configured as a UDP peer
-  has **no BLE at all** — both BLE transports sit at "waiting for Bluetooth ready"
+  has **no BLE at all** - both BLE transports sit at "waiting for Bluetooth ready"
   for ever. This cost a whole afternoon: `gatt rx=0` was blamed on a firmware
   slot-conflation bug when the real cause was a bench config change of my own.
   Check `get_config network` before diagnosing anything BLE.
@@ -564,13 +564,13 @@ Design decisions recorded in `meshtastic-node-kmp/AGENTS.md` → Design decision
   an empty string rather than 0). Filter these logs with `python3`, or `grep -a`.
 - **A constant identity seed makes every device the same node**; same-id nodes
   drop each other's frames as "heard myself", silently. Per-install identity
-  (`platformNodeSeed()`) — and one desktop instance at a time.
+  (`platformNodeSeed()`) - and one desktop instance at a time.
 - **Gradle 9: `tasks.withType<org.gradle.api.tasks.bundling.Jar>` silently misses
-  `org.gradle.jvm.tasks.Jar` tasks** (Compose's uber jar, `jvmJar`) — config never
+  `org.gradle.jvm.tasks.Jar` tasks** (Compose's uber jar, `jvmJar`) - config never
   applies, build stays green. Type it `org.gradle.jvm.tasks.Jar`. And an uber jar
   must strip BouncyCastle's `META-INF/*.SF|DSA` or the JVM refuses it.
-- **`createDistributable`/jpackage fails under the Nix shell** — use the uber jar.
-- Raw `./gradlew` is **blocked** — `direnv exec <repo> ~/.claude/bin/gradle-queue
+- **`createDistributable`/jpackage fails under the Nix shell** - use the uber jar.
+- Raw `./gradlew` is **blocked** - `direnv exec <repo> ~/.claude/bin/gradle-queue
   -- <tasks>`; exit 75 = queue timeout, re-run. Kotlin/Native (iOS) needs
   `-Dorg.gradle.java.home=$HOME/.gradle/jdks/eclipse_adoptium-21-aarch64-os_x.2/jdk-21.0.10+7/Contents/Home`.
   **Never run two node-kmp builds at once** in one checkout (an agent's build
@@ -578,7 +578,7 @@ Design decisions recorded in `meshtastic-node-kmp/AGENTS.md` → Design decision
 - **A stale CH341 claim** after the LoRa device tests shows in the monitor as
   `SX1262 command 0x80 failed, status 0xf7` retrying forever; a reinstall or
   replug clears it.
-- **K/N `NSLog` is unusable for a Kotlin String** (`%s` silent, `%@` crashes) —
+- **K/N `NSLog` is unusable for a Kotlin String** (`%s` silent, `%@` crashes) -
   `println` + `--console`. `idevicesyslog` cannot see third-party app logs.
 - Xcode/devicectl need the nix env stripped, **inline**: `env -u DEVELOPER_DIR -u
   SDKROOT -u CC -u CXX -u LD -u AR -u NM -u RANLIB -u STRIP -u NIX_CC
@@ -589,17 +589,17 @@ Design decisions recorded in `meshtastic-node-kmp/AGENTS.md` → Design decision
 - bleak on macOS is a **false negative** for GATT notifications; the real Android
   client is the oracle.
 
-## Constraints — carry these verbatim
+## Constraints - carry these verbatim
 
 - **Never commit** the live channel PSK/URL, the radio private key, or the WiFi
-  PSK to **any** file — env vars only. Only toggle the v3 `network.wifi_enabled`
+  PSK to **any** file - env vars only. Only toggle the v3 `network.wifi_enabled`
   at runtime; never write the stored PSK.
 - `meshtastic-node-kmp` is **private, CI off**, takes direct commits to `main`.
   The `nixtastic` workspace takes **direct pushes to main**. The Meshtastic org
-  **blocks tag deletion** and has **immutable releases** — verify a version
+  **blocks tag deletion** and has **immutable releases** - verify a version
   before any tag push. Never flash the v3 without the user's OK.
 - Report status honestly: state what is **proven** vs **not**, verify on-device
-  before claiming a fix, and never declare a feature working while it isn't —
+  before claiming a fix, and never declare a feature working while it isn't -
   today's "Android runs all four transports" was wrong until the counters said so.
 
 ## Bench rules learnt 2026-09-04 evening (each cost an hour)
@@ -610,7 +610,7 @@ Design decisions recorded in `meshtastic-node-kmp/AGENTS.md` → Design decision
   then prints an empty string). NVS `Device reboots: N` is the serial-free reboot
   witness; the RTC boot count is zeroed by that reset.
 - **An iPad that connected to a radio that died mid-connect keeps connecting
-  forever with no app process** — bluetoothd re-issues the pending connect; kill
+  forever with no app process** - bluetoothd re-issues the pending connect; kill
   and even uninstall do not clear it (it decays after ~10 min). **Settings >
   Bluetooth off** clears it at once; the Control Center toggle is *not* off. A
   completed link tears down cleanly on kill.

@@ -1,12 +1,12 @@
 # Cross-repo contracts
 
 The wire-level facts that hold true across every client and the firmware at
-once — protobuf rules, the phone↔device envelope, MQTT topics, release order.
+once - protobuf rules, the phone↔device envelope, MQTT topics, release order.
 Repo-specific mechanics belong in that repo, or in its note beside this one.
 
 Rescued 2026-08 from `~/Desktop/copilot-space-drafts` on the Linux host: the
 corpus behind a **"Meshtastic Cross-Platform" GitHub Copilot Space**, written
-2026-05. It had no other backing store — `meshtastic/.github` carries only
+2026-05. It had no other backing store - `meshtastic/.github` carries only
 `LICENSE`, `README.md` and `profile`, and an org-wide code search for both
 "Copilot Space" and "Protobuf Contract Reference" returns nothing. The drafts
 said changes went "through PRs in `meshtastic/.github`"; no such PR was ever
@@ -19,10 +19,10 @@ one.
 
 ## Source-of-truth order
 
-1. **`protobufs`** — the canonical wire format. Everything else implements it.
-2. **`firmware`** — the reference implementation of mesh behaviour. Where the
+1. **`protobufs`** - the canonical wire format. Everything else implements it.
+2. **`firmware`** - the reference implementation of mesh behaviour. Where the
    proto comment is ambiguous, firmware is what the network actually does.
-3. **Clients** — `android`, `apple`, `meshtastic-python`, `web`, and
+3. **Clients** - `android`, `apple`, `meshtastic-python`, `web`, and
    `meshtastic-sdk` beneath the first two.
 
 This is an ordering for resolving *disagreements*, not a reading list. What to
@@ -52,7 +52,7 @@ serves exactly this handshake, which is why a capture can stand in for a radio.
 
 Compatibility is advertised, not negotiated: `MyNodeInfo.min_app_version`
 (field 11) is the minimum client build the device will talk to. Clients compare
-their own build against it and tell the user to update — there is no
+their own build against it and tell the user to update - there is no
 downgrade path.
 
 ## Changing a proto
@@ -64,7 +64,7 @@ simultaneously, so:
   unused. Some peer on the mesh is still emitting the old meaning.
 - **Deprecate, don't delete.** Mark `[deprecated = true]` and say when and why
   in a comment. `module_config.proto`'s `json_enabled` (field 6) is the worked
-  example — deprecated in place, number retired.
+  example - deprecated in place, number retired.
 - **nanopb annotations are firmware memory.** `max_size`, `max_count` and
   `fixed_length` size real buffers on constrained targets. Changing one is a
   firmware change wearing a proto's clothes.
@@ -83,13 +83,13 @@ Topics are built in `firmware/src/mqtt/MQTT.h`, and the root is configurable
 
 | Topic | Carries |
 | --- | --- |
-| `{root}/2/e/{channel_id}/{gateway_id}` | encrypted `ServiceEnvelope` — the normal path |
+| `{root}/2/e/{channel_id}/{gateway_id}` | encrypted `ServiceEnvelope` - the normal path |
 | `{root}/2/e/PKI/{gateway_id}` | PKI-addressed traffic; firmware subscribes `…/PKI/+` |
 | `{root}/2/map/` | protobuf `MapReport` |
 
 Every mesh message on MQTT is wrapped in a `ServiceEnvelope` (`mqtt.proto`):
 `packet` (1), `channel_id` (2), `gateway_id` (3). The packet inside is
-encrypted with the **same channel key as over the air** — MQTT is a transport,
+encrypted with the **same channel key as over the air** - MQTT is a transport,
 not a trust boundary. Two consequences that bite:
 
 - The default channel key is well known. Traffic on the default channel over
@@ -102,14 +102,14 @@ not a trust boundary. Two consequences that bite:
 Wire-format changes roll out in dependency order, so no client ships support
 for something firmware cannot yet do:
 
-1. `protobufs` — merge and tag
-2. `firmware` — bump the pointer, implement, release
-3. clients — take the new protos, implement, release
+1. `protobufs` - merge and tag
+2. `firmware` - bump the pointer, implement, release
+3. clients - take the new protos, implement, release
 
 **How each repo consumes `protobufs` differs, and this is the part the original
 drafts got wrong.** Only two repos vendor it as a git submodule:
 `firmware/protobufs` and `meshtastic-python/protobufs`. `android` consumes a
-**published Maven artifact** — `org.meshtastic:protobufs`, Wire-generated KMP
+**published Maven artifact** - `org.meshtastic:protobufs`, Wire-generated KMP
 models, pinned in `gradle/libs.versions.toml` (currently a
 `2.7.26.142-gf3c374d-SNAPSHOT` build). There is no proto submodule in `android`
 and its `.gitmodules` is empty; a bump there is a version bump, not a
@@ -117,7 +117,7 @@ and its `.gitmodules` is empty; a bump there is a version bump, not a
 
 **Tags are forever.** The meshtastic org enforces an org-level ruleset that
 blocks tag deletion (`GH013` on `push :refs/tags/x`), and releases are
-immutable — a tag once used by a release can never get a new release. Verify
+immutable - a tag once used by a release can never get a new release. Verify
 the version is right *before* pushing the tag; a botched one can only be
 removed by an org admin in the web UI (found 2026-07-17 cleaning up a bad
 v0.1.3 in gradle-flatpak-sources). `gh` tokens without `admin:org` cannot
@@ -129,7 +129,7 @@ even view the ruleset.
   self-described as "best-effort", never refreshed after 2026-05. A parity
   table nobody re-verifies reads as authority and is wrong within a release.
 - **Org-wide branch-prefix conventions.** The drafts asserted `feat/`, `fix/`,
-  `chore/`… as org policy. The repos disagree in practice —
+  `chore/`… as org policy. The repos disagree in practice -
   [`CLAUDE.md`](../CLAUDE.md)'s repo table records per-repo commit style, and
   `firmware` (sentence-style, ad-hoc prefixes), `protobufs` (mixed) and
   `TAKPacket-SDK` (imperative with a detailed body) each do their own thing.

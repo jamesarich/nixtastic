@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Every Claude Code session in this workspace, on both machines, reads and writes one memory store — `~/.nixtastic-agent/memory` — by making each `~/.claude/projects/<slug>/memory` a symlink into it, laid down and verified by the workspace's own tools.
+**Goal:** Every Claude Code session in this workspace, on both machines, reads and writes one memory store - `~/.nixtastic-agent/memory` - by making each `~/.claude/projects/<slug>/memory` a symlink into it, laid down and verified by the workspace's own tools.
 
 **Architecture:** A new `scripts/memory.sh` (prepended to `sync`, `doctor`, `worktree` exactly as `lib.sh` is) holds the slug function, the three-rule link/import, the index renderer and the overlap report. `sync` gains a memory pass (pull → link/import → render → commit → push) plus `--install-hooks`, `--memory-only`, `--slug`. `doctor` gains five checks. `worktree` links at creation. Two user-scope hooks call a generated `bin/nixtastic-memory-hook` that pulls on `SessionStart` and commits+pushes on `Stop`, every step best-effort.
 
 **Tech Stack:** bash under `writeShellApplication` (`set -euo pipefail`, ShellCheck at build), git, jq, gawk, GNU sed/coreutils; fixture tests in `scripts/tools-tests.sh` run inside the Nix sandbox by `nix flake check`.
 
-**Spec:** `notes/agent-memory-sync.md` — read it first. Every design decision below is argued there; this plan only says how.
+**Spec:** `notes/agent-memory-sync.md` - read it first. Every design decision below is argued there; this plan only says how.
 
 ## Global Constraints
 
@@ -40,12 +40,12 @@
 
 ---
 
-### Task 1: `memory.sh` — slug, paths, flake wiring, `sync --slug`
+### Task 1: `memory.sh` - slug, paths, flake wiring, `sync --slug`
 
 **Files:**
 - Create: `scripts/memory.sh`
 - Modify: `scripts/sync.sh:21-29` (arg parsing)
-- Modify: `flake.nix` — the `sync`, `worktree`, `doctor` `writeShellApplication` blocks (search `text = builtins.readFile ./scripts/lib.sh`)
+- Modify: `flake.nix` - the `sync`, `worktree`, `doctor` `writeShellApplication` blocks (search `text = builtins.readFile ./scripts/lib.sh`)
 - Test: `scripts/tools-tests.sh` (append T17)
 
 **Interfaces:**
@@ -85,13 +85,13 @@ Expected: `tools-tests` fails at T17 with `unknown option: --slug`.
 # SPDX-FileCopyrightText: 2026 James Rich
 # SPDX-License-Identifier: GPL-3.0-only
 #
-# One memory store for every Claude Code session, on every machine —
+# One memory store for every Claude Code session, on every machine -
 # prepended after lib.sh to sync, doctor and worktree. The design, the
 # measurements behind it and the two probes it rests on are in
 # notes/agent-memory-sync.md; this file is the mechanism only.
 #
 # Claude Code keeps memory at <config>/projects/<slug>/memory, and <slug>
-# is a function of the absolute cwd — so macOS and Linux can never share
+# is a function of the absolute cwd - so macOS and Linux can never share
 # one, and every repo and worktree gets its own empty store. The fix is a
 # mapping layer: every slug the workspace owns becomes a symlink into ONE
 # store, a private git clone. Nothing here moves memory; it maps it.
@@ -154,7 +154,7 @@ Replace the arg loop at `scripts/sync.sh:21-29` with:
 
 ```bash
 # --slug <path>: print the Claude Code project slug for a path and exit.
-# Not a mode — a lookup, for humans asking "which projects/ dir is mine?"
+# Not a mode - a lookup, for humans asking "which projects/ dir is mine?"
 if [ "${1:-}" = --slug ]; then
   slug_of "${2:?usage: --slug <absolute path>}"
   exit
@@ -188,8 +188,8 @@ git commit -m "tools: memory.sh with the project slug, and sync --slug to look o
 
 **Files:**
 - Modify: `scripts/memory.sh` (append `memory_slug_dirs`, `memory_link`)
-- Modify: `scripts/sync.sh` — insert the pass after the `write_claude_launcher` / skills block (after the `fi` that closes `if [ -n "$skill_repos" ]`, before `if write_mcp_json "$root" "$root"; then`)
-- Modify: `scripts/tools-tests.sh` — fixture at the top (after the repo loop), T18 at the bottom
+- Modify: `scripts/sync.sh` - insert the pass after the `write_claude_launcher` / skills block (after the `fi` that closes `if [ -n "$skill_repos" ]`, before `if write_mcp_json "$root" "$root"; then`)
+- Modify: `scripts/tools-tests.sh` - fixture at the top (after the repo loop), T18 at the bottom
 - Test: T18
 
 **Interfaces:**
@@ -202,7 +202,7 @@ In `scripts/tools-tests.sh`, after the `for r in $repos; do … done` loop and b
 
 ```bash
 # The memory store: a private GitHub repo in real life, a local bare here.
-# Cloning an EMPTY bare is deliberate — that is what the first machine
+# Cloning an EMPTY bare is deliberate - that is what the first machine
 # sees, and the first push has to set upstream itself.
 git init -q --bare -b main "$origins/nixtastic-agent.git"
 export NIXTASTIC_MEMORY_REMOTE="$origins/nixtastic-agent.git"
@@ -217,7 +217,7 @@ slug() { printf '%s' "$1" | sed 's/[^a-zA-Z0-9]/-/g'; }
 Append T18 before `echo "all tests passed"`:
 
 ```bash
-echo "--- T18: memory pass — clone, link every slug, import without clobbering, idempotent"
+echo "--- T18: memory pass - clone, link every slug, import without clobbering, idempotent"
 # T1 already ran sync, so the store is cloned and the root + repos are
 # linked. Assert that state rather than re-deriving it.
 [ -d "$store/.git" ] || { echo "T18: store not cloned"; exit 1; }
@@ -265,8 +265,8 @@ Expected: `T18: store not cloned`.
 
 ```bash
 
-# Every Claude Code project directory this workspace owns — the root, each
-# cloned repo, every worktree of each repo — as "<projects>/<slug>\t<label>".
+# Every Claude Code project directory this workspace owns - the root, each
+# cloned repo, every worktree of each repo - as "<projects>/<slug>\t<label>".
 # The label is what a human reads in a report ("android/feat-thing", not
 # the 80-character slug). Only REAL directories are slugged: the workspace
 # never guesses a slug for a path that does not exist. $1 = workspace root.
@@ -287,9 +287,9 @@ memory_slug_dirs() {
 # The three-rule link (design: "Import: the sync code path, not a migration
 # script"). Already our symlink: nothing. A real directory: copy its files
 # into the store, SKIP any name already there, then replace it with the
-# link — the original is renamed beside the link, never deleted, because a
+# link - the original is renamed beside the link, never deleted, because a
 # skipped file may be the only copy of what it says. Missing: mkdir + link.
-# MEMORY.md is never copied — it is derived, and sync re-renders it.
+# MEMORY.md is never copied - it is derived, and sync re-renders it.
 #
 # $1 = <projects>/<slug>, $2 = the store's memory/ dir. Prints one line:
 #   linked                        a link was created (nothing to import)
@@ -300,7 +300,7 @@ memory_link() {
   m="$1/memory"
   if [ -L "$m" ]; then
     [ "$(readlink "$m")" = "$2" ] && return 0
-    printf 'warn\t%s -> %s, expected %s — not ours, left alone\n' "$m" "$(readlink "$m")" "$2"
+    printf 'warn\t%s -> %s, expected %s - not ours, left alone\n' "$m" "$(readlink "$m")" "$2"
     return 0
   fi
   n=0; kept=""; had=false
@@ -345,7 +345,7 @@ memory_pass() {
     if git clone --quiet "$(memory_remote)" "$st" 2>/dev/null; then
       echo "  memory    cloned $st"
     else
-      echo "  memory    no store at $st and clone failed — pass skipped"
+      echo "  memory    no store at $st and clone failed - pass skipped"
       echo "            (private repo: needs git access to $(memory_remote))"
       return 0
     fi
@@ -386,7 +386,7 @@ memory_pass() {
     if git -C "$st" push --quiet -u origin HEAD >/dev/null 2>&1; then
       echo "            committed and pushed"
     else
-      echo "            committed; push failed (offline?) — doctor will report unpushed"
+      echo "            committed; push failed (offline?) - doctor will report unpushed"
     fi
   fi
 }
@@ -402,7 +402,7 @@ Expected: T18 passes. If T1–T16 now print new `memory` lines that is expected;
 
 ```bash
 git add scripts/memory.sh scripts/sync.sh scripts/tools-tests.sh
-git commit -m "sync: the memory pass — clone the store, link every slug, import without clobbering"
+git commit -m "sync: the memory pass - clone the store, link every slug, import without clobbering"
 ```
 
 ---
@@ -411,7 +411,7 @@ git commit -m "sync: the memory pass — clone the store, link every slug, impor
 
 **Files:**
 - Modify: `scripts/memory.sh` (append two functions)
-- Modify: `scripts/sync.sh` — in `memory_pass`, between the report line and the `git add`
+- Modify: `scripts/sync.sh` - in `memory_pass`, between the report line and the `git add`
 - Test: T19
 
 **Interfaces:**
@@ -439,7 +439,7 @@ head -1 "$idx" | grep -qx '# Memory' || { echo "T19: no header"; exit 1; }
 want='who-james-is some-feedback bench-serials alpha-project zeta-project'
 got=$(sed -n 's/^- \[[^]]*\](\([^)]*\)\.md).*/\1/p' "$idx" | tr '\n' ' ' | sed 's/ $//')
 [ "$got" = "$want" ] || { echo "T19: order was: $got"; exit 1; }
-grep -q '^- \[Bench serials\](bench-serials.md) — \[james-pc\] bench USB serials$' "$idx" \
+grep -q '^- \[Bench serials\](bench-serials.md) - \[james-pc\] bench USB serials$' "$idx" \
   || { echo "T19: tag not inline / title not derived"; cat "$idx"; exit 1; }
 cp "$idx" "$HOME/idx.before"
 run "$sync"
@@ -466,9 +466,9 @@ Expected: `T19: no header` (no `MEMORY.md` is rendered yet).
 
 ```bash
 
-# MEMORY.md, derived from frontmatter. The index is the RETRIEVAL KEY — a
+# MEMORY.md, derived from frontmatter. The index is the RETRIEVAL KEY - a
 # probe showed memory bodies are fetched on demand, selected from their
-# index line alone — so it is written for selection: user → feedback →
+# index line alone - so it is written for selection: user → feedback →
 # reference → project (durable first; the merged set is 71 % project),
 # alphabetical within each, the machine tag inline where one is set.
 # Deterministic, so re-rendering an unchanged store is byte-identical and
@@ -484,7 +484,7 @@ memory_render_index() {
         stem = FILENAME; sub(/.*\//, "", stem); sub(/\.md$/, "", stem)
         rank = (type == "user") ? 0 : (type == "feedback") ? 1 : (type == "reference") ? 2 : (type == "project") ? 3 : 4
         tag = (mach != "") ? "[" mach "] " : ""
-        printf "%d\t%s\t- [%s](%s.md) — %s%s\n", rank, stem, title(stem), stem, tag, desc
+        printf "%d\t%s\t- [%s](%s.md) - %s%s\n", rank, stem, title(stem), stem, tag, desc
       }
       BEGINFILE { inFm = 0; done = 0; type = ""; desc = ""; mach = "" }
       FNR == 1 && $0 == "---" { inFm = 1; next }
@@ -505,7 +505,7 @@ memory_render_index() {
 }
 
 # Pairs of memory names sharing two or more keyword stems, where at least
-# one side was just imported — a hint for a five-minute human pass, never
+# one side was just imported - a hint for a five-minute human pass, never
 # an auto-merge: measured, nine such pairs held ONE true duplicate. One
 # gawk process, because n² over a few hundred names is nothing to awk and
 # minutes to a bash loop. $1 = memory dir, $2 = file of imported basenames.
@@ -563,7 +563,7 @@ memory_overlaps() {
   if [ -s "$newnames" ]; then
     ov=$(memory_overlaps "$st/memory" "$newnames")
     if [ -n "$ov" ]; then
-      echo "            overlap — same topic on both machines? read both, merge by hand if so:"
+      echo "            overlap - same topic on both machines? read both, merge by hand if so:"
       printf '%s\n' "$ov"
     fi
   fi
@@ -621,7 +621,7 @@ After the `mcp=""` … `fi` block (line 153) and before `echo "  created  $wt"`,
 ```bash
 # Its own cwd is its own Claude Code project, so without this the first
 # session here starts with no memory and every later one keeps its own
-# blind store — the android/=2-memories hole, once per branch. The
+# blind store - the android/=2-memories hole, once per branch. The
 # projects/ dir does not exist until a session writes it, hence mkdir in
 # memory_link. Design: notes/agent-memory-sync.md.
 mem=""
@@ -669,7 +669,7 @@ git commit -m "worktree: link the memory store at creation, before the first ses
 Append T21:
 
 ```bash
-echo "--- T21: hooks — merged into settings.json once, existing entries kept; the hook commits, pushes, and respects the lock"
+echo "--- T21: hooks - merged into settings.json once, existing entries kept; the hook commits, pushes, and respects the lock"
 cfg="$HOME/.claude/settings.json"
 mkdir -p "$HOME/.claude"
 cat > "$cfg" <<'EOF'
@@ -688,7 +688,7 @@ expect 'hooks already installed'
 [ "$(jq '.hooks.SessionStart | length' "$cfg")" = 2 ] || { echo "T21: second install duplicated the entry"; exit 1; }
 # The hook: a memory written through the link is committed and pushed.
 printf -- '---\nname: from-a-session\ndescription: "x"\nmetadata:\n  type: project\n---\nbody\n' > "$projects/$(slug "$root")/memory/from-a-session.md"
-printf -- '- [dup line](from-a-session.md) — x\n- [dup line](from-a-session.md) — x\n' >> "$store/memory/MEMORY.md"
+printf -- '- [dup line](from-a-session.md) - x\n- [dup line](from-a-session.md) - x\n' >> "$store/memory/MEMORY.md"
 run "$root/bin/nixtastic-memory-hook" stop
 git -C "$origins/nixtastic-agent.git" log --oneline | grep -q 'memory: ' || { echo "T21: hook did not push"; exit 1; }
 [ "$(grep -c 'dup line' "$store/memory/MEMORY.md")" = 1 ] || { echo "T21: union duplicate not collapsed"; exit 1; }
@@ -721,7 +721,7 @@ Expected: `unknown option: --install-hooks`.
 # The hook Claude Code runs at SessionStart (pull) and Stop (commit, pull,
 # push). A generated file at a STABLE path, like meshtastic-mcp-launch:
 # settings.json names the path once, sync rewrites the contents. POSIX sh,
-# because macOS runs it too — which is also why the lock is mkdir (atomic
+# because macOS runs it too - which is also why the lock is mkdir (atomic
 # everywhere) and not flock(1) (absent there). Every step is best-effort
 # and the script always exits 0: a hook must never block a session. A
 # merge that conflicts is aborted, not left for the next session to load
@@ -732,7 +732,7 @@ write_memory_hook() {
   mkdir -p "$1/bin"
   {
     echo '#!/bin/sh'
-    echo '# Generated by: nix run .#sync — regenerate, do not hand-edit.'
+    echo '# Generated by: nix run .#sync - regenerate, do not hand-edit.'
     echo '# SessionStart: pull. Stop: dedupe the index, commit, pull, push.'
     echo '# Every step best-effort; design in notes/agent-memory-sync.md.'
     printf 'store="%s"\n' "$(memory_store)"
@@ -751,7 +751,7 @@ write_memory_hook() {
     echo '  start) pull ;;'
     echo '  stop)'
     echo '    # A union merge can leave a pointer line twice; drop repeats, KEEP'
-    echo '    # order — sort would undo the type ordering sync renders.'
+    echo '    # order - sort would undo the type ordering sync renders.'
     echo '    if [ -f memory/MEMORY.md ]; then'
     echo '      awk '"'"'$0 == "" || !seen[$0]++'"'"' memory/MEMORY.md > memory/MEMORY.md.new && mv memory/MEMORY.md.new memory/MEMORY.md'
     echo '    fi'
@@ -765,7 +765,7 @@ write_memory_hook() {
   chmod +x "$1/bin/nixtastic-memory-hook"
 }
 
-# Register the hook in USER-scope settings.json — the one place that reaches
+# Register the hook in USER-scope settings.json - the one place that reaches
 # every directory on the machine, worktrees included. Merged with jq, never
 # overwritten: herdr and paseo already live in this file. Idempotent by the
 # script's own name; the backup is the same courtesy doctor extends. Both
@@ -802,7 +802,7 @@ In the arg loop add `--install-hooks) hooks=true ;;` and initialise `hooks=false
       echo "            hooks already installed"
     fi
   elif ! grep -q nixtastic-memory-hook "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" 2>/dev/null; then
-    echo "            no hooks yet — sessions will not pull or push until, once per machine:"
+    echo "            no hooks yet - sessions will not pull or push until, once per machine:"
     echo "                nix run .#sync -- --install-hooks"
   fi
 ```
@@ -828,7 +828,7 @@ Expected: T21 passes.
 
 ```bash
 git add scripts/memory.sh scripts/sync.sh scripts/tools-tests.sh notes/agent-memory-sync.md
-git commit -m "sync: the memory hook — pull at SessionStart, commit and push at Stop — and --install-hooks"
+git commit -m "sync: the memory hook - pull at SessionStart, commit and push at Stop - and --install-hooks"
 ```
 
 ---
@@ -836,7 +836,7 @@ git commit -m "sync: the memory hook — pull at SessionStart, commit and push a
 ### Task 6: five `doctor` checks
 
 **Files:**
-- Modify: `scripts/doctor.sh` — insert before the final `echo ""` / tally block
+- Modify: `scripts/doctor.sh` - insert before the final `echo ""` / tally block
 - Test: T22
 
 **Interfaces:**
@@ -847,7 +847,7 @@ git commit -m "sync: the memory hook — pull at SessionStart, commit and push a
 Append T22:
 
 ```bash
-echo "--- T22: doctor — store, links, hooks, state, age"
+echo "--- T22: doctor - store, links, hooks, state, age"
 run_lax "$doctor"
 expect 'ok +memory links'
 expect 'ok +memory hooks'
@@ -890,7 +890,7 @@ Insert before the final `echo ""` that precedes `if [ "$fails" -gt 0 ]; then`:
 # exactly the way this file exists to catch: the session just starts
 # without its memory, or with a store the other machine never sees. The
 # link check is also the only thing that notices if a Claude Code upgrade
-# ever replaces memory/ instead of writing into it — run doctor after one.
+# ever replaces memory/ instead of writing into it - run doctor after one.
 mstore=$(memory_store)
 if [ ! -d "$mstore/.git" ]; then
   bad "memory store" "not cloned at $mstore"
@@ -915,14 +915,14 @@ else
   if grep -q nixtastic-memory-hook "$mcfg" 2>/dev/null && [ -x "$root/bin/nixtastic-memory-hook" ]; then
     ok "memory hooks" "SessionStart pulls, Stop pushes"
   else
-    warn "memory hooks" "not in $mcfg — sessions neither pull nor push"
+    warn "memory hooks" "not in $mcfg - sessions neither pull nor push"
     fix "nix run .#sync -- --install-hooks"
   fi
 
   m_dirty=$(git -C "$mstore" status --porcelain 2>/dev/null | wc -l)
   m_count=$(find "$mstore/memory" -maxdepth 1 -name '*.md' ! -name MEMORY.md 2>/dev/null | wc -l)
   if [ -e "$mstore/.git/MERGE_HEAD" ]; then
-    bad "memory store" "merge in progress — sessions would load conflict markers"
+    bad "memory store" "merge in progress - sessions would load conflict markers"
     fix "git -C $mstore merge --abort && nix run .#sync -- --memory-only"
   else
     m_ahead=$(git -C "$mstore" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)
@@ -938,7 +938,7 @@ else
     fi
   fi
 
-  # Frontmatter `modified:`, not mtime — the laptop's 2026-08-15 migration
+  # Frontmatter `modified:`, not mtime - the laptop's 2026-08-15 migration
   # reset every mtime. A signal, not a reaper: nothing here deletes.
   m_cutoff=$(date -u -d '90 days ago' +%Y-%m-%d)
   m_stale=0; m_undated=0
@@ -949,7 +949,7 @@ else
   done <<< "$(find "$mstore/memory" -maxdepth 1 -name '*.md' ! -name MEMORY.md 2>/dev/null)"
   if [ "$m_stale" -gt 0 ] || [ "$m_undated" -gt 0 ]; then
     warn "memory age" "$m_stale not updated since $m_cutoff, $m_undated undated"
-    fix "review them; a wrong memory is worse than a missing one — delete it"
+    fix "review them; a wrong memory is worse than a missing one - delete it"
   else
     ok "memory age" "all $m_count updated within 90 days"
   fi
@@ -965,7 +965,7 @@ Expected: T22 passes.
 
 ```bash
 git add scripts/doctor.sh scripts/tools-tests.sh
-git commit -m "doctor: the memory store — cloned, every slug linked, hooks registered, pushed, and not stale"
+git commit -m "doctor: the memory store - cloned, every slug linked, hooks registered, pushed, and not stale"
 ```
 
 ---
@@ -974,9 +974,9 @@ git commit -m "doctor: the memory store — cloned, every slug linked, hooks reg
 
 **Files:**
 - Modify: `scripts/sync.sh` (flag; early exit)
-- Modify: `CLAUDE.md` — the "Fails silently — check these first" list
-- Modify: `README.md` — wherever `nix run .#sync` is introduced to a human
-- Modify: `AGENTS.md` — the generated-files convention (search for `meshtastic-mcp-launch` and add beside it)
+- Modify: `CLAUDE.md` - the "Fails silently - check these first" list
+- Modify: `README.md` - wherever `nix run .#sync` is introduced to a human
+- Modify: `AGENTS.md` - the generated-files convention (search for `meshtastic-mcp-launch` and add beside it)
 - Test: T23
 
 - [ ] **Step 1: Write the failing test**
@@ -1009,14 +1009,14 @@ if [ "$memory_only" = true ]; then
 fi
 ```
 
-`memory_pass` is defined later in the file than this call. Move the whole `memory_pass() { … }` definition (Task 2/3/5) up to just below `write_envrc()`, leaving only the `memory_pass` *call* where it was. It then sits above the arg loop that sets `hooks` and `memory_only` — that is fine and must stay so: a function body reads variables when it *runs*, not when it is defined, and both calls happen after the loop. Do not move the flags up with it.
+`memory_pass` is defined later in the file than this call. Move the whole `memory_pass() { … }` definition (Task 2/3/5) up to just below `write_envrc()`, leaving only the `memory_pass` *call* where it was. It then sits above the arg loop that sets `hooks` and `memory_only` - that is fine and must stay so: a function body reads variables when it *runs*, not when it is defined, and both calls happen after the loop. Do not move the flags up with it.
 
 - [ ] **Step 4: Docs**
 
 `CLAUDE.md`, append to the "Fails silently" list:
 
 ```markdown
-- **Memory is per-slug and the slug is your absolute cwd** — so `android/`,
+- **Memory is per-slug and the slug is your absolute cwd** - so `android/`,
   every worktree, and the other machine each start with an empty
   `~/.claude/projects/<slug>/memory` and never see what the root session
   learned. `.#sync` links every slug it owns into one private store
@@ -1027,9 +1027,9 @@ fi
   not touched in 90 days. Design: [`notes/agent-memory-sync.md`](./notes/agent-memory-sync.md).
 ```
 
-`README.md`: in the human workflow where `nix run .#sync` is first explained, add one paragraph: "On a new machine, also `nix run .#sync -- --install-hooks` once — it registers the two hooks that keep `~/.nixtastic-agent` (Claude's memory, shared across machines) pulled and pushed. `nix run .#doctor` tells you if you forgot."
+`README.md`: in the human workflow where `nix run .#sync` is first explained, add one paragraph: "On a new machine, also `nix run .#sync -- --install-hooks` once - it registers the two hooks that keep `~/.nixtastic-agent` (Claude's memory, shared across machines) pulled and pushed. `nix run .#doctor` tells you if you forgot."
 
-`AGENTS.md`: beside the entry for `bin/meshtastic-mcp-launch` in the generated-files list, add `bin/nixtastic-memory-hook` — "the SessionStart/Stop hook body at a stable path; settings.json names the path, sync rewrites the contents."
+`AGENTS.md`: beside the entry for `bin/meshtastic-mcp-launch` in the generated-files list, add `bin/nixtastic-memory-hook` - "the SessionStart/Stop hook body at a stable path; settings.json names the path, sync rewrites the contents."
 
 - [ ] **Step 5: Run the gate**
 
@@ -1045,7 +1045,7 @@ git commit -m "sync: --memory-only, and the docs for the memory store"
 
 ---
 
-### Task 8: rollout (manual — the spec's steps 1–5)
+### Task 8: rollout (manual - the spec's steps 1–5)
 
 Not TDD; a checklist, run by a person or an agent with the bench and SSH. Each step has a verification.
 
@@ -1056,7 +1056,7 @@ gh repo create jamesarich/nixtastic-agent --private --description "Claude Code m
 gh repo view jamesarich/nixtastic-agent --json visibility -q .visibility   # must print PRIVATE
 ```
 
-- [ ] **Step 2: Desktop — first sync, seed, hooks**
+- [ ] **Step 2: Desktop - first sync, seed, hooks**
 
 ```bash
 cd ~/meshtastic && nix run .#sync -- --memory-only
@@ -1067,7 +1067,7 @@ nix run .#sync -- --install-hooks
 nix run .#doctor                                               # every memory * line ok
 ```
 
-- [ ] **Step 3: Laptop — pull the workspace, sync, hooks**
+- [ ] **Step 3: Laptop - pull the workspace, sync, hooks**
 
 ```bash
 ssh james@192.168.1.138 'cd ~/nixtastic && git pull -q && nix run .#sync -- --memory-only 2>&1 | tail -20'
@@ -1075,7 +1075,7 @@ ssh james@192.168.1.138 'cd ~/nixtastic && git pull -q && nix run .#sync -- --me
 ssh james@192.168.1.138 'cd ~/nixtastic && nix run .#sync -- --install-hooks && nix run .#doctor 2>&1 | grep memory'
 ```
 
-- [ ] **Step 4: Desktop — pull, verify the union**
+- [ ] **Step 4: Desktop - pull, verify the union**
 
 ```bash
 cd ~/meshtastic && nix run .#sync -- --memory-only
@@ -1098,7 +1098,7 @@ grep '\[darwin\]\|\[james-pc\]' ~/.nixtastic-agent/memory/MEMORY.md | wc -l   # 
 
 - [ ] **Step 6: Prove it end to end**
 
-Start a session in `~/meshtastic/android` on the desktop (a slug that had 2 memories yesterday) and ask it about something only the laptop knew — e.g. "what does AGP 9 change about plugin application in this repo?" (`agp9-plugin-quirks`, laptop-only until today). Then on the laptop, `nix run .#doctor` — `memory store` must read `clean, pushed`.
+Start a session in `~/meshtastic/android` on the desktop (a slug that had 2 memories yesterday) and ask it about something only the laptop knew - e.g. "what does AGP 9 change about plugin application in this repo?" (`agp9-plugin-quirks`, laptop-only until today). Then on the laptop, `nix run .#doctor` - `memory store` must read `clean, pushed`.
 
 ---
 

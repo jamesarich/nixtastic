@@ -11,11 +11,11 @@ doc](https://developer.android.com/privacy-and-security/local-network-permission
 
 - The restriction covers **outgoing TCP connections** and UDP unicast/multicast/
   broadcast, not merely service discovery. It is "implemented deep in the
-  networking stack, and thus … apply to all networking APIs" — platform sockets,
+  networking stack, and thus … apply to all networking APIs" - platform sockets,
   Cronet, OkHttp, Ktor, anything above them.
 - A blocked TCP connect "will typically result in a **timeout** error." Not
   `EPERM`, not a fast failure. The only fast diagnostic is
-  `android_getnetworkblockedreason()`, an **NDK** API — and this repo has no
+  `android_getnetworkblockedreason()`, an **NDK** API - and this repo has no
   `jniLibs`, `externalNativeBuild` or `ndkVersion`, so it is out of reach.
 - The legacy implicit grant is keyed on **targetSdk, not install history**:
   "Apps with INTERNET permission receive an implicit permission grant … This is
@@ -26,7 +26,7 @@ doc](https://developer.android.com/privacy-and-security/local-network-permission
 ## What the app does
 
 `rememberLocalNetworkPermissionState()` is correct
-(`core/ui/src/androidMain/.../PlatformUtils.kt:436`) — gated on API ≥ 37, with a
+(`core/ui/src/androidMain/.../PlatformUtils.kt:436`) - gated on API ≥ 37, with a
 pre-37 granted fallback, and inert by construction on iOS (`NoopStubs.kt:77`)
 and desktop (`jvmMain/PlatformUtils.kt:169`).
 
@@ -52,7 +52,7 @@ Three paths reach a LAN socket without ever passing through either:
    persisted device address at service start, without the Connections screen
    ever composing. This is the worst-affected user: an existing install with a
    persisted TCP radio that simply stops working after the update, with no
-   prompt and no error — just a hang.
+   prompt and no error - just a hang.
 
 `ConnectionsScreen` being the parent of the manual-entry UI is what made this
 look covered. It is not: the screen *reads* `localNetworkPermission` for banner
@@ -60,23 +60,23 @@ and auto-scan logic, but only the scan toggle ever calls `.request()`.
 
 ## Fix shape
 
-**(1) and (2) — one PR, `feature/connections`, `commonMain`.** Gate the *entry
+**(1) and (2) - one PR, `feature/connections`, `commonMain`.** Gate the *entry
 point*, not the connect. Gating the "Add network device manually" button rather
 than the resulting `connectToManualAddress` avoids holding the typed address
 across the permission round-trip, and mirrors the `when` block already in
 `onToggleNetworkScan`: granted → proceed; `PERMANENTLY_DENIED` →
 `openAppSettings()`; else → `request()`.
 
-- `DeviceList` does not currently receive permission state — thread
+- `DeviceList` does not currently receive permission state - thread
   `canUseLocalNetwork` + `onRequestLocalNetwork` in, or hoist the trigger.
 - Gate **only** `DeviceListEntry.Tcp` in `onSelected`. Gating BLE/USB breaks them.
-- Do **not** carry `persistNetworkAutoScanIntent(true)` into the manual path —
+- Do **not** carry `persistNetworkAutoScanIntent(true)` into the manual path -
   the user asked to connect to one address, not to turn on scanning.
 - Stays in `commonMain`; the permission state is granted-by-construction on the
   other targets, so no expect/actual is needed.
 - Test alongside, modelled on `TAKConfigPermissionDeniedTest`.
 
-**(3) — separate, and it is not the same kind of fix.** There is no Activity in
+**(3) - separate, and it is not the same kind of fix.** There is no Activity in
 a service, so nothing there can call `.request()`. It has to fail fast and
 surface: `checkSelfPermission` in `androidMain`, and a connection-state error
 routing the user to Connections rather than waiting out a socket timeout.

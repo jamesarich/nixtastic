@@ -1,4 +1,4 @@
-# Device Screen Mirroring & Remote Control — Feature Specification
+# Device Screen Mirroring & Remote Control - Feature Specification
 
 Status: **draft** · protocol shipped in [meshtastic/protobufs#1054](https://github.com/meshtastic/protobufs/pull/1054) · reference device implementation [meshtastic/firmware#11681](https://github.com/meshtastic/firmware/pull/11681) · reference client [meshtastic/Meshtastic-Android#6987](https://github.com/meshtastic/Meshtastic-Android/pull/6987) · prior art [meshtastic/web#224](https://github.com/meshtastic/web/issues/224)
 
@@ -20,7 +20,7 @@ A client can view the device's screen live and drive its UI remotely. The device
 - Mirroring a *remote* node's screen over the mesh. Frames ride `FromRadio`, which never crosses the mesh (§8).
 - Audio, video rates, or lossless guarantees. This is a best-effort snapshot stream at UI cadence (~1 fps idle).
 
-## 2. Capability discovery — `DisplayInfo`
+## 2. Capability discovery - `DisplayInfo`
 
 `DeviceMetadata.display` (field 15), sent during the connection handshake:
 
@@ -42,7 +42,7 @@ A client can view the device's screen live and drive its UI remotely. The device
 Two `AdminMessage` verbs control the stream. Both are **local-connection-only**: a device receiving them over the mesh, or a build without a display, ignores them.
 
 - `get_display_frame_request = 50` (bool): one-shot. Forces one frame on the next redraw, even if the screen is unchanged. Classified as an admin *request* (no session passkey needed). There is **no** `AdminMessage` response; the frame arrives out-of-band as `FromRadio.display_frame`.
-- `set_display_mirror = 51` (bool): continuous mirroring on/off. **`false` is meaningful** — unlike most bool admin verbs this is not a trigger. The first frame arrives immediately on enable and acts as the acknowledgement. Not persisted across reboot; clients MUST re-arm after reconnect.
+- `set_display_mirror = 51` (bool): continuous mirroring on/off. **`false` is meaningful** - unlike most bool admin verbs this is not a trigger. The first frame arrives immediately on enable and acts as the acknowledgement. Not persisted across reboot; clients MUST re-arm after reconnect.
 
 ### 3.2 Lifecycle
 
@@ -54,14 +54,14 @@ Two `AdminMessage` verbs control the stream. Both are **local-connection-only**:
 
 All messages ride the existing phone API (`FromRadio`, ≤512 bytes encoded per message). Both streams use the same completion rule: `offset + payload length == total` completes the unit.
 
-### 4.1 `FromRadio.display_frame` — `DisplayFrame` (tag 20)
+### 4.1 `FromRadio.display_frame` - `DisplayFrame` (tag 20)
 
 One chunk of a framebuffer snapshot:
 
 | Field | Semantics |
 | --- | --- |
 | `width`, `height` | Full display dimensions (constant across a device's frames) |
-| `format` | Pixel encoding of `data`. `MONO_VLSB = 1`: 1 bpp, vertical LSB-first pages — byte index `x + (y / 8) * width`, bit index `y % 8`. `FORMAT_UNSPECIFIED = 0` MUST NOT be sent |
+| `format` | Pixel encoding of `data`. `MONO_VLSB = 1`: 1 bpp, vertical LSB-first pages - byte index `x + (y / 8) * width`, bit index `y % 8`. `FORMAT_UNSPECIFIED = 0` MUST NOT be sent |
 | `frame_id` | Constant across one frame's chunks; increments per captured frame; wraps at uint32; restarts from 1 on reboot. Treat any change as "a new frame", never as ordering |
 | `offset`, `total_size` | Byte position of this chunk in the frame buffer, and the full buffer size |
 | `data` | ≤384 bytes of framebuffer |
@@ -70,7 +70,7 @@ One chunk of a framebuffer snapshot:
 
 Guarantees a client MAY rely on:
 
-- Chunks of one frame arrive **contiguously** (no other `display_frame` interleaves; `display_palette` messages may) and in **offset order** — `FromRadio` is a reliable ordered stream. Reassembly needs no reordering buffer.
+- Chunks of one frame arrive **contiguously** (no other `display_frame` interleaves; `display_palette` messages may) and in **offset order** - `FromRadio` is a reliable ordered stream. Reassembly needs no reordering buffer.
 - A frame whose streaming has begun is always drained to completion, even if mirroring is disabled mid-frame.
 - Only *changed* framebuffers are streamed (the device diffs snapshots), plus one forced frame per one-shot request or enable. A palette change with unchanged pixels also produces a new frame (§4.2).
 
@@ -78,9 +78,9 @@ Client reassembly requirements:
 
 - `offset == 0` MUST start a new frame (this is also the reboot/torn-capture recovery path). Geometry (`width`/`height`) MUST be taken from the first chunk; a later chunk disagreeing MUST drop the partial frame.
 - A chunk that is not the exact contiguous continuation (`frame_id`, `offset`, `total_size` all matching expectations) MUST drop the partial frame and await the next `offset == 0`.
-- Clients MUST validate before allocating: `format` supported, `width > 0`, `height > 0`, `width * ceil(height / 8) == total_size`, and a sanity cap on `total_size` (reference: 16 KiB — a 320×240 1 bpp frame is 9600 bytes).
+- Clients MUST validate before allocating: `format` supported, `width > 0`, `height > 0`, `width * ceil(height / 8) == total_size`, and a sanity cap on `total_size` (reference: 16 KiB - a 320×240 1 bpp frame is 9600 bytes).
 
-### 4.2 `FromRadio.display_palette` — `DisplayPalette` (tag 21)
+### 4.2 `FromRadio.display_palette` - `DisplayPalette` (tag 21)
 
 Color devices paint the 1 bpp UI through a table of colored regions. Streaming that table lets a client render a **color-accurate** mirror at monochrome bandwidth.
 
@@ -91,7 +91,7 @@ Color devices paint the 1 bpp UI through a table of colored regions. Streaming t
 | `region_offset`, `region_total` | Chunking by region index; `offset + regions length == total` completes the palette |
 | `regions[≤16]` | `ColorRegion { x, y, width, height, on_color, off_color }`, in table order |
 
-- All colors are RGB565 in **logical bit layout** (`RRRRRGGGGGGBBBBB`) — the device byte-swaps from panel order before sending.
+- All colors are RGB565 in **logical bit layout** (`RRRRRGGGGGGBBBBB`) - the device byte-swaps from panel order before sending.
 - Precedence: a region with a **higher table index overrides** lower-indexed ones where they overlap, regardless of chunk boundaries.
 - Palettes are sent only when the signature changes (per client), before the frames that reference them. Monochrome devices never send one.
 - A client holding partial chunks of a signature that no longer matches incoming chunks MUST discard them. Clients SHOULD cap accepted `region_total` (reference: 512; firmware's own table caps at 48).
@@ -104,7 +104,7 @@ Color devices paint the 1 bpp UI through a table of colored regions. Streaming t
 
 ## 5. Remote input
 
-Input reuses the pre-existing `AdminMessage.send_input_event = 27` (`InputEvent { event_code, kb_char, touch_x, touch_y }`), which injects into the firmware's InputBroker — the same path physical buttons use, so it works on every device UI unmodified.
+Input reuses the pre-existing `AdminMessage.send_input_event = 27` (`InputEvent { event_code, kb_char, touch_x, touch_y }`), which injects into the firmware's InputBroker - the same path physical buttons use, so it works on every device UI unmodified.
 
 ### 5.1 Event codes (firmware `input_broker_event`)
 
@@ -113,7 +113,7 @@ Input reuses the pre-existing `AdminMessage.send_input_event = 27` (`InputEvent 
 | 10 | `SELECT` | OK button / Enter / Space / touch long-press |
 | 11 | `SELECT_LONG` | OK long-press |
 | 17–20 | `UP`, `DOWN`, `LEFT`, `RIGHT` | D-pad / arrow keys / swipe on the mirror |
-| 24 | `CANCEL` | — |
+| 24 | `CANCEL` | - |
 | 27 | `BACK` | Back button / Esc / Backspace |
 | 28 | `USER_PRESS` | Touch tap, **with coordinates** |
 
@@ -121,13 +121,13 @@ Input reuses the pre-existing `AdminMessage.send_input_event = 27` (`InputEvent 
 
 On `has_touch` devices, clients SHOULD map pointer input on the mirrored image to panel coordinates (`floor(px / rendered_size * panel_size)`, clamped) and send:
 
-- tap → `USER_PRESS` (28) with `touch_x`/`touch_y` — matching what physical touch drivers emit;
-- long-press → `SELECT` (10) with coordinates — likewise matching the physical driver.
+- tap → `USER_PRESS` (28) with `touch_x`/`touch_y` - matching what physical touch drivers emit;
+- long-press → `SELECT` (10) with coordinates - likewise matching the physical driver.
 
 ### 5.3 Input transport & pacing
 
 - Input SHOULD be sent on an immediate/priority path, never queued behind bulk admin traffic.
-- Hold-to-repeat SHOULD use ~500 ms initial delay, then ~10 Hz — deliberately slower than OS typematic so events cannot outrun the radio's UI rendering. Repeat directions only; never auto-repeat `SELECT`/`BACK`.
+- Hold-to-repeat SHOULD use ~500 ms initial delay, then ~10 Hz - deliberately slower than OS typematic so events cannot outrun the radio's UI rendering. Repeat directions only; never auto-repeat `SELECT`/`BACK`.
 
 ## 6. Client UX requirements & guidance
 
@@ -144,9 +144,9 @@ Derived from TV-remote / emulator-overlay / accessibility research; the Android 
 
 For a firmware (or simulator) implementing the device side:
 
-- **Capture point**: snapshot the framebuffer after each committed UI frame, from the thread that draws it. Diff against the last sent snapshot; stream only changes. On palette-driven devices, capture the region table **at paint time** — before any per-frame clearing — and stamp frames with the signature captured *with* that snapshot, not the live one.
+- **Capture point**: snapshot the framebuffer after each committed UI frame, from the thread that draws it. Diff against the last sent snapshot; stream only changes. On palette-driven devices, capture the region table **at paint time** - before any per-frame clearing - and stamp frames with the signature captured *with* that snapshot, not the live one.
 - **Multi-client**: each client connection keeps its own drain cursors (frame `(id, offset)`, palette `(signature, region_offset)`) against the single shared snapshot, so coexisting clients receive complete units independently. A frame captured while a client is mid-drain restarts that client at offset 0 of the new frame.
-- **Priority**: mirror data drains at the lowest phone-API priority — mesh packets, notifications, and sync replay always outrank pixels. Palette chunks precede frame chunks so the first rendered frame can be colored.
+- **Priority**: mirror data drains at the lowest phone-API priority - mesh packets, notifications, and sync replay always outrank pixels. Palette chunks precede frame chunks so the first rendered frame can be colored.
 - **Redaction**: builds with display redaction (lockdown) MUST mirror the redacted screen, never the underlying content. Under client access control, frames and palettes MUST only be delivered to authorized clients (same bar as mesh packets).
 - **Memory**: allocate nothing until armed; free on disarm/disconnect; account allocations in the platform's memory audit. Refuse panels whose 1 bpp size exceeds internal cursor width rather than truncating.
 
@@ -158,7 +158,7 @@ For a firmware (or simulator) implementing the device side:
 
 ## 9. Future work
 
-- **Color/MUI streaming**: `Format.RGB565` + the reserved `rect_*` fields turn the same message into a dirty-rect stream fed by LVGL's flush callback — additive, no wire break. Viable over USB/TCP; needs throttling over BLE.
+- **Color/MUI streaming**: `Format.RGB565` + the reserved `rect_*` fields turn the same message into a dirty-rect stream fed by LVGL's flush callback - additive, no wire break. Viable over USB/TCP; needs throttling over BLE.
 - **Per-client refcounted arming** (replaces the global flag). The per-client cursors it needs already exist.
 - **Palette cache**: clients MAY keep the last few palettes keyed by signature so a one-shot frame taken across a theme change still colorizes.
 - **Device bezels**: client-side cosmetic frames from the design repo's device art, keyed by `hw_model`, with a canonical screen-viewport rect per asset.
@@ -168,6 +168,6 @@ For a firmware (or simulator) implementing the device side:
 
 End-to-end verified on real hardware against the reference client (Android/desktop, shared KMP code):
 
-- **RAK4631 (WisMesh Pocket)** — 128×64 OLED, monochrome mirror, D-pad/keyboard remote control.
-- **LILYGO T-Deck** (BaseUI build) — 320×240 ST7789, color-accurate mirror via palette streaming, tap-to-touch, theme-recolor propagation.
+- **RAK4631 (WisMesh Pocket)** - 128×64 OLED, monochrome mirror, D-pad/keyboard remote control.
+- **LILYGO T-Deck** (BaseUI build) - 320×240 ST7789, color-accurate mirror via palette streaming, tap-to-touch, theme-recolor propagation.
 - Build-verified additionally on Heltec V3, Heltec Mesh Node T114 (ST7789/nRF52), and the Linux-native target (coloring-disabled TFT combination).
