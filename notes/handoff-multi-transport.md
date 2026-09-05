@@ -105,9 +105,10 @@ because that radio cannot hold an Apple connection long enough to exercise it).
 
 1. **Push three repos:** firmware spike `fcc3c0582` (the 1M-PHY fix, flashed on
    the V3), node-kmp `4436227` (GATT PHY knob), and this workspace.
-2. **Cherry-pick `fcc3c0582` into a `develop` PR.** It fixes stock firmware too
-   (develop and the nightly bootloop on this iPad with the stock iOS app). State
-   the trade plainly: iOS phone-API links run at 1M on ESP32-S3/C3.
+2. **Develop PR from `fcc3c0582` — ON HOLD, James's call when.** It fixes stock
+   firmware too (develop and the nightly bootloop on this iPad with the stock iOS
+   app); the trade to state when it goes up: iOS phone-API links run at 1M on
+   ESP32-S3/C3. Until then the fix lives only on the spike branch.
 3. **Upstream:** nudge esp-idf#15311 (same assert, same PC 0x40006fcb) with the
    peer-initiated variant, the stock-Meshtastic repro and the 1M workaround; a
    `meshtastic/firmware` issue so A16-iPad users have somewhere to land.
