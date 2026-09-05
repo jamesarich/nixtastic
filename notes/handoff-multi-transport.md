@@ -177,6 +177,38 @@ links at chunk 512 against the V3 and 244 against the Pocket.
    (a sheet, or collapse peers too); the LoRa stale claim after the device tests
    (`SX1262 command 0x80 failed, status 0xf7` retrying) and the post-TX bulk-IN
    retry.
+12. **Commonize the transports before filling more platform gaps** (James,
+   2026-09-05). The per-platform matrix is ragged — UDP: JVM+Android, no iOS;
+   BLE-adv: Android+Apple, no desktop; BLE-GATT: Android+Apple, desktop stub;
+   LoRa: Android USB only — and each gap has so far been filled by writing the
+   whole transport again in an `actual`. Before the next backend, pull what is
+   medium-agnostic into `commonMain` so a platform supplies only its I/O seam:
+   framing (`FrameAdapter`s already are), per-peer send queues and their
+   concurrency, the GATT chunk/reassembly state machine (`GattLink` duplicates it
+   per platform), scan/advertise scheduling and refresh (the Android 3-min scan
+   restart lives in an `actual`; the rule is not Android-specific), connection
+   arbitration for DUAL role, stats/counters, and the fault/`state` reporting
+   shape. The target: a new desktop BLE or iOS UDP backend is a socket/GATT
+   adapter of a few hundred lines, not a fourth copy of the transport. Audit
+   open items O1–O12 map onto this; do them once, in common.
+13. **Monitor honesty and UX** (James, 2026-09-05). The monitor presents
+   controls for transports that do not exist on the platform: desktop shows
+   UDP, BLE-adv, BLE-GATT and LoRa, and only UDP moves bytes
+   (`Platform.jvm.kt` wires stubs "so a desktop node carries all of them").
+   Fix first: a transport declares its availability (`Unavailable(reason)`,
+   `NeedsPermission`, `Ready`, `Active`) and the UI renders unavailable ones
+   greyed with the reason, or not at all — never as a live toggle. Then a real
+   Material 3 pass: the screen is a tuning panel plus a text log, which is a
+   debugger's view, not a monitor's. Decide what monitoring the node needs:
+   node identity and bearers up; per-bearer rx/tx/relay/drop rates over time,
+   not just totals; peers with last-heard, RSSI/SNR and *which bearer* they are
+   reached on; queue depth and delivery outcome (once step 2 exists); the
+   phone-API client, if one is attached. The centrepiece should be a live mesh
+   diagram: this node in the middle, directly-connected peers around it, edges
+   coloured by transport (UDP/BLE-adv/GATT/LoRa), edge weight or animation for
+   traffic flowing, fading as a peer goes stale, relays drawn as a hop beyond.
+   Compose Canvas is enough; the data is already in `MeshEvent` (bearer
+   stamped on every rx/tx/relay). Keep the log, but as a secondary tab.
 
 ## The bench
 
