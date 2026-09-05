@@ -5,6 +5,13 @@ Android node, instrumented them per bearer, and found the dead-UDP bug that
 instrumentation exists to find. **Start a new session here.** Everything below
 is committed; push state is stated per repo.
 
+**Updated 2026-09-05 (afternoon):** the **availability seam** landed in
+`meshtastic-node-kmp` and is pushed (`0885f03`, `30d12c4`, `d2d0baa`) — a
+transport now declares whether it can carry anything and why not, which closes
+item 13's "fix first" and the state/fault half of item 12. See "Availability
+seam" below. Verified on the desktop and the Pixel; the iPad's rows are
+eyeball-only, because iOS 26 has no working screenshot path.
+
 **Updated 2026-09-05 (morning):** the Apple-central bootloop is **fixed** on the
 spike (`fcc3c0582`, 1M-only PHY on ESP32-S3/C3); **nRF52 is a full peer** — BLE-adv
 both ways and the mesh-peer GATT service both ways with Android *and* iOS on a
@@ -178,7 +185,9 @@ links at chunk 512 against the V3 and 244 against the Pocket.
    (`SX1262 command 0x80 failed, status 0xf7` retrying) and the post-TX bulk-IN
    retry.
 12. **Commonize the transports before filling more platform gaps** (James,
-   2026-09-05). The per-platform matrix is ragged — UDP: JVM+Android, no iOS;
+   2026-09-05). **Started 2026-09-05: the state/fault seam is done and pushed**
+   (`meshtastic-node-kmp` `0885f03`, `30d12c4`, `d2d0baa`) — see "Availability
+   seam" below. The rest of this item stands. The per-platform matrix is ragged — UDP: JVM+Android, no iOS;
    BLE-adv: Android+Apple, no desktop; BLE-GATT: Android+Apple, desktop stub;
    LoRa: Android USB only — and each gap has so far been filled by writing the
    whole transport again in an `actual`. Before the next backend, pull what is
@@ -191,13 +200,9 @@ links at chunk 512 against the V3 and 244 against the Pocket.
    shape. The target: a new desktop BLE or iOS UDP backend is a socket/GATT
    adapter of a few hundred lines, not a fourth copy of the transport. Audit
    open items O1–O12 map onto this; do them once, in common.
-13. **Monitor honesty and UX** (James, 2026-09-05). The monitor presents
-   controls for transports that do not exist on the platform: desktop shows
-   UDP, BLE-adv, BLE-GATT and LoRa, and only UDP moves bytes
-   (`Platform.jvm.kt` wires stubs "so a desktop node carries all of them").
-   Fix first: a transport declares its availability (`Unavailable(reason)`,
-   `NeedsPermission`, `Ready`, `Active`) and the UI renders unavailable ones
-   greyed with the reason, or not at all — never as a live toggle. Then a real
+13. **Monitor honesty and UX** (James, 2026-09-05). **The "fix first" half is
+   done and pushed** — see "Availability seam" below. The Material 3 pass and
+   the live mesh diagram remain, and are the whole of what is left here. Then a real
    Material 3 pass: the screen is a tuning panel plus a text log, which is a
    debugger's view, not a monitor's. Decide what monitoring the node needs:
    node identity and bearers up; per-bearer rx/tx/relay/drop rates over time,
@@ -209,6 +214,50 @@ links at chunk 512 against the V3 and 244 against the Pocket.
    traffic flowing, fading as a peer goes stale, relays drawn as a hop beyond.
    Compose Canvas is enough; the data is already in `MeshEvent` (bearer
    stamped on every rx/tx/relay). Keep the log, but as a secondary tab.
+
+## Availability seam — done 2026-09-05 (`meshtastic-node-kmp`, pushed)
+
+Items 12's state/fault half and 13's "fix first", which turned out to be one
+change. Three commits: `0885f03`, `30d12c4`, `d2d0baa`.
+
+Every bearer published the same thing dead as idle — `rx 0 tx 0 failed 0` — so
+the desktop offered four live toggles while only UDP had a backend, and an
+Android node with Bluetooth off looked untouched rather than broken (the audit's
+"a dead bearer is a callback, not a throw").
+
+- `MeshTransport.availability: Flow<TransportAvailability>` — `Unavailable(reason)`,
+  `NeedsPermission(permission)`, `Ready`, `Active`. Defaulted on the interface,
+  the additive shape `name` took.
+- Platform seams supply the base: `GattLink.availability`, `BleMeshRadio.availability`,
+  `LoraDeviceSource.unavailableReason` (which separates "no stick plugged in" from
+  "this platform has no USB backend"). `TransportActivity` in `node-core` adds the
+  one fact no platform knows — whether anything is collecting the cold flow — and
+  is the only place `Active` is decided. Only a `Ready` base becomes `Active`.
+- The two `bluetoothAvailability` helpers live in `node-core` (`androidMain` /
+  `appleMain`) for the reason `BleMeshAdvert` does: both BLE modules need them and
+  share no other module. Apple's is narrower on purpose —
+  `CBPeripheralManager.authorization` is a class property, so it reads authorization
+  *without* constructing a manager, and constructing one is what raises the prompt.
+  The cost: Apple cannot see the power state, which only a live manager carries.
+- `absentTransports()` names bearers a platform never builds. A transport can only
+  speak for itself, so iOS silently omitted UDP and LoRa — making "iOS refuses this"
+  and "nobody wrote it yet" look identical. They now render greyed with a reason.
+- `MeshTransport.receiveOnly` — a **constant**, for a bearer that can never transmit
+  (Apple's advertisement radio). Explicitly *not* `canTransmit`, which is a live
+  sample: an Apple GATT link answers false until CoreBluetooth powers on, and the
+  Apple availability flow emits once, at start — so sampling `canTransmit` cached
+  that transient false and labelled the iPad's healthy `gatt` row "rx only". A
+  commonTest holds the line.
+
+Proven on hardware, not just compiled: desktop greys all three with reasons and
+drops the `GATT:` header line; the Pixel's BLE rows flipped from carrying real
+frames off `!3061b02e` to `needs permission: Bluetooth to be switched on` the
+instant Bluetooth went off and back on return (the live `ACTION_STATE_CHANGED`
+path). **Outstanding: the iPad's four rows are eyeball-only** — iOS 26 has no
+working screenshot path (`idb`'s screenshotr returns `0xe8000022`, `devicectl`
+has no equivalent), so a future iOS UI check needs a human or new tooling.
+
+Design decisions recorded in `meshtastic-node-kmp/AGENTS.md` → Design decisions.
 
 ## The bench
 
