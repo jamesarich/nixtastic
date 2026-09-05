@@ -215,6 +215,63 @@ links at chunk 512 against the V3 and 244 against the Pocket.
    Compose Canvas is enough; the data is already in `MeshEvent` (bearer
    stamped on every rx/tx/relay). Keep the log, but as a secondary tab.
 
+## Tier-1 node parity — in progress 2026-09-05 (`meshtastic-node-kmp`, pushed)
+
+Working the "Parity and coverage plan" sequence in `multi-transport-mesh.md`.
+Research for it ran as a 7-agent fan-out over firmware module semantics and
+node-kmp's own gaps; every constant below is cited from firmware source rather
+than remembered.
+
+**Hygiene first (`c14c4b4`, `a8c2afe`, `08f6bfd`, `bf4f4cd`).** Three gate holes,
+all of which had let real defects through:
+- The `api/` dumps had been stale for four commits. BCV was wired for klib **and**
+  JVM all along; the documented gate never named `apiCheck`.
+- **Spotless does not read `.editorconfig`.** The 120-column limit it appeared to
+  honour is ktlint's own `intellij_idea` default, so every override in that file —
+  including two per-file exemptions already sitting there — had never bound.
+  Settings that must bind are now an explicit `editorConfigOverride` map.
+- The gate ran `jvmTest` and only *compiled* the native targets — the org's named
+  KMP anti-pattern verbatim. It hid four comma-bearing test names that
+  Kotlin/Native rejects, so `gradle build` was broken on `main` while everything
+  read green. Gate is now `spotlessCheck detekt apiCheck allTests testAndroidHostTest`.
+
+**Slices landed, each gated on every target and proven where a proof exists:**
+- **Identity + keypair persistence** (`ef264e5`, `894bc39`). `NodeIdentityRecord`
+  holds the address seed and X25519 pair as one record written in a single save,
+  so "persist the address and the keypair together" is structural rather than
+  advisory. The node had **no keypair in production at all** — `Config.privateKey`
+  had no caller outside tests, so `LocalRadio` told every phone `hasPKC=false`.
+  Desktop/Android/iOS stores each state what protects the key. A failed load is
+  fatal to the node on purpose: minting a replacement discards the address every
+  peer pinned. Bench-proven — first run adopted the migration seed and kept
+  `!a6e88506`, second run read without rewriting, a corrupted record produced
+  "identity unavailable" with the file left untouched.
+- **Keyless-first eviction** (`ef264e5`). `BoundedLru` evicted strict-LRU, so
+  keyless chatter evicted the peers whose keys we hold — the inverse of firmware.
+- **`pki_encrypted` derived, not trusted** (`9da2e8e`). `toMeshPacket` copied the
+  wire's bit through and never set `public_key`, so anyone with the channel PSK
+  could hand a phone a channel message wearing a private message's lock icon.
+- **Telemetry decoded** (`522e76b`). Was reported as `Opaque` — "could not be
+  read" — when it had been read. Nullable fields throughout, because the wire's
+  `optional` exists to separate "not measured" from "measured zero".
+- **Reliable delivery** (`e9ca481`). Firmware budgets (5 unicast / 3 broadcast,
+  total attempts). The hard part is not retrying but refusing to stop wrongly: a
+  neighbour's rebroadcast is an implicit ack, our own UDP-multicast loopback is
+  not, and `hopsAway` separates them.
+- **Beacon scheduler + `want_response` replies** (`b2dd0fd`). The node never
+  announced, so it was invisible in every stock app and its public key never
+  travelled. Firmware intervals and throttles; the reply path stops a radio NAKing
+  us with `NO_RESPONSE`. Verified live on the desktop: `tx[udp] node_info` at
+  02.444 s.
+
+**Owed on the bench next sitting:** the node appearing in the stock Android app's
+node list (the only proof that matters for the beacon), and a DM round-trip to the
+Pocket now that a keypair exists.
+
+**Still open from the plan's sequence:** desktop LoRa (libusb `UsbBulkPipe`),
+desktop BLE (BlueZ), DUAL-role GATT arbitration, position + device telemetry
+egress with a host position seam, traceroute/waypoints/neighbours, MQTT, iOS UDP.
+
 ## Availability seam — done 2026-09-05 (`meshtastic-node-kmp`, pushed)
 
 Items 12's state/fault half and 13's "fix first", which turned out to be one
