@@ -350,8 +350,53 @@ at -3 dBm plus three more at -45/-46 dBm, and the Pixel over UDP.
 **Still owed on hardware:** a DM round-trip to the Pocket now a keypair exists, and
 three DUAL nodes at once to exercise the GATT arbitration.
 
-**Still open from the plan's sequence:** desktop BLE (BlueZ), MQTT bridge, iOS UDP,
-and answering traceroute rather than only reading it.
+**The plan's sequence (`multi-transport-mesh.md` -> "Parity and coverage plan") is
+now implemented end to end.** Later slices, all pushed:
+
+- **Traceroute answered**, not just read (`d74c263`). Follows the firmware's own
+  distinctions: append our SNR but **not** our node id (a destination is not a hop
+  on the way to itself), the SNR is the reserved "not known" sentinel because most
+  bearers measure none, a multi-hop **broadcast** request is ignored, and a reply is
+  never answered. Not done and said so: appending ourselves to a traceroute we
+  *relay*, which would need a relayed packet decrypted, rewritten and re-sealed -
+  this node relays opaquely by design.
+- **MQTT bridge** (`5b10a80`, `6d33342`), using the org's own MQTTastic-Client-KMP.
+  Topic `<root>/2/e/<channelId>/<gatewayId>` read from `MQTT.cpp`; there is **no
+  region segment** - `msh/US` is an operator setting `root`, which is the detail
+  reimplementations get wrong. The via_mqtt anti-loop pair is exact. JSON topics
+  deliberately unsupported: firmware PR #10152 removed the JSON libraries.
+  **PROVEN against a real broker** - see below.
+- **Desktop BLE over BlueZ** (`5b10a80`). Linux gets both GATT roles *and*
+  extended advertising. Linux-only and cannot be otherwise; the platform check runs
+  **before any BlueZ type is touched**, since dbus-java is on every desktop's
+  classpath. Verified on this Mac: both rows read "Mac OS X has no Bluetooth
+  backend for the JVM - BlueZ over D-Bus is Linux only", no class-loading trouble.
+- **iOS UDP** (`5b10a80`). Transport moved to `commonMain` behind a
+  `UdpMulticastSocket` seam, JVM/Android socket code **moved not rewritten**, POSIX
+  actual for Apple. The multicast entitlement is Apple's gate and this project does
+  not hold it, so a refused join surfaces as an unavailable bearer naming the
+  entitlement rather than a silently dead one.
+
+**MQTT PROVEN, 2026-09-05**, against `tools/mqtt-broker` (a loopback-bound
+mosquitto in compose, committed - the public broker feeds the project map and a
+node under development should not publish into it). The broker's own log:
+
+```
+New client connected as !000a11ce (p5, c1, k30)
+Received PUBLISH from !00000b0b, 'msh/2/e/LongFast/!00000b0b', 59 bytes
+Sending PUBLISH to !000a11ce,   'msh/2/e/LongFast/!00000b0b', 59 bytes
+```
+
+Firmware topic layout exactly, `!%08x` client ids, MQTT 5, a 59-byte
+ServiceEnvelope from one bridge to another. `MqttBrokerInteropTest` is env-guarded
+(`MESH_MQTT_BROKER`) like the other hardware tests.
+
+**Never run on its own platform, and nothing here pretends otherwise:** BlueZ (no
+Linux box), iOS UDP (no entitlement), and DUAL-role GATT arbitration (needs three
+DUAL nodes at once).
+
+**Still owed on hardware:** a DM round-trip to the Pocket now a keypair exists, and
+the GATT arbitration bench run.
 
 ## Availability seam — done 2026-09-05 (`meshtastic-node-kmp`, pushed)
 
