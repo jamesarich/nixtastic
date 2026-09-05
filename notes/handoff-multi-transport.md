@@ -139,9 +139,16 @@ because that radio cannot hold an Apple connection long enough to exercise it).
    text -> `rx[gatt]` on the Pixel 1 s later. Trades: S140's single adv set means the
    mesh UUID displaces TX power in the scan response and the advertised name is
    shortened to "Meshtastic_" while the GATT peer bit is on; `Bluefruit.begin(2,1)`
-   fits the re-based linker script. Untested: iPad <-> Pocket (the real prize - Nordic
-   controller, no Apple PHY assert expected); monitor must be reinstalled on the iPad
-   first (trust + Bluetooth prompt). Pocket console:
+   fits the re-based linker script. **iPad <-> Pocket PROVEN both ways 07:29 (2026-09-05):** the iPad subscribed
+   as conn 2 beside the Pixel's conn 1, its Send test arrived as `BLE GATT mesh RX
+   from=0x9ebca8df peer=2` and decoded, and a Pocket text showed as `rx[gatt]` on the
+   iPad - 305 s, zero asserts. First iOS <-> firmware GATT mesh link with no PHY
+   workaround: Nordic's controller takes the A16 as-is. Two of the iPad's first three
+   connects dropped after 2 s "never subscribed" before one stuck (the iOS-central
+   flakiness already on the tuning backlog). **Console trap:** any CLI session on the
+   Pocket's USB serial hands the port to the phone API and the firmware stops printing
+   logs until the next reboot - after `--sendtext`/`--set`, `--reboot` and reattach
+   before trusting a silent capture. Pocket console:
    USB CDC prints only with **DTR asserted** (the opposite of the V3's UART rule),
    and a config write or `--reboot` re-enumerates USB under an open handle.
 6. **Gate the ESP32-C3:** ESP32-C3 (single-core, tight RAM — likely-fail
