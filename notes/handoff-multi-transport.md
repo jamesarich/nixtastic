@@ -5,6 +5,11 @@ Android node, instrumented them per bearer, and found the dead-UDP bug that
 instrumentation exists to find. **Start a new session here.** Everything below
 is committed; push state is stated per repo.
 
+**Updated the same evening:** the Apple-central bootloop is **fixed** on the spike
+(`fcc3c0582`, 1M-only PHY), iPad ↔ firmware GATT carries frames, and the GATT PHY
+is a monitor tuning knob (node-kmp `4436227`). Details under "The Apple-central
+bootloop is FIXED" below; the bench rules it cost are at the end of this file.
+
 ## Read first
 
 1. [`multi-transport-mesh.md`](./multi-transport-mesh.md) — the canonical plan
@@ -98,42 +103,46 @@ because that radio cannot hold an Apple connection long enough to exercise it).
 
 ## Next steps, in order
 
-1. **Land the workflow output** (above). If its diagnosis was low-confidence it
-   will have added instrumentation rather than a fix — read what it added off the
-   Pixel, then fix.
-2. **Push the firmware spike branch** (ahead 5) once any firmware-side GATT fix is
-   in; flash the V3 only with the user's OK (`i approve flashing by bash` was the
-   form, once, for a specific build).
-3. **v3 bench cleanup:** `network.enabled_protocols` 7→3, `bluetooth.mode`
-   `NO_PIN`→`RANDOM_PIN`, reboot. **WiFi stays on** (it is the UDP peer).
-4. **Gate the other MCUs:** ESP32-C3 (single-core, tight RAM — likely-fail
+1. **Push three repos:** firmware spike `fcc3c0582` (the 1M-PHY fix, flashed on
+   the V3), node-kmp `4436227` (GATT PHY knob), and this workspace.
+2. **Cherry-pick `fcc3c0582` into a `develop` PR.** It fixes stock firmware too
+   (develop and the nightly bootloop on this iPad with the stock iOS app). State
+   the trade plainly: iOS phone-API links run at 1M on ESP32-S3/C3.
+3. **Upstream:** nudge esp-idf#15311 (same assert, same PC 0x40006fcb) with the
+   peer-initiated variant, the stock-Meshtastic repro and the 1M workaround; a
+   `meshtastic/firmware` issue so A16-iPad users have somewhere to land.
+4. **V3 bench restore:** the web-flasher erase (17:47) took `config.proto` and
+   `nodes.proto` and reset the primary channel to `LongFast`. Region US and
+   `enabled_protocols=7` are restored over serial; the **`olm3sh` channel and the
+   WiFi credentials are James's to re-enter from the app** (never written by the
+   agent). `bluetooth.mode` is back at its default. WiFi is **off** (BLE on).
+5. **Gate the other MCUs:** ESP32-C3 (single-core, tight RAM — likely-fail
    candidate) and nRF52 (`Bluefruit.begin(2,0)` + linker RAM); neither on the
    bench, both unbuilt. Firmware native tests need Docker on macOS.
-5. **Tuning backlog** (all in the plan doc): iOS-*central* discovery flakiness
+6. **Tuning backlog** (all in the plan doc): iOS-*central* discovery flakiness
    (`didDiscoverPeripheral` unreliable; inbound link is solid); DUAL-role
    connection arbitration + a low connection cap; per-peer send-queue concurrency;
    the send-dedup asymmetry (repeated `Send test` shared a packet id on the Pixel).
-6. **Bigger pieces:** desktop BLE (BlueZ D-Bus on Linux / a CoreBluetooth binding
+7. **Bigger pieces:** desktop BLE (BlueZ D-Bus on Linux / a CoreBluetooth binding
    on macOS) and LoRa (libusb `UsbBulkPipe`) JVM backends — today the desktop
    lists four bearers and only UDP moves bytes; iOS UDP (multicast entitlement +
    a native socket the app supplies); **iOS LoRa-over-USB is blocked by iOS**.
-7. **Dogfood API gaps still open:** `GattMeshTransport` clock default; a
+8. **Dogfood API gaps still open:** `GattMeshTransport` clock default; a
    `MeshNode` peer `Flow`. Done since last time: a `MeshTransport` display label
    (`name`); and the note that Compose chips ignore synthetic taps was **wrong**
    — `android_tap` registers fine.
-8. **Monitor polish:** the tuning panel squeezes the log to nothing on a phone
+9. **Monitor polish:** the tuning panel squeezes the log to nothing on a phone
    (a sheet, or collapse peers too); the LoRa stale claim after the device tests
    (`SX1262 command 0x80 failed, status 0xf7` retrying) and the post-TX bulk-IN
    retry.
 
 ## The bench
 
-- **Heltec v3** (ESP32-S3) — on WiFi at `192.168.1.180` (the UDP peer), **no USB
-  serial attached** at the moment; when it is, console via pyserial with
-  **DTR/RTS off** (opening it otherwise reboots the board). Runs spike
-  `ea24b26d5`. Config: `enabled_protocols=7`, `wifi_enabled=true`,
-  `bluetooth.mode=NO_PIN` (see cleanup). On this build WiFi, BLE and LoRa run
-  together.
+- **Heltec v3** (ESP32-S3) — USB serial on `/dev/cu.usbserial-0001`, **WiFi off,
+  BLE on**, running spike `fcc3c0582` (1M-only PHY). Config after the flasher
+  erase: `region=US`, `enabled_protocols=7`, default `bluetooth.mode`, primary
+  channel `LongFast` until James re-shares `olm3sh`, empty node DB. Console via
+  the one-open pyserial holder (below); every open resets the board.
 - **Pixel 6a** (Android 17, SDK 37) — wifi-adb serial
   `adb-24201JEGR04964-pey7fQ._adb-tls-connect._tcp` (the **full** mDNS serial).
   `mcp__meshtastic__android_ui_dump` / `android_tap` **must pass `serial=`**; taps
@@ -229,3 +238,27 @@ because that radio cannot hold an Apple connection long enough to exercise it).
 - Report status honestly: state what is **proven** vs **not**, verify on-device
   before claiming a fix, and never declare a feature working while it isn't —
   today's "Android runs all four transports" was wrong until the counters said so.
+
+## Bench rules learnt 2026-09-04 evening (each cost an hour)
+
+- **Serial: open the port once per sitting.** Each open power-on-resets the V3
+  even with DTR/RTS low, so a background holder appends to a file and everyone
+  `grep -a`s it (a panic dump puts binary bytes in the file and plain `grep -c`
+  then prints an empty string). NVS `Device reboots: N` is the serial-free reboot
+  witness; the RTC boot count is zeroed by that reset.
+- **An iPad that connected to a radio that died mid-connect keeps connecting
+  forever with no app process** — bluetoothd re-issues the pending connect; kill
+  and even uninstall do not clear it (it decays after ~10 min). **Settings >
+  Bluetooth off** clears it at once; the Control Center toggle is *not* off. A
+  completed link tears down cleanly on kill.
+- **Reinstalling the iOS monitor** means re-trusting the developer profile
+  (Settings > General > VPN & Device Management) and re-granting Bluetooth on
+  first launch; until both, the app runs with no BLE and the V3 sees nothing.
+- **pioarduino keeps one IDF libs package for every checkout.** A build after
+  another env rebuilt it links against *that* config (develop got EXT_ADV libs,
+  BLE failed rc=8, the test was void). Renaming the dir inside
+  `~/.platformio/packages/` hides nothing (manifest lookup); `mv` it out, then
+  `pio pkg install -e <env>`. "SUCCESS" with an old ELF mtime is the tell.
+- **Android never triggers the controller assert because it never starts a PHY
+  update**; asked to (`setPreferredPhy(2M)`) it negotiates 2M cleanly. iOS asks
+  at the controller level and apps cannot stop it. The fix is peripheral-side.

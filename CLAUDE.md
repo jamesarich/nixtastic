@@ -268,6 +268,14 @@ finds — run it before diagnosing by hand.
   MCU silently fight over it. Reading it mid-session produced flatly
   contradictory answers about whether `CONFIG_BT_NIMBLE_EXT_ADV` was set.
   Trust the built ELF (`readelf`/`strings`), not the sdkconfig file.
+  Worse: the rebuilt **libs** stay installed, so a later build of *another* env
+  whose sdkconfig hash pioarduino considers current links against them silently
+  (develop got the spike's `EXT_ADV=y` NimBLE, every legacy advertising call
+  failed `rc=8`, the bench test was void). Renaming the package dir inside
+  `~/.platformio/packages/` hides nothing — PlatformIO resolves packages by the
+  manifest `name` inside — so `mv` it out of `packages/`, `pio pkg install -e
+  <env>`, then build. "SUCCESS" with an unchanged Flash size and an old ELF mtime
+  is the tell that nothing was rebuilt.
 - **`MYNEWT_VAL(...)` does not reflect `custom_sdkconfig`** — NimBLE feature
   macros resolve from the *prebuilt* `esp_nimble_cfg.h` in the framework's
   include tree, so `#if MYNEWT_VAL(BLE_EXT_ADV)` reads 0 even in a build whose

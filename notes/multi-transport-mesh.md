@@ -650,7 +650,8 @@ bearer visible end to end:
 - The monitor: a transports card — one row per bearer the platform can build, an
   on/off chip, live counters; an unticked transport is never handed to the node.
   A collapsible tuning panel behind one `TransportTuning` bundle: relay on/off +
-  hop limit + contention slot; GATT role; LoRa region / preset / tx power /
+  hop limit + contention slot; GATT role and PHY (1M/2M — Android asks, iOS
+  negotiates 2M itself, the firmware answers 1M on S3/C3 by design); LoRa region / preset / tx power /
   relay-on-air / rx-only / rx-boost / airtime / slot# / MHz override; UDP group /
   port. Chips apply at once; typed values stage, then apply together (a rebuild
   per keystroke would churn the LoRa USB claim). Log lines lead with direction and
