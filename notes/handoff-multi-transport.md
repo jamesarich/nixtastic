@@ -347,8 +347,29 @@ is a single frame going out on two bearers at once.
 Five peers discovered off the air with their short names decoded: `!7263cc65 956a`
 at -3 dBm plus three more at -45/-46 dBm, and the Pixel over UDP.
 
-**Still owed on hardware:** a DM round-trip to the Pocket now a keypair exists, and
-three DUAL nodes at once to exercise the GATT arbitration.
+**DM ROUND-TRIP PROVEN, 2026-09-05** - PKI direct message over LoRa to the WisMesh
+Pocket, acknowledged by real firmware:
+
+```
+lora: tx ok len=56 toa=681ms
+dm to !7263cc65 queued: dm probe from node-kmp
+rx[lora] delivered: !7263cc65 ack req=3640905761
+```
+
+The Pocket could only ack it by decrypting it, so the persisted keypair is real and
+usable and PKI DM sealing matches the firmware in practice, not only in a unit
+test. 56 bytes against 24-29 for the broadcasts is the PKI overhead. Sending it
+needed a monitor change - the dogfood app could only broadcast, so a leading `!hex`
+in the send field now addresses a DM.
+
+**BLOCKED, not skipped - each needs hardware or a grant that is not here:**
+- **BlueZ on Linux.** The uConsole (`james@192.168.1.247`) was offline when tried;
+  it is the Linux box this wants. Nothing about the Linux path has executed.
+- **iOS UDP.** Needs Apple's multicast entitlement, granted by application. The
+  code reports a refused join as an unavailable bearer naming the entitlement,
+  which is the honest behaviour without it, but that path is unexercised too.
+- **DUAL-role GATT arbitration.** Needs three DUAL nodes reachable at once. The
+  Pocket is powered and on the air but was not USB-attached this sitting.
 
 **The plan's sequence (`multi-transport-mesh.md` -> "Parity and coverage plan") is
 now implemented end to end.** Later slices, all pushed:
