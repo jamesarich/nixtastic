@@ -309,10 +309,28 @@ desktop receives none of the Pixel's (`udp tx 6 rx 0` while the Pixel reads them
 fine). Classic wired↔wireless AP behaviour. It worked on 2026-09-04, so it is the
 network, not the transport; do not diagnose a dead UDP bearer from it.
 
-**Still owed on hardware:** a DM round-trip to the Pocket now a keypair exists;
-LoRa on the desktop with a stick actually attached (nothing about claim, bulk
-transfer or SX1262 bring-up is exercised — the endpoints are flashrom's, read from
-source, not measured); and three DUAL nodes at once to exercise the arbitration.
+**DESKTOP LORA PROVEN ON HARDWARE, 2026-09-05** (Meshtadpole plugged into the Mac).
+Everything previously listed as unverified about the receive path is now verified,
+on the first run:
+
+```
+lora: 13374234: SX1261 V2D 2D02 tuned 906.875 MHz LongFast UNSET slot 19/104 power 10 dBm
+rx[lora] opaque from !3061b02e (chan #50)
+rx[lora] peer !7263cc65 956a
+```
+
+The whole chain works: libusb load, CH341 enumeration and claim (kernel detach plus
+`claim_interface(0)`), the SPI bridge, and the SX1262 driver reading the chip's
+version registers and getting real silicon back before tuning it. The desktop then
+held a **three-node, two-bearer mesh**: `!6337995d MON` (the Pixel, over UDP) and
+`!7263cc65 956a -3dBm` (the WisMesh Pocket, over LoRa - not plugged in, just on the
+air), with its NodeInfo decoded and the peer listed by name. The endpoint numbers
+0x02/0x82, taken from flashrom rather than measured, are therefore right in practice.
+
+**Still owed on hardware:** LoRa **transmit** - the region is `UNSET`, the deliberate
+rx-only default, so nothing has been keyed and the airtime/duty-cycle path is
+unexercised; a DM round-trip to the Pocket now a keypair exists; and three DUAL nodes
+at once to exercise the GATT arbitration.
 
 **Still open from the plan's sequence:** desktop BLE (BlueZ), MQTT bridge, iOS UDP,
 and answering traceroute rather than only reading it.
