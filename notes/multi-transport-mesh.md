@@ -950,3 +950,101 @@ Pixel's monitor are both stopped. Still owed: `enabled_protocols` 7→3,
 never both on this build). `BLE_GATT_MESH_MAX_LINKS` is 1, so only one phone can
 hold the mesh slot at a time — the radio now says so at LOG_INFO
 (`peer slot held by conn N (1/1), not advertising`).
+
+## Parity and coverage plan (2026-09-05)
+
+The bearers are proven; the node behind them is not yet a peer of the firmware
+in what it *does*. Two gap sets, kept separate because they are fixed by
+different work: **which bearers each platform can carry**, and **what the node
+does with a packet once it has one**. Sources: the module source sets and
+`README.md` "Not yet here" in `meshtastic-node-kmp`, `src/modules/` and
+`src/mesh/` in `firmware`, checked 2026-09-05.
+
+### A. Bearer coverage by platform
+
+| Bearer | Android | iOS | macOS (native) | JVM desktop / Linux | Firmware |
+| --- | --- | --- | --- | --- | --- |
+| BLE-adv rx | ✓ | ✓ | ✓ (`appleMain`, test-bench only) | stub | ✓ |
+| BLE-adv tx | ✓ | **impossible** (CoreBluetooth cannot advertise arbitrary data) | impossible | stub | ✓ |
+| GATT mesh-peer (dual role) | ✓ | ✓ | ✓ (`appleMain`, not in the JVM app) | **stub** (`UnsupportedGattLink`) | ✓ S3, ✓ nRF52 |
+| UDP multicast | ✓ | **needs entitlement** (`com.apple.developer.networking.multicast`) + a native socket | ✓ (JVM) | ✓ | ✓ (WiFi/eth) |
+| LoRa (USB SX1262 stick) | ✓ | impossible (no USB serial) | possible (IOKit) | **stub** (`libusb UsbBulkPipe` unwritten) | native |
+
+So today: Android = 4/4, iOS = GATT + adv-rx, desktop = UDP only. The desktop
+gap is the largest single unlock because the desktop is also the natural
+**Linux gateway** (a Pi with BlueZ and a stick is a firmware-shaped node with a
+real OS). Enablers, in cost order:
+
+1. **Desktop LoRa** — `UsbBulkPipe` over libusb (usb4java or JNA). The SPI/SX1262
+   layer is shared with Android and already proven; only the bulk pipe is new.
+   Medium. Verified with the Meshtadpole on the Mac.
+2. **Desktop BLE (Linux)** — BlueZ over D-Bus gives both GATT roles *and*
+   extended advertising tx/rx; `bluez-dbus-java` or hand D-Bus. Medium-large.
+   Verified on the uConsole (Pi CM4) against the Pocket. macOS-native BLE for the
+   JVM app is a separate, smaller path (a CoreBluetooth binding via the existing
+   `appleMain` code exposed to the JVM) — decide whether the desktop app targets
+   macOS natively or stays JVM-only.
+3. **iOS UDP** — request the multicast entitlement, then a `Network.framework`
+   socket the app supplies. Small code, external gate (Apple).
+4. **iOS background** — `bluetooth-central`/`peripheral` modes are declared; the
+   node has never been exercised backgrounded. Test, then fix what stops.
+
+### B. Node-logic parity with the firmware
+
+What `node-core` does today: protobuf codec; channel AES with PSK and channel
+URLs; PKI **nonce only** (no PKI DM encrypt/decrypt); dedup (`PacketHistory`);
+hop-limit relay with contention window and cancel-on-overhear (`RelayPolicy`);
+a `NextHopTable`; ACK **sending** (`acknowledge`) but no retransmission; an
+in-memory bounded `NodeDirectory` (num, names, key, last heard, rssi);
+identity derived from a host-persisted seed; decode of TEXT_MESSAGE, ROUTING,
+NODEINFO, POSITION; manual `announce()`. Events: TextMessage, PositionReport,
+PeerUpdated, Opaque, Dropped, Relayed, RelaySuppressed, Sent, Delivered,
+TransportFailed.
+
+| Capability | Firmware | node-kmp today | Gap | Tier |
+| --- | --- | --- | --- | --- |
+| Persistent NodeDB | `NodeDB` + `WarmNodeStore`, migrations | in-memory `NodeDirectory` | a persistence seam (host-supplied store), load/save, expiry | **1** |
+| Persistent config (channels, region, node settings) | protobuf prefs on flash | `Config(channels, transports)` in memory | same seam; the monitor's `TransportTuning` is the prototype | **1** |
+| Reliable delivery (`want_ack` retransmit, NAK) | `ReliableRouter` | ACKs sent, none retransmitted | retransmit queue with backoff, `Delivered`/failed events | **1** |
+| Periodic NodeInfo / Position broadcast | `NodeInfoModule`, `PositionModule` (smart position) | manual `announce()`, no position source | schedulers + a host position seam | **1** |
+| Telemetry (device/env metrics) | `TelemetryModule` family | not decoded | decode + `PeerUpdated` fields; send device metrics (battery) | **1** |
+| PKI direct messages | `CryptoEngine` X25519/AES-CCM | nonce only | full encrypt/decrypt, key verification event | **1** |
+| Routing errors / NAK surfacing | `RoutingModule` | partial | `RoutingError` event with reason | 1 |
+| Next-hop / directed relay | `NextHopRouter` (`relay_node`, `next_hop`) | table exists, use unclear | audit against firmware semantics; parity test vs a radio | 2 |
+| Traceroute | `TraceRouteModule` | none | request + reply, per-hop SNR | 2 |
+| Waypoints | `WaypointModule` | none | decode/encode + event | 2 |
+| Neighbor info | `NeighborInfoModule` | none | decode + directory neighbours | 2 |
+| Remote admin (session keys) | `AdminModule` | none | large; needed only if a phone node administers radios directly | 3 |
+| MQTT bridge | `MQTT.cpp` (uplink/downlink, JSON) | none | the phone as an internet bridge — a bearer in its own right (Phase 4 material) | 2 |
+| Store & forward (client) | `StoreForwardModule` | none | history request on join | 3 |
+| Hop scaling / traffic management | `HopScaling`, `TrafficManagement` | none | follow firmware behaviour once relay is used in the field | 3 |
+| Canned messages, range test, detection sensor, remote hardware, screen, ATAK plugin | modules | n/a | UI or hardware concerns; not node logic | — |
+
+**Tier 1 is "a node you could leave running"**: it remembers who it heard and
+what it is, keeps its config, tells the mesh it exists on a schedule, delivers
+reliably, and can DM. Everything in Tier 1 is verifiable on the bench today:
+Pocket + Pixel + iPad, with the radio as the oracle for every wire behaviour.
+
+### C. Sequence
+
+1. **Persistence seam** (NodeDB + config): interface in `node-core`, host
+   implementations in the monitor (Android files / desktop files / iOS files).
+   Unblocks everything that must survive a restart.
+2. **Reliable delivery**: retransmit with the firmware's backoff, `Delivered`
+   already exists, add the failure event. Verified: DM to the Pocket with the
+   iPad link dropped mid-way must retry and land.
+3. **Scheduled NodeInfo + Position + device Telemetry**: the node appears in the
+   stock app's node list with a battery and a position, like a radio does.
+4. **PKI DMs**: encrypt/decrypt + a key-verification event. Verified against the
+   Pocket both ways.
+5. **Desktop LoRa** (libusb), then **desktop BLE** (BlueZ) — the Linux gateway.
+6. **Traceroute, waypoints, neighbor info** — decode parity.
+7. **MQTT bridge** and **iOS UDP** — Phase 4 bearers.
+
+### D. Open question, not a decision
+
+`meshtastic-sdk` (the KMP *phone-API client*) already models nodes, channels and
+config for the apps. `node-kmp` needs the same model for its own NodeDB. Two
+copies will drift; one shared model means the SDK depends on the node or the
+node on the SDK. Decide before Tier 1 step 1 is designed, because the
+persistence seam is where the model gets fixed.

@@ -141,19 +141,25 @@ links at chunk 512 against the V3 and 244 against the Pocket.
    with no check that it is the preferred device and never cancels; harmless with
    a healthy radio, an infinite hammer against one that dies mid-connect. A small
    PR against `apple`, independent of the controller bug.
-7. **Tuning backlog** (all in the plan doc): iOS-*central* discovery flakiness
+7. **Parity and coverage plan** — the design note's "Parity and coverage plan
+   (2026-09-05)" section is the sequenced plan from here: persistence seam
+   (NodeDB + config) → reliable delivery → scheduled NodeInfo/Position/Telemetry
+   → PKI DMs → desktop LoRa then desktop BLE → traceroute/waypoints/neighbors →
+   MQTT bridge + iOS UDP. Its section D asks the model question (node-kmp vs
+   meshtastic-sdk) that must be answered before the persistence seam is drawn.
+8. **Tuning backlog** (all in the plan doc): iOS-*central* discovery flakiness
    (`didDiscoverPeripheral` unreliable; inbound link is solid); DUAL-role
    connection arbitration + a low connection cap; per-peer send-queue concurrency;
    the send-dedup asymmetry (repeated `Send test` shared a packet id on the Pixel).
-8. **Bigger pieces:** desktop BLE (BlueZ D-Bus on Linux / a CoreBluetooth binding
+9. **Bigger pieces:** desktop BLE (BlueZ D-Bus on Linux / a CoreBluetooth binding
    on macOS) and LoRa (libusb `UsbBulkPipe`) JVM backends — today the desktop
    lists four bearers and only UDP moves bytes; iOS UDP (multicast entitlement +
    a native socket the app supplies); **iOS LoRa-over-USB is blocked by iOS**.
-9. **Dogfood API gaps still open:** `GattMeshTransport` clock default; a
+10. **Dogfood API gaps still open:** `GattMeshTransport` clock default; a
    `MeshNode` peer `Flow`. Done since last time: a `MeshTransport` display label
    (`name`); and the note that Compose chips ignore synthetic taps was **wrong**
    — `android_tap` registers fine.
-10. **Monitor polish:** the tuning panel squeezes the log to nothing on a phone
+11. **Monitor polish:** the tuning panel squeezes the log to nothing on a phone
    (a sheet, or collapse peers too); the LoRa stale claim after the device tests
    (`SX1262 command 0x80 failed, status 0xf7` retrying) and the post-TX bulk-IN
    retry.
