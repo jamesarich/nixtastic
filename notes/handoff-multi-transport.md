@@ -264,13 +264,58 @@ all of which had let real defects through:
   us with `NO_RESPONSE`. Verified live on the desktop: `tx[udp] node_info` at
   02.444 s.
 
-**Owed on the bench next sitting:** the node appearing in the stock Android app's
-node list (the only proof that matters for the beacon), and a DM round-trip to the
-Pocket now that a keypair exists.
+**Later slices (same sitting):**
+- **Traceroute, waypoints, neighbour info decoded** (`ccf3677`) — all three were
+  surfacing as `Opaque` ("could not be read") having in fact been read. Decode
+  only; answering a traceroute is a routing behaviour and is not implemented.
+- **Self-telemetry over the phone API** (`ccf3677`). An attached app showed a blank
+  battery/uptime row for "my node" for ever. What it sends is bounded by what it
+  can honestly measure: uptime always; battery/voltage only from a host that can
+  read them; `channel_utilization` and `air_util_tx` **never**, because they
+  describe a shared radio medium and a node on GATT/BLE-adv/UDP occupies no air —
+  0.0 there is a claim about someone else's channel being idle, not an
+  approximation. `time` stays 0 rather than copying the firmware's habit of
+  sending seconds-since-boot as an epoch.
+- **Position beacon with a host seam** (`8814a85`). `PositionSource` is a pull, so
+  a phone is never obliged to keep GPS warm. Smart position measures movement from
+  the last position **sent**, not the last read — against the last read a slow walk
+  never crosses the threshold and 300 m goes unreported. Precision rounds to the
+  cell **centre**, so the error is symmetric and the true point cannot be recovered
+  from the rounding direction. Off by default.
+- **NAKs decoded** (`1edbeef`). A Routing packet with an error fell through to
+  `Other`, so a rejection was invisible *and* did not stop the retransmit queue.
+  Also fixed a latent bug: the ack test read `error_reason == NONE`, but the field
+  is nullable and a plain ack leaves it **unset** — testing only for NONE loses
+  every real acknowledgement.
+- **Desktop LoRa over libusb** (`393a527`). JNA straight to libusb, chosen by
+  running usb4java and watching it die on Apple silicon (no `darwin-aarch64`
+  native, last release 2018). Hot-plug is a 1 s poll, not libusb's callback.
+- **DUAL-role GATT arbitration** (`393a527`). The obvious "lower nodeNum is
+  central" cannot work — a `GattLink` is below the mesh layer and its peer ids are
+  per-connection tokens, not identities. Settled by an in-band HELLO on the
+  characteristic the link already has. Advertising the id was rejected: Apple
+  cannot advertise arbitrary payload, and a stable advertised id is passively
+  trackable.
 
-**Still open from the plan's sequence:** desktop LoRa (libusb `UsbBulkPipe`),
-desktop BLE (BlueZ), DUAL-role GATT arbitration, position + device telemetry
-egress with a host position seam, traceroute/waypoints/neighbours, MQTT, iOS UDP.
+**BENCH PROOF, 2026-09-05 — the beacon works end to end.** Pixel and desktop, both
+on UDP: `0:46.657 rx[udp] peer !a6e88506 MON`, and the Pixel's peer list shows
+`!a6e88506 MON`. One node announced on its schedule and another listed it by name.
+The Pixel's GATT also held two peers ready with notify enabled *after* the
+arbitration change, so the HELLO chunk did not break the working GATT path.
+
+**Bench condition worth knowing (not a code defect):** UDP multicast is
+**asymmetric on this network** — the Pixel receives the desktop's frames, the
+desktop receives none of the Pixel's (`udp tx 6 rx 0` while the Pixel reads them
+fine). Classic wired↔wireless AP behaviour. It worked on 2026-09-04, so it is the
+network, not the transport; do not diagnose a dead UDP bearer from it.
+
+**Still owed on hardware:** a DM round-trip to the Pocket now a keypair exists;
+LoRa on the desktop with a stick actually attached (nothing about claim, bulk
+transfer or SX1262 bring-up is exercised — the endpoints are flashrom's, read from
+source, not measured); and three DUAL nodes at once to exercise the arbitration.
+
+**Still open from the plan's sequence:** desktop BLE (BlueZ), MQTT bridge, iOS UDP,
+and answering traceroute rather than only reading it.
 
 ## Availability seam — done 2026-09-05 (`meshtastic-node-kmp`, pushed)
 
