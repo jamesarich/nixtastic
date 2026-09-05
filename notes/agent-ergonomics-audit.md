@@ -1,9 +1,9 @@
 # Agent ergonomics audit — what would help cross-repo work here
 
-Measured 2026-09-05 on james-pc over every interactive workspace transcript
-since 2026-08-12 (10 355 Bash calls). The laptop is not measured; it runs
-mostly through the Claude Desktop app and may differ. Findings ranked by
-measured weight, not by opinion. Nothing here is built yet.
+Measured 2026-09-05 on both machines over every interactive workspace
+transcript: james-pc since 2026-08-12 (84 sessions, 10 355 Bash calls) and
+the MacBook Air (97 sessions, 14 711 Bash calls, measured over ssh). Findings
+ranked by measured weight, not by opinion. Nothing here is built yet.
 
 ## What the numbers say
 
@@ -24,9 +24,39 @@ measured weight, not by opinion. Nothing here is built yet.
 | auto-mode denials | 11 | merges, approvals, run cancel, factory reset — correct guards |
 | Bash timeouts | 26 | mostly Gradle, now behind the queue |
 
+## The laptop half
+
+Same shape, larger numbers, and one new fact.
+
+| signal | laptop | desktop |
+| --- | --- | --- |
+| `gh` calls | 1 477 (10 %) | 1 482 (14 %) |
+| `gh pr view` / `pr checks` / `run view`+`run list` / `api repos` / `api graphql` | 328 / 244 / 240 / 345 / 117 | 159 / 87 / 116 / 171 / 29 |
+| `cd <abs path>` first token | 5 240 (36 %) | 2 895 (28 %) |
+| `direnv exec` | 1 317 | 437 |
+| greps for `libs.versions.toml` / `protobufs` / sdk version | 254 / 202 / 196 | 15 / 74 / 12 |
+| `nix run .#worktree` / `.#brief` / `.#sync` | 59 / 52 / 26 | 439 / 332 / 311 |
+| `pio` / `xcodebuild`+`simctl` / `adb` | 427 / 175 / 534 | 12 / 0 / 664 |
+| repos entered | android 2 859, meshtastic-node-kmp 547, firmware 178, OTAFIX 142, api 86 | android 1 057, meshtastic-mcp 260, kzstd 126, firmware 112 |
+| rejected / sleep-blocked / auto-mode denied | 36 / 25 / 29 | 17 / 14 / 11 |
+| guard denials seen by the agent | raw `./gradlew` 33, worktree discipline 8 | 0 (guards arrived 2026-09-04) |
+
+The new fact: the laptop barely uses the workspace tools. 97 sessions ran
+`brief` 60 times and `sync` 26; the desktop's 84 sessions ran them 643 times.
+Its sessions start inside `android/` or a worktree, where `nix run .#` does
+not resolve (five `cd: no such file: android` errors are sessions that
+assumed the root), and the Desktop app's own worktrees never see the plugin's
+"run `just brief`" instruction because they are worktrees of the workspace
+repo. The pin greps being 4–16× the desktop's says the same thing from the
+other side: the android lead bumps SDK and proto pins by hand, often.
+
+Auto-mode denials on the laptop were `gh workflow run` (release promotion),
+`git push --force-with-lease`, `gh pr merge --admin`, `git checkout -- .`:
+correct guards again.
+
 ## Do now (ranked)
 
-1. **`nix run .#pr -- <repo> <n>`** — one call answers what today takes five
+1. **`nix run .#pr -- <repo> <n>`** (both machines' largest block) — one call answers what today takes five
    to ten: head SHA, checks *for that SHA* (not whatever is attached),
    `mergeStateStatus`, merge-queue position, unresolved review threads with
    author and file:line, conflicts, and a "test tick may be a cache replay"
@@ -35,7 +65,7 @@ measured weight, not by opinion. Nothing here is built yet.
    timeout like `gradle-queue`, so no `sleep` polling), `rereview` (posts the
    `full review` trigger the memory says is the only one that works). Encodes
    six memories in one tool.
-2. **`nix run .#pins`** — the coupling state in one screen: protobufs
+2. **`nix run .#pins`** (652 hand greps on the laptop alone) — the coupling state in one screen: protobufs
    submodule SHA in `firmware` and `meshtastic-python` vs protobufs `master`
    and latest tag; `org.meshtastic:protobufs` and `meshtastic-sdk` versions in
    android's `libs.versions.toml`; apple's `Package.resolved` pins; `design`
@@ -49,8 +79,11 @@ measured weight, not by opinion. Nothing here is built yet.
 4. **`brief` for several repos in one call** (`just brief api android apple`)
    with a one-line-per-repo summary mode; the dry run spent most of its time
    here. Small.
-5. **Run this audit on the laptop** before building 1–4; its session mix
-   (Desktop app, work account, apple work) is different and unmeasured.
+5. **Make the workspace tools reachable from inside a repo.** The laptop
+   data says sessions there never reach `.#brief`/`.#sync`. The forwarders
+   already say `just brief <repo>`; `pins` and `pr` must work the same way
+   (`just pins`, `just pr`), and the Desktop app's workspace-repo worktrees
+   (agent-surface Follow-ups) need an answer before any of this helps there.
 
 ## Later
 
