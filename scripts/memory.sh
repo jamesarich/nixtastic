@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: 2026 James Rich
 # SPDX-License-Identifier: GPL-3.0-only
 #
-# One memory store for every Claude Code session, on every machine —
+# One memory store for every Claude Code session, on every machine -
 # prepended after lib.sh to sync, doctor and worktree. The design, the
 # measurements behind it and the two probes it rests on are in
 # notes/agent-memory-sync.md; this file is the mechanism only.
 #
 # Claude Code keeps memory at <config>/projects/<slug>/memory, and <slug>
-# is a function of the absolute cwd — so macOS and Linux can never share
+# is a function of the absolute cwd - so macOS and Linux can never share
 # one, and every repo and worktree gets its own empty store. The fix is a
 # mapping layer: every slug the workspace owns becomes a symlink into ONE
 # store, a private git clone. Nothing here moves memory; it maps it.
@@ -36,9 +36,9 @@ slug_of() {
   printf '%s\n' "$1" | sed 's/[^a-zA-Z0-9]/-/g'
 }
 
-# Every Claude Code project directory this workspace owns — the root, its
+# Every Claude Code project directory this workspace owns - the root, its
 # own worktrees (the Desktop app and harness isolation make those), each
-# cloned repo, every worktree of each repo — as "<projects>/<slug>\t<label>".
+# cloned repo, every worktree of each repo - as "<projects>/<slug>\t<label>".
 # The label is what a human reads in a report ("android/feat-thing", not
 # the 80-character slug). Only REAL directories are slugged: the workspace
 # never guesses a slug for a path that does not exist. $1 = workspace root.
@@ -64,9 +64,9 @@ memory_slug_dirs() {
 # The three-rule link (design: "Import: the sync code path, not a migration
 # script"). Already our symlink: nothing. A real directory: copy its files
 # into the store, SKIP any name already there, then replace it with the
-# link — the original is renamed beside the link, never deleted, because a
+# link - the original is renamed beside the link, never deleted, because a
 # skipped file may be the only copy of what it says. Missing: mkdir + link.
-# MEMORY.md is never copied — it is derived, and sync re-renders it.
+# MEMORY.md is never copied - it is derived, and sync re-renders it.
 #
 # $1 = <projects>/<slug>, $2 = the store's memory/ dir. Prints one line:
 #   linked                        a link was created (nothing to import)
@@ -77,7 +77,7 @@ memory_link() {
   m="$1/memory"
   if [ -L "$m" ]; then
     [ "$(readlink "$m")" = "$2" ] && return 0
-    printf 'warn\t%s -> %s, expected %s — not ours, left alone\n' "$m" "$(readlink "$m")" "$2"
+    printf 'warn\t%s -> %s, expected %s - not ours, left alone\n' "$m" "$(readlink "$m")" "$2"
     return 0
   fi
   n=0; kept=""; had=false
@@ -104,9 +104,9 @@ memory_link() {
   fi
 }
 
-# MEMORY.md, derived from frontmatter. The index is the RETRIEVAL KEY — a
+# MEMORY.md, derived from frontmatter. The index is the RETRIEVAL KEY - a
 # probe showed memory bodies are fetched on demand, selected from their
-# index line alone — so it is written for selection: user → feedback →
+# index line alone - so it is written for selection: user → feedback →
 # reference → project (durable first; the merged set is 71 % project),
 # alphabetical within each, the machine tag inline where one is set.
 # Deterministic, so re-rendering an unchanged store is byte-identical and
@@ -121,7 +121,7 @@ memory_link() {
 # awk unexpanded.
 # shellcheck disable=SC2016
 # SC2016 for the function: the $0 and $[0-9] in the awk program are awk's,
-# reaching it literally by design — the same disable lib.sh uses for jq.
+# reaching it literally by design - the same disable lib.sh uses for jq.
 # shellcheck disable=SC2016
 memory_render_index() {
   hand=$(mktemp)
@@ -138,7 +138,7 @@ memory_render_index() {
         stem = FILENAME; sub(/.*\//, "", stem); sub(/\.md$/, "", stem)
         rank = (type == "user") ? 0 : (type == "feedback") ? 1 : (type == "reference") ? 2 : (type == "project") ? 3 : 4
         tag = (mach != "") ? "[" mach "] " : ""
-        printf "%d\t%s\t- [%s](%s.md) — %s%s\n", rank, stem, title(stem), stem, tag, desc
+        printf "%d\t%s\t- [%s](%s.md) - %s%s\n", rank, stem, title(stem), stem, tag, desc
       }
       BEGINFILE { inFm = 0; done = 0; type = ""; desc = ""; mach = "" }
       FNR == 1 && $0 == "---" { inFm = 1; next }
@@ -160,7 +160,7 @@ memory_render_index() {
 }
 
 # Pairs of memory names sharing two or more keyword stems, where at least
-# one side was just imported — a hint for a five-minute human pass, never
+# one side was just imported - a hint for a five-minute human pass, never
 # an auto-merge: measured, nine such pairs held ONE true duplicate. One
 # gawk process, because n² over a few hundred names is nothing to awk and
 # minutes to a bash loop. $1 = memory dir, $2 = file of imported basenames.
@@ -168,7 +168,7 @@ memory_render_index() {
 # awk unexpanded.
 # shellcheck disable=SC2016
 # SC2016 for the function: the $0 and $[0-9] in the awk program are awk's,
-# reaching it literally by design — the same disable lib.sh uses for jq.
+# reaching it literally by design - the same disable lib.sh uses for jq.
 # shellcheck disable=SC2016
 memory_overlaps() {
   find "$1" -maxdepth 1 -name '*.md' ! -name MEMORY.md -exec basename {} .md \; | sort |
@@ -194,7 +194,7 @@ memory_overlaps() {
 # The hook Claude Code runs at SessionStart (pull) and Stop (commit, pull,
 # push). A generated file at a STABLE path, like meshtastic-mcp-launch:
 # settings.json names the path once, sync rewrites the contents. POSIX sh,
-# because macOS runs it too — which is also why the lock is mkdir (atomic
+# because macOS runs it too - which is also why the lock is mkdir (atomic
 # everywhere) and not flock(1) (absent there). Every step is best-effort
 # and the script always exits 0: a hook must never block a session. A
 # merge that conflicts is aborted, not left for the next session to load
@@ -213,7 +213,7 @@ write_memory_hook() {
   mkdir -p "$1/bin"
   {
     echo '#!/bin/sh'
-    echo '# Generated by: nix run .#sync — regenerate, do not hand-edit.'
+    echo '# Generated by: nix run .#sync - regenerate, do not hand-edit.'
     echo '# SessionStart: pull. Stop: dedupe the index, commit, pull, push.'
     echo '# Every step best-effort; design in notes/agent-memory-sync.md.'
     printf 'store="%s"\n' "$(memory_store)"
@@ -260,7 +260,7 @@ write_memory_hook() {
     echo '  start) pull ;;'
     echo '  stop)'
     echo '    # A union merge can leave a pointer line twice; drop repeats, KEEP'
-    echo '    # order — sort would undo the type ordering sync renders.'
+    echo '    # order - sort would undo the type ordering sync renders.'
     echo '    if [ -f memory/MEMORY.md ]; then'
     echo '      awk '"'"'$0 == "" || !seen[$0]++'"'"' memory/MEMORY.md > memory/MEMORY.md.new && mv memory/MEMORY.md.new memory/MEMORY.md'
     echo '    fi'

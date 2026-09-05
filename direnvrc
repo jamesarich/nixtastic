@@ -11,7 +11,7 @@
 # Tracked here rather than left as a snippet to paste, so a fresh machine gets
 # identical behaviour and the reasoning below travels with it.
 
-# nix-direnv caches `use flake` evaluation and — the part that matters more —
+# nix-direnv caches `use flake` evaluation and - the part that matters more -
 # registers a GC root per dev shell, so nix-collect-garbage cannot delete a
 # closure you are actively using.
 #
@@ -27,7 +27,7 @@ source "$HOME/.nix-profile/share/nix-direnv/direnvrc"
 # flake.nix, whose devShell uses pkgs.platformio: the bubblewrap-wrapped build
 # that cannot run on an Ubuntu host with
 # apparmor_restrict_unprivileged_userns=1. Every pio invocation then dies with
-# "bwrap: setting up uid map: Permission denied" — the exact failure this
+# "bwrap: setting up uid map: Permission denied" - the exact failure this
 # workspace pins platformio-core to avoid.
 #
 # Editing that file is not an option. It is tracked, so overwriting it would

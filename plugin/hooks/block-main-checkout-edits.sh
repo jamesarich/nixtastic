@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PreToolUse(Edit|Write|MultiEdit): inside a LINKED worktree, deny an edit whose
 # target lands in the main checkout or a sibling worktree. Fails open on any
-# internal error — its only job is the cross-tree mistake.
+# internal error - its only job is the cross-tree mistake.
 
 input=$(cat)
 

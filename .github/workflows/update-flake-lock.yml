@@ -18,7 +18,7 @@ name: update-flake-lock
 
 on:
   schedule:
-    # Mondays 11:30 UTC — early morning US Central, before the work day.
+    # Mondays 11:30 UTC - early morning US Central, before the work day.
     - cron: "30 11 * * 1"
   workflow_dispatch:
 
@@ -50,7 +50,7 @@ jobs:
           commit-message: "chore: nix flake update"
           body: |
             Weekly nixpkgs bump, validated **inside this workflow** before the
-            PR was opened — `nix flake check --all-systems --no-build` plus a
+            PR was opened - `nix flake check --all-systems --no-build` plus a
             built `nix flake check`. The ci workflow will not run here: PRs
             created with `GITHUB_TOKEN` never trigger other workflows.
 

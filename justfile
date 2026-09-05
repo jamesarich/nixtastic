@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 James Rich
 # SPDX-License-Identifier: GPL-3.0-only
 #
-# Thin aliases over the flake apps — `just` ships in every dev shell, so
+# Thin aliases over the flake apps - `just` ships in every dev shell, so
 # these work anywhere in the workspace. The flake apps remain the real
 # interface; nothing here does anything `nix run` cannot.
 
@@ -20,7 +20,7 @@ pull:
 # Orient before touching a repo: branch, shell, docs to read, PRs.
 #
 # [no-cd] because just otherwise runs recipes from the justfile's directory,
-# and brief answers about the checkout you are STANDING in — cd'ing to the
+# and brief answers about the checkout you are STANDING in - cd'ing to the
 # root would make `just brief` report the primary checkout while you sit in a
 # worktree, which is the exact failure the tool exists to prevent. Keeping the
 # caller's cwd then costs the short `.#` ref (it cannot cross a git-repo

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""mtop — btop-style live monitor for a Meshtastic bench soak.
+"""mtop - btop-style live monitor for a Meshtastic bench soak.
 
 Reads the meshtastic-mcp recorder JSONL streams only (never opens a serial
 port), so it is safe to run alongside the MCP server, a flash, or the web
@@ -265,7 +265,7 @@ def build(st, names, width):
         ep = Group(*el)
         eb = "yellow"
     else:
-        ep, eb = Text("clean since soak start — no reboots, asserts or panics", style="green"), "grey30"
+        ep, eb = Text("clean since soak start - no reboots, asserts or panics", style="green"), "grey30"
 
     return hdr, t, gp, ep, eb
 

@@ -31,7 +31,7 @@ try:
     from rich.panel import Panel
     from rich.text import Text
 except ImportError:
-    sys.exit("needs 'rich' — run with the meshtastic-mcp venv python:\n"
+    sys.exit("needs 'rich' - run with the meshtastic-mcp venv python:\n"
              "  ~/meshtastic/meshtastic-mcp/.venv/bin/python3 "
              "~/meshtastic/notes/soak-dashboard.py")
 

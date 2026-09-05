@@ -62,7 +62,7 @@ plugin_write_forwarder() {
     echo 'started inside it; this forwarder makes it visible from anywhere in the workspace.'
     echo
     printf '1. Run `just brief %s` from the workspace root (or `nix run .#brief -- %s`)\n' "$3" "$3"
-    echo '   and read what it prints — branch, drift, and the docs that repo expects read.'
+    echo '   and read what it prints - branch, drift, and the docs that repo expects read.'
     printf '2. Read and follow, exactly as written:\n\n       %s/SKILL.md\n\n' "$target"
     printf '   Its base directory is `%s`; its `references/` and\n' "$target"
     echo '   scripts resolve relative to that directory, not to this plugin.'
@@ -127,7 +127,7 @@ plugin_retire_root_skills() {
     [ -e "$e" ] || continue
     case " $NIXTASTIC_BUNDLED_SKILLS " in
       *" ${e##*/} "*) ;;
-      *) echo "  WARN      .claude/skills has ${e##*/}, not a bundled copy — left alone; move it into plugin/skills/ or delete it"; return 0 ;;
+      *) echo "  WARN      .claude/skills has ${e##*/}, not a bundled copy - left alone; move it into plugin/skills/ or delete it"; return 0 ;;
     esac
   done
   rm -rf "$d"
@@ -208,7 +208,7 @@ plugin_pass() {
   reg=$(plugin_register "$root" "$version")
   case "$reg" in
     current) printf '  plugin    register  current (%s)\n' "$version" ;;
-    skipped*) printf '  plugin    register  skipped — claude not on PATH; run:  %s\n' "${reg#*$'\t'}" ;;
+    skipped*) printf '  plugin    register  skipped - claude not on PATH; run:  %s\n' "${reg#*$'\t'}" ;;
     failed*)  printf '  WARN      plugin register failed; run by hand:  %s\n' "${reg#*$'\t'}" ;;
     *) printf '  plugin    register  %s\n' "$reg"; restart=true ;;
   esac

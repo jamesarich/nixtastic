@@ -13,7 +13,7 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 
 [ -z "$cmd" ] && exit 0
 
-# Strip heredoc bodies before matching. They carry data, not commands — a commit
+# Strip heredoc bodies before matching. They carry data, not commands - a commit
 # message or a doc that merely mentions ./gradlew must not trip this guard.
 cmd=$(printf '%s\n' "$cmd" | awk '
   inhd { if ($0 == delim) inhd = 0; next }
@@ -56,11 +56,11 @@ Re-run through the queue instead:
 
   ${suggest}
 
-The wrapper blocks until a slot frees (FIFO), so give the Bash call a long timeout (timeout: 600000) or run_in_background: true — a queued wait plus a cold build easily exceeds the 120s default. Check contention any time with:
+The wrapper blocks until a slot frees (FIFO), so give the Bash call a long timeout (timeout: 600000) or run_in_background: true - a queued wait plus a cold build easily exceeds the 120s default. Check contention any time with:
 
   ~/.claude/bin/gradle-queue --status
 
-Reading the output: 'all N slots busy; queued at position N' on stderr is normal progress, not an error. Exit code 75 is a QUEUE-WAIT TIMEOUT, not a build failure — the build never started, so nothing in the source tree caused it and there is nothing to fix. Re-run it or report it as such; never edit or revert files to make a 75 go away. Pass these two rules along in any gradle-runner delegation prompt.
+Reading the output: 'all N slots busy; queued at position N' on stderr is normal progress, not an error. Exit code 75 is a QUEUE-WAIT TIMEOUT, not a build failure - the build never started, so nothing in the source tree caused it and there is nothing to fix. Re-run it or report it as such; never edit or revert files to make a 75 go away. Pass these two rules along in any gradle-runner delegation prompt.
 
 Prefix with GRADLE_QUEUE_BYPASS=1 only if the user explicitly asked to skip the queue."
 

@@ -1,6 +1,6 @@
 # Deny-by-default. This repo tracks ONLY the workspace definition and its
-# own documentation. Everything else here — ten independent Meshtastic
-# git repos, build caches, capture data — must never be committed.
+# own documentation. Everything else here - ten independent Meshtastic
+# git repos, build caches, capture data - must never be committed.
 #
 # This is also what keeps Nix fast: for a flake in a git repo, Nix copies
 # only TRACKED files into the store. Without the deny-all, evaluating the
@@ -55,7 +55,7 @@
 # Un-ignoring the DIRECTORY re-includes everything under it, not just the
 # markdown: `/*` matches top-level entries only, so once `/notes` is back in,
 # nothing below it is excluded again. The `*.md` line is therefore redundant
-# — kept because it states the intent. Scratch tooling that lands here (soak
+# - kept because it states the intent. Scratch tooling that lands here (soak
 # scripts, capture json) is visible to git and must be deliberately committed
 # or deliberately deleted; it will not be ignored for you.
 !/notes/

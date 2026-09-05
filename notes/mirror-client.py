@@ -3,7 +3,7 @@
 
 Speaks the phone API through meshtastic-python, arms display mirroring with a
 hand-encoded AdminMessage (the released python protobufs predate these fields),
-reassembles DisplayFrame chunks — MONO_VLSB full frames or RGB565 dirty rects —
+reassembles DisplayFrame chunks - MONO_VLSB full frames or RGB565 dirty rects -
 into a canvas, and writes PNGs. Optionally injects input events so a caller can
 capture before/after and prove remote control without a camera.
 """
@@ -31,7 +31,7 @@ def _varint(buf, i):
 
 
 def parse_fields(buf):
-    """Returns {field_number: [values]} — ints for varints, bytes for length-delimited."""
+    """Returns {field_number: [values]} - ints for varints, bytes for length-delimited."""
     out, i = {}, 0
     while i < len(buf):
         key, i = _varint(buf, i)

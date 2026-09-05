@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SessionStart: say where this session is standing and how to reach the
-# workspace tools from there. Orients only — never tells the model to cd,
+# workspace tools from there. Orients only - never tells the model to cd,
 # never prints memory. Silent outside the workspace. Fails open.
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cat "$here/workspace-root" 2>/dev/null) || exit 0

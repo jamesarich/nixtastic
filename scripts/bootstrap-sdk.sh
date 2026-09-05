@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 James Rich
 # SPDX-License-Identifier: GPL-3.0-only
 #
-# nix run .#bootstrap-sdk — reconcile $ANDROID_HOME against
+# nix run .#bootstrap-sdk - reconcile $ANDROID_HOME against
 # android-sdk-packages.txt: the SDK stays writable (AGP insists) but its
 # contents are declared. The flake exports NIXTASTIC_JDK and puts the
 # android CLI on PATH where nixpkgs carries it.

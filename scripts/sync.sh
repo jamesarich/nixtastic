@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 James Rich
 # SPDX-License-Identifier: GPL-3.0-only
 #
-# nix run .#sync — clone missing repos, report drift, regenerate the
+# nix run .#sync - clone missing repos, report drift, regenerate the
 # machine-specific files, adopt stray worktrees. Assembled by the flake:
 # lib.sh is prepended and the NIXTASTIC_* env vars are exported there.
 
@@ -19,11 +19,11 @@
 #              then pull. Implies --pull. Refuses to switch a
 #              repo whose tracked files are modified.
 #   --install-hooks  (retired) the hooks ship in the plugin; prints a pointer
-#   --memory-only    the memory pass alone — after worktree churn, or when
+#   --memory-only    the memory pass alone - after worktree churn, or when
 #                    doctor says unpushed; everything else is a 19-repo fetch
 #   --slug <path>    print a Claude Code project slug and exit
 # --slug <path>: print the Claude Code project slug for a path and exit.
-# Not a mode — a lookup, for humans asking "which projects/ dir is mine?"
+# Not a mode - a lookup, for humans asking "which projects/ dir is mine?"
 if [ "${1:-}" = --slug ]; then
   slug_of "${2:?usage: --slug <absolute path>}"
   exit
@@ -51,13 +51,13 @@ echo ""
 
 # Per-repo direnv activation. Without a .envrc in the repo
 # itself, `cd android` loads the workspace-ROOT .envrc and you
-# silently get the DEFAULT shell — wrong toolchain, no error.
+# silently get the DEFAULT shell - wrong toolchain, no error.
 #
 # MESHTASTIC_WORKSPACE is exported BEFORE `use flake` because
 # nix-direnv runs the flake's shellHook during use_flake, and
 # that hook pins the JDKs and GRADLE_USER_HOME only when the
 # variable is already set. Exporting it after would leave the
-# pinning inert — the failure mode AGENTS.md documents.
+# pinning inert - the failure mode AGENTS.md documents.
 #
 # The path is derived, never hardcoded: repos are always direct
 # children of the workspace, and the workspace is relocatable.
@@ -92,7 +92,7 @@ memory_pass() {
     if git clone --quiet "$(memory_remote)" "$st" 2>/dev/null; then
       echo "  memory    cloned $st"
     else
-      echo "  memory    no store at $st and clone failed — pass skipped"
+      echo "  memory    no store at $st and clone failed - pass skipped"
       echo "            (private repo: needs git access to $(memory_remote))"
       return 0
     fi
@@ -133,7 +133,7 @@ memory_pass() {
   if [ -s "$newnames" ]; then
     ov=$(memory_overlaps "$st/memory" "$newnames")
     if [ -n "$ov" ]; then
-      echo "            overlap — same topic on both machines? read both, merge by hand if so:"
+      echo "            overlap - same topic on both machines? read both, merge by hand if so:"
       printf '%s\n' "$ov"
     fi
   fi
@@ -147,7 +147,7 @@ memory_pass() {
     if git -C "$st" push --quiet -u origin HEAD >/dev/null 2>&1; then
       echo "            committed and pushed"
     else
-      echo "            committed; push failed (offline?) — doctor will report unpushed"
+      echo "            committed; push failed (offline?) - doctor will report unpushed"
     fi
   fi
 
@@ -156,7 +156,7 @@ memory_pass() {
   # editing a user-global file is consent the user gives once.
   write_memory_hook "$root"
   if [ "$hooks" = true ]; then
-    echo '            hooks ship in the nixtastic plugin now — nothing to install; sync registers the plugin'
+    echo '            hooks ship in the nixtastic plugin now - nothing to install; sync registers the plugin'
   fi
 }
 
@@ -179,7 +179,7 @@ while IFS=$'\t' read -r dir repo shell; do
     # --recurse-submodules: firmware ships two (protobufs,
     # meshtestic) and meshtastic-python vendors protobufs the
     # same way, and a plain clone leaves them as empty
-    # directories — pio then fails on missing proto sources.
+    # directories - pio then fails on missing proto sources.
     # Generic, not a firmware special case. The only other path
     # that initializes them is the post-fast-forward re-sync,
     # which never fires for a fresh, up-to-date clone.
@@ -198,7 +198,7 @@ while IFS=$'\t' read -r dir repo shell; do
   g="git -C $root/$dir"
 
   # Give the repo its own dev shell, once. Never clobber a file
-  # that is already there — except one WE wrote whose shell the
+  # that is already there - except one WE wrote whose shell the
   # table has since renamed (repair_envrc in lib.sh): that one is
   # rewritten, and direnv will want a fresh `allow` for it.
   envrc=""
@@ -209,7 +209,7 @@ while IFS=$'\t' read -r dir repo shell; do
     # Upstream TRACKS its own .envrc. firmware ships `use nix`,
     # which resolves to UPSTREAM's flake and its bwrap-broken
     # pkgs.platformio. Editing a tracked file would leave the
-    # repo permanently dirty — blocking --pull — and could be
+    # repo permanently dirty - blocking --pull - and could be
     # committed into an org PR, so write the sidecar that the
     # workspace direnvrc prefers and leave theirs alone.
     if [ ! -e "$root/$dir/.envrc-workspace" ]; then
@@ -226,14 +226,14 @@ while IFS=$'\t' read -r dir repo shell; do
     ?*) echo "$dir" >> "$pending" ;;
   esac
 
-  # Adopt worktrees this tool did not create — hand-made
+  # Adopt worktrees this tool did not create - hand-made
   # (`git worktree add`), agent-skill-made, or an agent
   # harness's worktree isolation. Shell selection is NOT the
   # gap it once was: a worktree under the repo inherits the
   # repo's own .envrc from the nearest ancestor (verified:
   # right shell, right MESHTASTIC_WORKSPACE). What still
-  # fails silently is (a) a repo that TRACKS its .envrc —
-  # firmware's `use nix` wins without the sidecar — (b) the
+  # fails silently is (a) a repo that TRACKS its .envrc -
+  # firmware's `use nix` wins without the sidecar - (b) the
   # per-directory .mcp.json, without which the MCP tools are
   # simply absent, and (c) a worktree parked outside the
   # repo tree, which has no ancestor to inherit. Outfit all
@@ -258,10 +258,10 @@ while IFS=$'\t' read -r dir repo shell; do
         *)
           if [ ! -e "$wt/.envrc" ]; then
             write_worktree_envrc "$wt/.envrc" "$shell"
-            got="envrc — approve once: direnv allow $wt"
+            got="envrc - approve once: direnv allow $wt"
           else
             got=$(repair_envrc "$wt/.envrc" "$shell" write_worktree_envrc)
-            [ -n "$got" ] && got="$got — approve again: direnv allow $wt"
+            [ -n "$got" ] && got="$got - approve again: direnv allow $wt"
           fi
           ;;
       esac
@@ -270,13 +270,13 @@ while IFS=$'\t' read -r dir repo shell; do
       WARN*) echo "  WARN      $dir/${wt##*/}: ${got#WARN }"; got="" ;;
     esac
     # Upstream may TRACK .mcp.json (android, firmware and
-    # meshtastic-mcp do — android's registers context7 for
+    # meshtastic-mcp do - android's registers context7 for
     # the team). Overwriting would dirty the worktree and
     # stomp those registrations, so a tracked file wins and
     # ours is never written beside it. An UNtracked one is
     # ours: regenerate it every pass, exactly like the root
     # copy, so a flake update cannot leave stale store
-    # paths — but only report when it was missing outright.
+    # paths - but only report when it was missing outright.
     if ! git -C "$wt" ls-files --error-unmatch .mcp.json >/dev/null 2>&1; then
       fresh=false
       [ -f "$wt/.mcp.json" ] || fresh=true
@@ -307,7 +307,7 @@ while IFS=$'\t' read -r dir repo shell; do
     narrow=false
   fi
 
-  # Fetch is always safe — it only writes remote-tracking refs.
+  # Fetch is always safe - it only writes remote-tracking refs.
   $g fetch --quiet --prune --tags origin 2>/dev/null || true
 
   # --main moves to the repo's DEFAULT branch. NOT hardcoded
@@ -340,7 +340,7 @@ while IFS=$'\t' read -r dir repo shell; do
   # Only TRACKED modifications can block a fast-forward.
   # Untracked files cannot (git merge --ff-only happily
   # ignores them), so counting them as "dirty" would
-  # needlessly skip repos — e.g. meshtastic-mcp, held back
+  # needlessly skip repos - e.g. meshtastic-mcp, held back
   # by nothing but an untracked .remember/ directory.
   dirty=$($g status --porcelain --untracked-files=no | wc -l)
   untracked=$($g ls-files --others --exclude-standard | wc -l)
@@ -402,7 +402,7 @@ while IFS=$'\t' read -r dir repo shell; do
       status="PULLED"; drift="-$behind fast-forwarded"
       # A fast-forward can move recorded submodule pointers.
       # Without re-syncing, the tree reads dirty again the
-      # instant the pull finishes — firmware/protobufs does
+      # instant the pull finishes - firmware/protobufs does
       # this every time upstream bumps the proto pointer.
       if [ -f "$root/$dir/.gitmodules" ]; then
         $g submodule update --init --recursive --quiet 2>/dev/null || true
@@ -439,7 +439,7 @@ cut -f2 "$expected" > "$want"
 if [ -s "$expected" ]; then
   mkdir -p "$agents_dir"
   while IFS=$'\t' read -r src dest; do
-    # cmp so an unchanged agent is not rewritten every sync — the mtime
+    # cmp so an unchanged agent is not rewritten every sync - the mtime
     # churn would make "is this stale?" unanswerable by inspection.
     if ! cmp -s "$src" "$agents_dir/$dest"; then
       cp "$src" "$agents_dir/$dest"
@@ -450,7 +450,7 @@ fi
 
 # Deliberately OUTSIDE the guard above: when the last agent upstream is
 # deleted, $expected is empty, and a drop pass nested in that guard would
-# never run — the orphan copy would answer forever. Worse than absent,
+# never run - the orphan copy would answer forever. Worse than absent,
 # and invisible.
 if [ -d "$agents_dir" ]; then
   for f in "$agents_dir"/*.md; do
@@ -464,22 +464,22 @@ fi
 
 if [ -s "$expected" ]; then
   n=$(wc -l < "$expected")
-  printf '  .claude/agents  %s subagent(s) from %s — usable from the root\n' \
+  printf '  .claude/agents  %s subagent(s) from %s - usable from the root\n' \
     "$n" "$(cut -f2 "$expected" | sed 's/--.*//' | sort -u | tr '\n' ' ' | sed 's/ $//')"
   [ "$agents_written" -gt 0 ] && printf '      %s copied (source changed)\n' "$agents_written"
 
   # Two repos shipping the same frontmatter name would resolve by
-  # filesystem read order — undefined, and silently the wrong agent. The
+  # filesystem read order - undefined, and silently the wrong agent. The
   # prefixed filenames cannot prevent this; only saying so can.
   dupes=$(while IFS=$'\t' read -r src _; do agent_name_of "$src"; done < "$expected" | sort | uniq -d)
   if [ -n "$dupes" ]; then
-    echo "  WARN  duplicate subagent name(s) across repos — resolution is undefined:"
+    echo "  WARN  duplicate subagent name(s) across repos - resolution is undefined:"
     printf '        %s\n' "$dupes"
   fi
 fi
 
 # Reported outside the block above so the last agent's removal is still
-# announced — a copy vanishing silently is the same invisibility problem
+# announced - a copy vanishing silently is the same invisibility problem
 # in the other direction.
 [ "$agents_dropped" -gt 0 ] && printf '  .claude/agents  %s dropped (source gone)\n' "$agents_dropped"
 
@@ -499,10 +499,10 @@ while IFS=$'\t' read -r d _ _; do
   n=$(git -C "$root/$d" worktree list --porcelain | grep -c '^worktree ' || true)
   nwt=$((nwt + n - 1))
 done < "$NIXTASTIC_REPOS_TSV"
-[ "$nwt" -gt 0 ] && printf '  worktrees %s open — nix run .#worktree -- --gc reports which are reapable\n' "$nwt"
+[ "$nwt" -gt 0 ] && printf '  worktrees %s open - nix run .#worktree -- --gc reports which are reapable\n' "$nwt"
 
 if write_mcp_json "$root" "$root"; then
-  echo "  .mcp.json written — meshtastic-mcp server for this workspace"
+  echo "  .mcp.json written - meshtastic-mcp server for this workspace"
   # A project-scope server is approved once per machine, the
   # same consent model as direnv. Say so rather than letting
   # it look broken on first use.
@@ -510,7 +510,7 @@ if write_mcp_json "$root" "$root"; then
   # write_mcp_json rewrote bin/meshtastic-mcp-launch too (fresh store
   # paths every run); the USER-scope registration points at that path.
   if ! jq -e '.mcpServers.meshtastic' "$HOME/.claude.json" >/dev/null 2>&1; then
-    echo "  no user-scope registration — the tools are absent in android/,"
+    echo "  no user-scope registration - the tools are absent in android/,"
     echo "  firmware/ and their worktrees (upstream's tracked .mcp.json wins"
     echo "  there) until you run, once ever:"
     echo "      claude mcp add --scope user meshtastic -- $root/bin/meshtastic-mcp-launch"
@@ -520,7 +520,7 @@ fi
 if [ -s "$pending" ]; then
   # direnv deliberately requires explicit consent per .envrc; we
   # write the file, you approve it. Never automated.
-  echo "  direnv files written — approve each once:"
+  echo "  direnv files written - approve each once:"
   while read -r d; do
     echo "      direnv allow $root/$d"
   done < "$pending"

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 James Rich
 # SPDX-License-Identifier: GPL-3.0-only
 #
-# nix run .#brief <repo> — orient before touching a repo. Generated live
+# nix run .#brief <repo> - orient before touching a repo. Generated live
 # so it cannot go stale; its job is to say WHAT TO READ, not to inline it.
 # The flake exports NIXTASTIC_REPOS_TSV (<dir>\t<org/repo>\t<shell>).
 
@@ -41,7 +41,7 @@ brief_one() {
 
   [ -n "$shell" ] || { echo "unknown repo: $dir"; return 1; }
   primary="$root/$dir"
-  [ -d "$primary/.git" ] || { echo "$dir not cloned — run: nix run .#sync"; return 1; }
+  [ -d "$primary/.git" ] || { echo "$dir not cloned - run: nix run .#sync"; return 1; }
 
   # A worktree is a full checkout on its own branch, so answering from the
   # primary checkout while the caller stands in a worktree is worse than
@@ -59,7 +59,7 @@ brief_one() {
 
   # `nix run .#…` resolves the flake from the caller's cwd and will not cross
   # a git-repo boundary, so the short form only works from the workspace repo
-  # itself — inside any org repo or worktree it dies with "is not part of a
+  # itself - inside any org repo or worktree it dies with "is not part of a
   # flake". Print the form that will actually run from where the caller is.
   ref=".#"
   [ "$(git rev-parse --show-toplevel 2>/dev/null || echo "")" = "$root" ] || ref="$root#"
@@ -104,12 +104,12 @@ brief_one() {
     printf '    %-42s %6s  (workspace-local)\n' "notes/$dir.md" "$(( $(wc -c <"$root/notes/$dir.md") ))b"
     any=true
   fi
-  [ "$any" = false ] && echo "    (none found — read the code)"
+  [ "$any" = false ] && echo "    (none found - read the code)"
 
   # Spec Kit repos run a lifecycle; ad-hoc edits are the wrong shape.
   if [ -d "$p/.specify" ]; then
     echo ""
-    echo "  SPEC KIT — work flows through the spec lifecycle"
+    echo "  SPEC KIT - work flows through the spec lifecycle"
     [ -f "$p/.specify/memory/constitution.md" ] && \
       echo "    constitution outranks other agent docs"
     if [ -d "$p/specs" ]; then
@@ -127,7 +127,7 @@ brief_one() {
   done
 
   echo ""
-  echo "  COMMIT STYLE (last 5 on this branch — match it)"
+  echo "  COMMIT STYLE (last 5 on this branch - match it)"
   $g log --oneline -5 --format='    %s' | cut -c1-74
 
   if command -v gh >/dev/null; then
@@ -140,11 +140,11 @@ brief_one() {
   fi
 
   echo ""
-  # Worktrees live under the primary checkout, so count them there — a
+  # Worktrees live under the primary checkout, so count them there - a
   # worktree has no .claude/worktrees of its own.
   if [ -d "$primary/.claude/worktrees" ]; then
     n=$(find "$primary/.claude/worktrees" -maxdepth 1 -mindepth 1 -type d | wc -l)
-    [ "$n" -gt 0 ] && printf '  %s active worktree(s) — nix run %sworktree --list %s\n\n' "$n" "$ref" "$dir"
+    [ "$n" -gt 0 ] && printf '  %s active worktree(s) - nix run %sworktree --list %s\n\n' "$n" "$ref" "$dir"
   fi
   return 0
 }

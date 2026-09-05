@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2026 James Rich
 # SPDX-License-Identifier: GPL-3.0-only
 #
-# Fixture tests for the git-state logic in sync and worktree — the
+# Fixture tests for the git-state logic in sync and worktree - the
 # highest-consequence code in the workspace, exercised here against a fake
 # workspace of tiny repos with local bare "origins", one per entry in the
 # real repo table. Runs inside the Nix build sandbox: no network, which is
-# the point — every behaviour tested is pure git state. (Deliberately not
+# the point - every behaviour tested is pure git state. (Deliberately not
 # stating a repo count: the list below is the count, and a number in prose
 # goes stale the moment a repo is registered.)
 #
@@ -39,7 +39,7 @@ git init -q -b main "$root"
 
 # The repo table is baked into the tools (NIXTASTIC_REPOS_TSV), so the
 # fixture directories must carry the REAL names. firmware tracks .envrc
-# upstream and android tracks .mcp.json — mirror both, they are exactly
+# upstream and android tracks .mcp.json - mirror both, they are exactly
 # the cases the tools special-case.
 repos="Adafruit_nRF52_Bootloader_OTAFIX MQTTastic-Client-KMP TAKPacket-SDK android api apple design device-ui firmware gradle-flatpak-sources kzstd labeltastic meshtastic meshtastic-mcp meshtastic-node-kmp meshtastic-python meshtastic-sdk protobufs web-flasher"
 for r in $repos; do
@@ -64,7 +64,7 @@ for r in $repos; do
 done
 
 # The memory store: a private GitHub repo in real life, a local bare here.
-# Cloning an EMPTY bare is deliberate — that is what the first machine
+# Cloning an EMPTY bare is deliberate - that is what the first machine
 # sees, and the first push has to set upstream itself.
 git init -q --bare -b main "$origins/nixtastic-agent.git"
 export NIXTASTIC_MEMORY_REMOTE="$origins/nixtastic-agent.git"
@@ -78,15 +78,15 @@ run() { res="$("$@" 2>&1)" || { echo "COMMAND FAILED: $*"; printf '%s\n' "$res";
 expect() { printf '%s\n' "$res" | grep -qE -- "$1" || { echo "EXPECT FAILED: $1"; printf '%s\n' "$res"; exit 1; }; }
 refuse() { printf '%s\n' "$res" | grep -qE -- "$1" && { echo "REFUSE FAILED (matched): $1"; printf '%s\n' "$res"; exit 1; } || true; }
 # `run` assigns res in the CALLER's shell, so `(cd … && run …)` would leave
-# res holding the previous test's output and assert against that — silently
+# res holding the previous test's output and assert against that - silently
 # green or bafflingly red. cd in this shell and change back.
 run_in() { d="$1"; shift; prev="$PWD"; cd "$d"; run "$@"; cd "$prev"; }
 # doctor exits 1 whenever anything FAILs, and in the sandbox (no direnv,
-# no direnvrc) something always does — capture regardless and assert on
+# no direnvrc) something always does - capture regardless and assert on
 # the lines.
 run_lax() { res="$("$@" 2>&1)" || true; }
 
-echo "--- T1: first run — all current, envrc written per repo, sidecar for firmware"
+echo "--- T1: first run - all current, envrc written per repo, sidecar for firmware"
 run "$sync"
 # Anchored: the footer's own help text also says "current".
 # Derived from $repos, not hardcoded: adding a repo to the table in flake.nix
@@ -149,7 +149,7 @@ run "$sync" --pull
 [ "$(git -C "$root/protobufs" config remote.origin.fetch)" = '+refs/heads/*:refs/remotes/origin/*' ] \
   || { echo "T5: refspec not widened"; exit 1; }
 
-echo "--- T6: adoption — hand-made worktree under the repo gets .mcp.json only"
+echo "--- T6: adoption - hand-made worktree under the repo gets .mcp.json only"
 git -C "$root/kzstd" worktree add -q .claude/worktrees/stray -b test/stray
 run "$sync"
 expect 'adopted +kzstd/stray +mcp\.json'
@@ -171,13 +171,13 @@ grep -q '"upstream":true' "$root/android/.claude/worktrees/stray/.mcp.json" \
   || { echo "T7: adoption dirtied the android worktree"; exit 1; }
 [ -f "$root/firmware/.claude/worktrees/stray/.envrc-workspace" ] || { echo "T7: firmware sidecar missing"; exit 1; }
 
-echo "--- T8: adoption — worktree parked OUTSIDE the repo tree gets a full .envrc"
+echo "--- T8: adoption - worktree parked OUTSIDE the repo tree gets a full .envrc"
 git -C "$root/kzstd" worktree add -q "$PWD/outside-wt" -b test/outside
 run "$sync"
 expect 'adopted +kzstd/outside-wt +envrc'
 grep -q "use flake \"$root#kotlin\"" "$PWD/outside-wt/.envrc" || { echo "T8: outside envrc wrong"; exit 1; }
 
-echo "--- T9: worktree tool — create is outfitted, remove deletes only merged branches"
+echo "--- T9: worktree tool - create is outfitted, remove deletes only merged branches"
 run "$worktree" kzstd feat/thing
 expect 'created .*kzstd/.claude/worktrees/feat-thing'
 expect 'mcp .*written'
@@ -209,7 +209,7 @@ refuse 'checkout +worktree'
 expect 'nix run \.#worktree --list kzstd'
 expect 'nix develop \.#kotlin'
 # From inside the worktree: its own branch, named as a worktree. Reporting
-# main here was the original bug — silent, and precisely backwards for a
+# main here was the original bug - silent, and precisely backwards for a
 # tool the protocol says to trust over the table.
 run_in "$root/kzstd/.claude/worktrees/brief-wt" "$brief" kzstd
 expect 'checkout +worktree brief-wt'
@@ -224,7 +224,7 @@ refuse 'nix develop \.#'
 run_in "$root/kzstd/.claude/worktrees/brief-wt" "$brief" android
 refuse 'checkout +worktree'
 # And the tool's own next-step suggestion has to survive the cd it tells you
-# to make — this is the line that was broken. Asserted by shape, not by
+# to make - this is the line that was broken. Asserted by shape, not by
 # running it: `nix` is not in the build sandbox, and the behaviour it would
 # have exercised is already covered directly above.
 run "$worktree" kzstd feat/suggest
@@ -240,11 +240,11 @@ expect '\.claude/agents  1 subagent\(s\) from android'
 cmp -s "$root/android/.claude/agents/gradle-runner.md" "$root/.claude/agents/android--gradle-runner.md" \
   || { echo "T12: copy is not byte-identical"; exit 1; }
 # The frontmatter name is what the Agent tool resolves, so it must survive
-# verbatim — renaming it would break android's own "dispatch the
+# verbatim - renaming it would break android's own "dispatch the
 # gradle-runner subagent" instruction from a root session.
 grep -qx 'name: gradle-runner' "$root/.claude/agents/android--gradle-runner.md" \
   || { echo "T12: frontmatter name was rewritten"; exit 1; }
-# An unchanged source must not be recopied — mtime churn would make
+# An unchanged source must not be recopied - mtime churn would make
 # staleness unanswerable by inspection.
 run "$sync"
 refuse 'copied \(source changed\)'
@@ -253,7 +253,7 @@ printf -- '---\nname: gradle-runner\n---\nbody v2\n' > "$root/android/.claude/ag
 run "$sync"
 expect '1 copied \(source changed\)'
 grep -q 'body v2' "$root/.claude/agents/android--gradle-runner.md" || { echo "T12: stale copy kept"; exit 1; }
-# Two repos claiming one name resolves by filesystem order — undefined, so
+# Two repos claiming one name resolves by filesystem order - undefined, so
 # it has to be said out loud rather than silently picked.
 mkdir -p "$root/apple/.claude/agents"
 printf -- '---\nname: gradle-runner\n---\nimpostor\n' > "$root/apple/.claude/agents/gradle-runner.md"
@@ -289,7 +289,7 @@ expect "ARGV: --add-dir $root/apple --model opus"
 # Two repos, and a flag that is not a repo stops the scan.
 run "$root/bin/claude-ws" android apple -p hello
 expect "ARGV: --add-dir $root/android --add-dir $root/apple -p hello"
-# No repo named must be plain claude — the default has to stay cheap,
+# No repo named must be plain claude - the default has to stay cheap,
 # because --add-dir also drags in that repo's CLAUDE.md.
 run "$root/bin/claude-ws" --version
 expect '^ARGV: --version$'
@@ -328,7 +328,7 @@ echo "--- T15: a hand-written .envrc is warned about, never touched"
 printf 'use flake "$MESHTASTIC_WORKSPACE#kotlin"\n' > "$root/labeltastic/.envrc"
 before=$(cat "$root/labeltastic/.envrc")
 run "$sync"
-expect 'WARN +labeltastic: \.envrc selects kotlin, table says python — not ours, left alone'
+expect 'WARN +labeltastic: \.envrc selects kotlin, table says python - not ours, left alone'
 refuse 'labeltastic .*envrc updated'
 [ "$(cat "$root/labeltastic/.envrc")" = "$before" ] || { echo "T15: hand-written envrc was clobbered"; exit 1; }
 run_lax "$doctor"
@@ -368,7 +368,7 @@ expect "^$(printf '%s' "$root" | sed 's/[^a-zA-Z0-9]/-/g')-android--claude-workt
 run_lax "$sync" --slug /tmp/café
 expect 'non-ASCII'
 
-echo "--- T18: memory pass — clone, link every slug, import without clobbering, idempotent"
+echo "--- T18: memory pass - clone, link every slug, import without clobbering, idempotent"
 # T1 already ran sync, so the store is cloned and the root + repos are
 # linked. Assert that state rather than re-deriving it.
 [ -d "$store/.git" ] || { echo "T18: store not cloned"; exit 1; }
@@ -399,7 +399,7 @@ run "$sync"
 git -C "$root" worktree remove --force "$root/.claude/worktrees/desktop-ws"; git -C "$root" branch -D desktop-ws -q
 # The import is committed and pushed, so the other machine can pull it.
 # Not grep -q: it closes the pipe on the first match and pipefail then
-# reports git log's SIGPIPE as a failure — a race that flips as the log grows.
+# reports git log's SIGPIPE as a failure - a race that flips as the log grows.
 git -C "$origins/nixtastic-agent.git" log --oneline | grep 'memory: import' >/dev/null || { echo "T18: import not pushed"; exit 1; }
 # Idempotent: a second run imports nothing and touches no mtime.
 before=$(ls -l --time-style=full-iso "$store/memory")
@@ -432,9 +432,9 @@ head -1 "$idx" | grep -qx '# Memory' || { echo "T19: no header"; exit 1; }
 want='who-james-is some-feedback bench-serials alpha-project quoted-desc zeta-project'
 got=$(sed -n 's/^- \[[^]]*\](\([^)]*\)\.md).*/\1/p' "$idx" | tr '\n' ' ' | sed 's/ $//')
 [ "$got" = "$want" ] || { echo "T19: order was: $got"; exit 1; }
-grep -q '^- \[Bench serials\](bench-serials.md) — \[james-pc\] bench USB serials$' "$idx" \
+grep -q '^- \[Bench serials\](bench-serials.md) - \[james-pc\] bench USB serials$' "$idx" \
   || { echo "T19: tag not inline / title not derived"; cat "$idx"; exit 1; }
-grep -q '^- \[Quoted desc\](quoted-desc.md) — says "hi" to you$' "$idx" \
+grep -q '^- \[Quoted desc\](quoted-desc.md) - says "hi" to you$' "$idx" \
   || { echo "T19: escaped quote leaked into the index"; cat "$idx"; exit 1; }
 cp "$idx" "$HOME/idx.before"
 run "$sync"
@@ -442,9 +442,9 @@ cmp -s "$idx" "$HOME/idx.before" || { echo "T19: re-render is not byte-identical
 # A session appends its own line with a hand-written title (the harness
 # instruction says to). The title is the retrieval key, so it is kept; the
 # hook is still the frontmatter description; the appended line is folded.
-printf -- '- [Alpha, by hand](alpha-project.md) — a hook someone typed\n' >> "$idx"
+printf -- '- [Alpha, by hand](alpha-project.md) - a hook someone typed\n' >> "$idx"
 run "$sync"
-grep -q '^- \[Alpha, by hand\](alpha-project.md) — another project fact$' "$idx" \
+grep -q '^- \[Alpha, by hand\](alpha-project.md) - another project fact$' "$idx" \
   || { echo "T19: hand title lost on re-render"; cat "$idx"; exit 1; }
 [ "$(grep -c 'alpha-project.md' "$idx")" = 1 ] || { echo "T19: appended line not folded"; exit 1; }
 cp "$idx" "$HOME/idx.before2"
@@ -470,7 +470,7 @@ wt="$root/kzstd/.claude/worktrees/feat-mem"
   || { echo "T20: worktree slug not linked at creation"; exit 1; }
 run "$worktree" --remove kzstd feat-mem
 
-echo "--- T21: hooks — merged into settings.json once, existing entries kept; the hook commits, pushes, and respects the lock"
+echo "--- T21: hooks - merged into settings.json once, existing entries kept; the hook commits, pushes, and respects the lock"
 cfg="$HOME/.claude/settings.json"
 mkdir -p "$HOME/.claude"
 cat > "$cfg" <<'EOF'
@@ -480,7 +480,7 @@ run "$sync"
 [ -x "$root/bin/nixtastic-memory-hook" ] || { echo "T21: hook script missing"; exit 1; }
 # The hook: a memory written through the link is committed and pushed.
 printf -- '---\nname: from-a-session\ndescription: "x"\nmetadata:\n  type: project\n---\nbody\n' > "$projects/$(slug "$root")/memory/from-a-session.md"
-printf -- '- [dup line](from-a-session.md) — x\n- [dup line](from-a-session.md) — x\n' >> "$store/memory/MEMORY.md"
+printf -- '- [dup line](from-a-session.md) - x\n- [dup line](from-a-session.md) - x\n' >> "$store/memory/MEMORY.md"
 run "$root/bin/nixtastic-memory-hook" stop
 git -C "$origins/nixtastic-agent.git" log --oneline | grep 'memory: ' >/dev/null || {
   echo "T21: hook did not push"; echo "--- origin log:"; git -C "$origins/nixtastic-agent.git" log --oneline --all -5
@@ -530,7 +530,7 @@ mkdir -p "$HOME/foreign" && git init -q -b main "$HOME/foreign"
 printf '{"cwd":"%s","hook_event_name":"SessionStart"}' "$HOME/foreign" | run "$root/bin/nixtastic-memory-hook" start
 [ ! -e "$projects/$(slug "$HOME/foreign")/memory" ] || { echo "T21: hook linked a foreign repo"; exit 1; }
 
-echo "--- T22: doctor — store, links, hooks, state, age"
+echo "--- T22: doctor - store, links, hooks, state, age"
 run_lax "$doctor"
 expect 'ok +memory links'
 refuse 'memory hooks'
@@ -565,7 +565,7 @@ expect 'memory .*slugs ->'
 refuse 'current +kzstd'
 refuse 'clone '
 
-echo "--- T24: plugin render — source copied, bundled skills copied, forwarders generated and prefixed, speckit skipped"
+echo "--- T24: plugin render - source copied, bundled skills copied, forwarders generated and prefixed, speckit skipped"
 # Two repos shipping the same skill name, one unique, one speckit, one symlinked.
 mkskill() { mkdir -p "$1"; printf -- '---\nname: %s\ndescription: %s\n---\nbody\n' "$2" "$3" > "$1/SKILL.md"; }
 mkskill "$root/android/.claude/skills/code-review"  code-review "Review android the repo way"
@@ -627,7 +627,7 @@ run "$sync"
 expect 'plugin +rendered .*unchanged'
 [ "$v2" = "$(jq -r .version "$p/.claude-plugin/plugin.json")" ] || { echo "T25: version churned after bump"; exit 1; }
 
-echo "--- T26: hook migration — only after the plugin is installed; ours removed, others kept, backup once"
+echo "--- T26: hook migration - only after the plugin is installed; ours removed, others kept, backup once"
 cfg="$HOME/.claude/settings.json"
 cat > "$cfg" <<EOF
 { "model": "opus", "hooks": {
@@ -667,7 +667,7 @@ run "$sync" --install-hooks
 expect 'hooks ship in the nixtastic plugin'
 [ "$(jq '.hooks.SessionStart | length' "$cfg")" = 1 ] || { echo "T26: --install-hooks wrote entries"; exit 1; }
 
-echo "--- T27: queue symlink — created, idempotent, a real file is backed up; register reports version drift"
+echo "--- T27: queue symlink - created, idempotent, a real file is backed up; register reports version drift"
 q="$HOME/.claude/bin/gradle-queue"
 [ -L "$q" ] || { echo "T27: no symlink"; exit 1; }
 [ "$(readlink "$q")" = "$root/.cache/agent-marketplace/nixtastic/bin/gradle-queue" ] || { echo "T27: wrong target $(readlink "$q")"; exit 1; }
@@ -682,7 +682,7 @@ jq '.plugins["nixtastic@nixtastic"][0].version = "0.1.0"' "$HOME/.claude/plugins
 run "$sync"
 expect 'plugin +register +skipped .*claude plugin update'
 
-echo "--- T28: doctor — plugin render, install, hooks, queue, github mcp, extras"
+echo "--- T28: doctor - plugin render, install, hooks, queue, github mcp, extras"
 run_lax "$doctor"
 expect 'ok +plugin render'
 expect 'WARN +plugin install .*0\.1\.0'
@@ -712,7 +712,7 @@ run_lax "$doctor"
 expect 'WARN +gradle queue'
 run "$sync"
 
-echo "--- T29: gradle guard — raw gradlew denied, queued/bypass/introspection allowed, heredoc mention allowed, --stop denied"
+echo "--- T29: gradle guard - raw gradlew denied, queued/bypass/introspection allowed, heredoc mention allowed, --stop denied"
 gg="$pluginSrc/hooks/gradle-queue-guard.sh"
 # Silence is allow: a guard that has nothing to say prints nothing.
 decision() { out=$(cat); if [ -z "$out" ]; then echo allow; else printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // "allow"'; fi; }
@@ -727,7 +727,7 @@ decide() { printf '{"tool_name":"Bash","tool_input":{"command":%s}}' "$(jq -Rn -
 [ "$(decide 'ls')" = allow ] || { echo "T29: unrelated command denied"; exit 1; }
 printf '{"tool_name":"Bash","tool_input":{"command":"./gradlew build"}}' | bash "$gg" | jq -r .hookSpecificOutput.permissionDecisionReason | grep -q 'gradle-queue -- build' || { echo "T29: denial does not name the replacement"; exit 1; }
 
-echo "--- T30: worktree guard — cross-tree edit denied, in-tree and outside allowed, main checkout no-op"
+echo "--- T30: worktree guard - cross-tree edit denied, in-tree and outside allowed, main checkout no-op"
 wg="$pluginSrc/hooks/block-main-checkout-edits.sh"
 edit() { printf '{"tool_name":"Edit","cwd":%s,"tool_input":{"file_path":%s}}' "$(jq -Rn --arg c "$1" '$c')" "$(jq -Rn --arg c "$2" '$c')" | bash "$wg" | decision; }
 git -C "$root/kzstd" worktree add -q "$root/kzstd/.claude/worktrees/guard" -b guard
@@ -739,7 +739,7 @@ wt="$root/kzstd/.claude/worktrees/guard"
 [ "$(edit "$root/kzstd" "$root/kzstd/tracked.txt")" = allow ] || { echo "T30: main checkout session blocked"; exit 1; }
 git -C "$root/kzstd" worktree remove --force "$wt"; git -C "$root/kzstd" branch -D guard -q
 
-echo "--- T31: orient hook — five cwd cases, silence elsewhere, valid additionalContext"
+echo "--- T31: orient hook - five cwd cases, silence elsewhere, valid additionalContext"
 oh="$root/.cache/agent-marketplace/nixtastic/hooks/orient.sh"
 [ -x "$oh" ] || { echo "T31: orient.sh not rendered"; exit 1; }
 [ "$(cat "$root/.cache/agent-marketplace/nixtastic/hooks/workspace-root")" = "$root" ] || { echo "T31: workspace-root not rendered"; exit 1; }
@@ -786,7 +786,7 @@ run "$brief" --short kzstd
 expect '^kzstd .* dirty! '
 git -C "$root/kzstd" checkout -q -- tracked.txt
 
-echo "--- T33: pins — submodule, toml, resolved, seed pairs; current/behind/unknown; --json; --repo --short"
+echo "--- T33: pins - submodule, toml, resolved, seed pairs; current/behind/unknown; --json; --repo --short"
 # protobufs producer with two tags; firmware submodule at the latest tag, python at the older.
 (cd "$root/protobufs" && git tag v2.7.26 && echo more > proto2 && git add proto2 && git commit -qm "v2.8.0" && git tag v2.8.0 && git push -q --tags origin main 2>/dev/null)
 old=$(git -C "$root/protobufs" rev-parse v2.7.26); new=$(git -C "$root/protobufs" rev-parse v2.8.0)
@@ -819,7 +819,7 @@ expect '^-$'
 run "$pins" --repo android --short
 expect '^protobufs v2\.8\.0 current$'
 
-echo "--- T32: pr — status from the HEAD sha, threads, queue, conflicts, wait, rereview (stub gh)"
+echo "--- T32: pr - status from the HEAD sha, threads, queue, conflicts, wait, rereview (stub gh)"
 FIX="$HOME/prfix"; mkdir -p "$FIX" "$PWD/fakebin"
 cat > "$PWD/fakebin/gh" <<'EOF'
 #!/bin/sh
@@ -871,7 +871,7 @@ expect '^merge +BLOCKED +unresolved threads: 2 +queue: not enqueued +conflicts: 
 expect '^checks@aaaaaaa +ok 2 +fail 0 +pending 1 +validate-and-build / Build Desktop Debug'
 refuse 'fail 1'
 # The head-SHA reply wrapper must NOT count as a review; the skipped check must show.
-expect '^review +CodeRabbit: skipped at aaaaaaa — last full review at bbbbbbb; post'
+expect '^review +CodeRabbit: skipped at aaaaaaa - last full review at bbbbbbb; post'
 expect '^next .*CodeRabbit skipped this head'
 expect '^reviews +APPROVED 1 \(garth\)'
 expect 'coderabbitai +app/MapScreen.kt:123 +"Consider guarding the null case here\.'
@@ -912,7 +912,7 @@ expect 'resolved T2'
 refuse 'T2 .*with reply'
 PATH="$oldpath"; export PATH
 
-echo "--- T36: worktree --gc — merged-at-head and stale-empty reaped; dirty, open, unpushed, fresh, foreign kept"
+echo "--- T36: worktree --gc - merged-at-head and stale-empty reaped; dirty, open, unpushed, fresh, foreign kept"
 mkdir -p "$PWD/fakebin"; GCFIX="$HOME/gcfix"; mkdir -p "$GCFIX"; export GCFIX
 cat > "$PWD/fakebin/gh" <<'EOF'
 #!/bin/sh
@@ -971,7 +971,7 @@ git -C "$root/kzstd" worktree remove --force "$root/kzstd/.claude/worktrees/gc-d
 git -C "$root/kzstd" worktree remove --force "$root/kzstd/.claude/worktrees/gc-detached"
 git -C "$root/kzstd" worktree remove --force "$HOME/parked-elsewhere"; git -C "$root/kzstd" branch -D -q gc-parked
 run "$sync"
-expect 'worktrees [0-9]+ open — nix run .#worktree -- --gc'
+expect 'worktrees [0-9]+ open - nix run .#worktree -- --gc'
 
 echo "all tests passed"
 touch "$out"

@@ -7,7 +7,7 @@
 #
 # This file is the pin. These are exact versions and Google does not
 # republish a released coordinate, so it gives reproducibility-in-practice
-# without moving the SDK into /nix/store — which is what triggers the
+# without moving the SDK into /nix/store - which is what triggers the
 # read-only-AGP / aapt2 mess.
 #
 # It is NOT hash-pinned. That is the honest gap versus androidenv:

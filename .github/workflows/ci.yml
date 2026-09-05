@@ -7,7 +7,7 @@
 # `--all-systems` is why a single Linux runner is enough: it EVALUATES every
 # shell for aarch64-darwin and aarch64-linux too, without building them. That
 # is exactly the check that caught `stdenv.cc.cc.lib` possibly not existing on
-# darwin. It is also the limit — passing eval does not mean a repo builds, and
+# darwin. It is also the limit - passing eval does not mean a repo builds, and
 # nothing here can prove that without the repos, the SDK and ~15 GB of clones.
 name: ci
 
@@ -35,13 +35,13 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@v22
       # Two invocations because they answer different questions.
       #
-      # The first EVALUATES every output for all three systems — that is the
+      # The first EVALUATES every output for all three systems - that is the
       # check that caught `stdenv.cc.cc.lib` possibly not existing on darwin.
       # --no-build is required: without it, check tries to BUILD the darwin
       # and aarch64 `checks` on this x86_64 runner and dies on "platform
       # mismatch" (verified).
       - run: nix flake check --all-systems --no-build
-      # The second BUILDS this system's `checks` — the tool scripts plus the
+      # The second BUILDS this system's `checks` - the tool scripts plus the
       # formatter. writeShellApplication runs ShellCheck at build time only,
       # and flake check builds nothing but `checks` (verified: an app with a
       # guaranteed SC2086 failure passed as apps/devShells), so this step is
@@ -56,7 +56,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - uses: DeterminateSystems/nix-installer-action@v22
       # `nix fmt` rewrites in place and always exits 0, so checking the exit
-      # code proves nothing — diff the tree instead. nixfmt is the declared
+      # code proves nothing - diff the tree instead. nixfmt is the declared
       # formatter (flake.nix `formatter`), and the tree is expected to already
       # satisfy it: `nix fmt` must be a no-op on a clean checkout.
       - run: nix fmt

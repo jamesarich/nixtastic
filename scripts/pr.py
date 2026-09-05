@@ -58,7 +58,7 @@ CR_LOGIN = "coderabbitai[bot]"
 
 def review_state(repo, n, sha, checks):
     """Did CodeRabbit review THIS head? Only a review whose body says
-    "Actionable comments posted" is a real pass — every reply it makes on a
+    "Actionable comments posted" is a real pass - every reply it makes on a
     thread is wrapped in its own review object carrying the head SHA and an
     empty body, which reads as "re-reviewed" when nothing was. The CodeRabbit
     check saying "Review skipped" means skipped, not clean."""
@@ -153,7 +153,7 @@ def render_status(d):
     print(f"head     {d['head'][:7]}   branch {d['head_branch']}   base {d['base']}{bb}")
     q = d["queue"]
     qs = f"position {q['position']} ({q['state']})" if q else "not enqueued"
-    conf = {"CONFLICTING": "CONFLICTS — no workflows run until rebased", "MERGEABLE": "none"}.get(
+    conf = {"CONFLICTING": "CONFLICTS - no workflows run until rebased", "MERGEABLE": "none"}.get(
         d["mergeable"], d["mergeable"] or "?")
     print(f"merge    {d['merge_state']}   unresolved threads: {d['threads_unresolved']}   queue: {qs}   conflicts: {conf}")
     c = d["checks"]
@@ -199,7 +199,7 @@ def review_line(d):
     if r["state"] == "reviewed":
         n = r["actionable_at_head"]
         return f"CodeRabbit: reviewed at {h}" + (f" ({n} actionable)" if n is not None else "")
-    last = f" — last full review at {r['last_full_sha']}" if r["last_full_sha"] else " — no full review yet"
+    last = f" - last full review at {r['last_full_sha']}" if r["last_full_sha"] else " - no full review yet"
     if r["state"] == "skipped":
         return f"CodeRabbit: skipped at {h}{last}; post `pr … rereview`"
     if r["state"] == "pending":
@@ -262,7 +262,7 @@ def main():
         return wait(repo, n, a.until, a.timeout)
     if a.cmd == "resolve":
         if not a.thread:
-            sys.exit("resolve needs a thread id — see `pr <repo> <n> threads`")
+            sys.exit("resolve needs a thread id - see `pr <repo> <n> threads`")
         resolve_thread(repo, n, a.thread, a.reply)
         return 0
     if a.cmd == "rereview":

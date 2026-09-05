@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 James Rich
 # SPDX-License-Identifier: GPL-3.0-only
 #
-# nix run .#doctor — check the wiring that fails silently: wrong
+# nix run .#doctor - check the wiring that fails silently: wrong
 # toolchain, inert JDK pinning, a dead MCP registration. Fix commands are
 # printed next to every finding. direnv is deliberately NOT in
 # runtimeInputs: it is the USER's install being checked.
@@ -62,7 +62,7 @@ fi
 # same silent failure one level up: cd does nothing, no
 # error, and every "direnv sets it" claim in the docs goes
 # quietly false. DIRENV_DIR set right now is the strongest
-# evidence — this very process is running under it.
+# evidence - this very process is running under it.
 if [ -n "${DIRENV_DIR:-}" ]; then
   ok "direnv hook" "active in this shell"
 else
@@ -98,7 +98,7 @@ while IFS=$'\t' read -r dir _ _; do
   [ -d "$root/$dir/.git" ] || continue
   cloned=$((cloned + 1))
   # firmware tracks its own .envrc, so the sidecar is the
-  # file that matters there — see AGENTS.md.
+  # file that matters there - see AGENTS.md.
   if [ ! -e "$root/$dir/.envrc" ] && [ ! -e "$root/$dir/.envrc-workspace" ]; then
     noenvrc="$noenvrc $dir"
   fi
@@ -124,7 +124,7 @@ fi
 # later (meshtastic-mcp's `mcp` became `python`) and sync's never-clobber
 # rule used to keep the stale file alive forever. The symptom is one
 # nix-direnv evaluation error scrolling past and a fallback to the
-# cached environment — unpinned, and silent thereafter. Compared against
+# cached environment - unpinned, and silent thereafter. Compared against
 # the TABLE (what sync would write) and against the flake's actual
 # devShells (what can evaluate at all). Worktrees carry their own copy
 # when they sit outside the repo or the repo tracks .envrc, so they are
@@ -177,8 +177,8 @@ fi
 
 # --- worktrees ------------------------------------------
 # Hand- or harness-made worktrees fail silently two ways:
-# no .mcp.json (the MCP tools are just absent), and — where
-# the repo tracks its own .envrc — no sidecar, which for
+# no .mcp.json (the MCP tools are just absent), and - where
+# the repo tracks its own .envrc - no sidecar, which for
 # firmware means upstream's bwrap-broken platformio.
 stray=""
 nwt=0
@@ -220,7 +220,7 @@ fi
 # --- Android SDK ----------------------------------------
 # Reconcile against the DECLARED list, not just existence.
 # bootstrap-sdk applies android-sdk-packages.txt on demand,
-# but nothing detected drift between runs — and a missing
+# but nothing detected drift between runs - and a missing
 # package surfaces as an AGP resolution error naming
 # nothing. The slash-form coordinates map 1:1 onto SDK
 # directories (platforms/android-37.0 is literally
@@ -247,13 +247,13 @@ else
     warn "android sdk" "declared but not installed:$sdkmissing"
     fix "nix run .#bootstrap-sdk"
   else
-    ok "android sdk" "$sdk — $declared declared, all present"
+    ok "android sdk" "$sdk - $declared declared, all present"
   fi
 fi
 
 # --- MCP registration -----------------------------------
 # The project file must name the launcher, the same endpoint as the
-# user-scope entry — Claude Code flags one server name with two
+# user-scope entry - Claude Code flags one server name with two
 # endpoints as a scope conflict. An older render named uv's store
 # path directly, which also went stale on `nix flake update`.
 mcp="$root/.mcp.json"
@@ -267,7 +267,7 @@ elif ! jq -e . "$mcp" >/dev/null 2>&1; then
 else
   cmd=$(jq -r '.mcpServers.meshtastic.command // ""' "$mcp")
   if [ "$cmd" != "$launcher" ]; then
-    warn "mcp registration" "names ${cmd:-nothing}, not the launcher — a scope conflict with the user-scope entry"
+    warn "mcp registration" "names ${cmd:-nothing}, not the launcher - a scope conflict with the user-scope entry"
     fix "nix run .#sync"
   elif [ ! -x "$cmd" ]; then
     bad "mcp registration" "launcher missing at $cmd"
@@ -279,7 +279,7 @@ fi
 
 # --- MCP user scope -----------------------------------------
 # Project scope cannot follow you into android/, firmware/ or their
-# worktrees — upstream tracks its own .mcp.json there, and ours is
+# worktrees - upstream tracks its own .mcp.json there, and ours is
 # never written beside it. A user-scope registration pointing at the
 # STABLE launcher (bin/meshtastic-mcp-launch, rewritten by sync with
 # fresh store paths) covers every directory and survives flake updates.
@@ -293,7 +293,7 @@ elif [ -n "$ucmd" ]; then
   warn "mcp user scope" "registered, but not via the launcher: $ucmd"
   fix "claude mcp remove --scope user meshtastic && claude mcp add --scope user meshtastic -- $launcher"
 else
-  warn "mcp user scope" "not registered — tools absent in android/, firmware/, worktrees"
+  warn "mcp user scope" "not registered - tools absent in android/, firmware/, worktrees"
   fix "claude mcp add --scope user meshtastic -- $launcher"
 fi
 
@@ -306,7 +306,7 @@ if [ ! -f "$pj" ]; then
   warn "plugin render" "not rendered"
   fix "nix run .#sync"
 elif [ "$(cat "$rd/.hash" 2>/dev/null)" != "$(plugin_input_hash "$root")" ]; then
-  warn "plugin render" "stale — plugin/ or a repo skill changed since"
+  warn "plugin render" "stale - plugin/ or a repo skill changed since"
   fix "nix run .#sync"
 else
   ok "plugin render" "$rd  ($(find "$rd/$pname/skills" -mindepth 1 -maxdepth 1 -type d | wc -l) skills)"
@@ -339,7 +339,7 @@ if [ -f "$cfg" ]; then
   done
 fi
 if [ -n "$dup" ]; then
-  warn "plugin hooks" "also in user-scope settings.json — fire twice:$dup"
+  warn "plugin hooks" "also in user-scope settings.json - fire twice:$dup"
   fix "nix run .#sync   (migrates them once the plugin is installed)"
 else
   ok "plugin hooks" "plugin only, no user-scope duplicate"
@@ -352,7 +352,7 @@ else
   fix "nix run .#sync"
 fi
 if jq -e '.mcpServers.github' "$HOME/.claude.json" >/dev/null 2>&1; then
-  warn "github mcp" "registered in user scope too — the plugin ships it; tools appear twice"
+  warn "github mcp" "registered in user scope too - the plugin ships it; tools appear twice"
   fix "claude mcp remove -s user github"
 else
   ok "github mcp" "plugin only"
@@ -362,7 +362,7 @@ fi
 if command -v just >/dev/null 2>&1; then
   ok "just on PATH" "$(command -v just)"
 else
-  warn "just on PATH" "not found — the orient hook prints nix run forms instead"
+  warn "just on PATH" "not found - the orient hook prints nix run forms instead"
   fix "nix profile install nixpkgs#just"
 fi
 # Informational: what this machine has that the core does not.
@@ -404,7 +404,7 @@ fi
 # exactly the way this file exists to catch: the session just starts
 # without its memory, or with a store the other machine never sees. The
 # link check is also the only thing that notices if a Claude Code upgrade
-# ever replaces memory/ instead of writing into it — run doctor after one.
+# ever replaces memory/ instead of writing into it - run doctor after one.
 mstore=$(memory_store)
 if [ ! -d "$mstore/.git" ]; then
   bad "memory store" "not cloned at $mstore"
@@ -428,7 +428,7 @@ else
   m_dirty=$(git -C "$mstore" status --porcelain 2>/dev/null | wc -l)
   m_count=$(find "$mstore/memory" -maxdepth 1 -name '*.md' ! -name MEMORY.md 2>/dev/null | wc -l)
   if [ -e "$mstore/.git/MERGE_HEAD" ]; then
-    bad "memory store" "merge in progress — sessions would load conflict markers"
+    bad "memory store" "merge in progress - sessions would load conflict markers"
     fix "git -C $mstore merge --abort && nix run .#sync -- --memory-only"
   else
     m_ahead=$(git -C "$mstore" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)
@@ -444,7 +444,7 @@ else
     fi
   fi
 
-  # Frontmatter `modified:`, not mtime — the laptop's 2026-08-15 migration
+  # Frontmatter `modified:`, not mtime - the laptop's 2026-08-15 migration
   # reset every mtime. A signal, not a reaper: nothing here deletes.
   m_cutoff=$(date -u -d '90 days ago' +%Y-%m-%d)
   m_stale=0; m_undated=0
@@ -458,7 +458,7 @@ else
   # line and never will, and a warning that cannot clear is noise.
   if [ "$m_stale" -gt 0 ]; then
     warn "memory age" "$m_stale not updated since $m_cutoff ($m_undated undated)"
-    fix "review them; a wrong memory is worse than a missing one — delete it"
+    fix "review them; a wrong memory is worse than a missing one - delete it"
   else
     ok "memory age" "none older than 90 days ($m_undated undated of $m_count)"
   fi

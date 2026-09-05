@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 James Rich
 # SPDX-License-Identifier: GPL-3.0-only
 #
-# nix run .#worktree — create, list, remove and prune worktrees that
+# nix run .#worktree - create, list, remove and prune worktrees that
 # arrive fully outfitted. Assembled by the flake: lib.sh is prepended and
 # the NIXTASTIC_* env vars are exported there.
 
@@ -102,13 +102,13 @@ case "${1:-}" in
     # alone cannot say "merged" (AGENTS.md → Worktrees accumulate). Ask
     # GitHub: a MERGED PR whose head SHA is the local HEAD means nothing
     # here is unpublished. Reap that and the empty (no commits, older than
-    # a day, so not one just created) — everything else is kept and named.
+    # a day, so not one just created) - everything else is kept and named.
     apply=false; shift
     [ "${1:-}" = --apply ] && { apply=true; shift; }
     have_gh=false; command -v gh >/dev/null 2>&1 && have_gh=true
     reap=0; keep=0
     # The workspace repo's own worktrees (Desktop app, harness isolation)
-    # are candidates too — label "workspace", asked about on GitHub like any.
+    # are candidates too - label "workspace", asked about on GitHub like any.
     while read -r d; do
       if [ "$d" = . ]; then p="$root"; d=workspace; else p="$root/$d"; fi
       [ -d "$p/.git" ] || continue
@@ -165,7 +165,7 @@ case "${1:-}" in
               fi
               printf '  reaped %-52s %s (%s)\n' "$label" "$why" "$msg"
             else
-              printf '  FAILED %-52s %s — git worktree remove refused\n' "$label" "$why"
+              printf '  FAILED %-52s %s - git worktree remove refused\n' "$label" "$why"
             fi
           else
             printf '  reap   %-52s %s\n' "$label" "$why"
@@ -180,7 +180,7 @@ case "${1:-}" in
     if [ "$apply" = true ]; then
       printf '  %s reaped, %s kept\n' "$reap" "$keep"
     else
-      printf '  %s reapable, %s kept — nix run .#worktree -- --gc --apply to remove them\n' "$reap" "$keep"
+      printf '  %s reapable, %s kept - nix run .#worktree -- --gc --apply to remove them\n' "$reap" "$keep"
     fi
     [ "$have_gh" = true ] || echo "  (gh not on PATH: only empty trees can be classified as reapable)"
     exit 0 ;;
@@ -238,28 +238,28 @@ write_worktree_envrc "$envrc_file" "$shell"
 # project: a registration made at the workspace root does
 # not reach it, and the MCP tools would simply be absent
 # with no error. Same failure shape as the .envrc above.
-# The env still points at the REAL repos — a worktree of
+# The env still points at the REAL repos - a worktree of
 # one repo is not a workspace.
 #
 # But upstream may TRACK .mcp.json (android, firmware and
-# meshtastic-mcp do — android's registers context7 for the
+# meshtastic-mcp do - android's registers context7 for the
 # team). This tool used to overwrite it unconditionally,
 # which dirtied every such worktree at creation and stomped
-# the team's registrations — the exact failure class the
+# the team's registrations - the exact failure class the
 # .envrc sidecar exists to avoid, one file over. A tracked
 # file wins; the meshtastic-mcp tools are then not project-
 # registered in that worktree (run the client from the
 # workspace root when you need them).
 mcp=""
 if git -C "$wt" ls-files --error-unmatch .mcp.json >/dev/null 2>&1; then
-  mcp="upstream's (tracked) — meshtastic-mcp tools not registered here"
+  mcp="upstream's (tracked) - meshtastic-mcp tools not registered here"
 elif write_mcp_json "$wt" "$root"; then
   mcp="written (approve once via /mcp)"
 fi
 
 # Its own cwd is its own Claude Code project, so without this the first
 # session here starts with no memory and every later one keeps its own
-# blind store — the android/=2-memories hole, once per branch. The
+# blind store - the android/=2-memories hole, once per branch. The
 # projects/ dir does not exist until a session writes it, hence mkdir in
 # memory_link. Design: notes/agent-memory-sync.md.
 mem=""
@@ -280,7 +280,7 @@ echo ""
 echo "  cd $wt && direnv allow"
 # Absolute flake ref on purpose: the line above tells you to cd INTO the
 # worktree, and `.#` resolves against cwd without crossing a git-repo
-# boundary — so the short form errors with "is not part of a flake" from
+# boundary - so the short form errors with "is not part of a flake" from
 # exactly the directory this is telling you to stand in.
 echo "  nix run $root#brief -- $dir"
 
