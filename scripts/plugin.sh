@@ -30,6 +30,7 @@ plugin_forward_pairs() {
 # function for sync (did it change?) and doctor (is the render stale?).
 plugin_input_hash() {
   {
+    printf '%s\n' "$1"; cat "$NIXTASTIC_REPOS_TSV"
     find "$NIXTASTIC_PLUGIN_SRC" -type f | sort | while read -r f; do
       printf '%s\n' "${f#"$NIXTASTIC_PLUGIN_SRC"}"; cat "$f"
     done
@@ -80,6 +81,8 @@ plugin_render() {
   # git tracks no empty dirs, so an as-yet-empty skills/ is absent from the source.
   mkdir -p "$tmp/$name/skills" "$tmp/$name/hooks" "$tmp/$name/bin"
   [ -f "$root/bin/nixtastic-memory-hook" ] && cp "$root/bin/nixtastic-memory-hook" "$tmp/$name/hooks/nixtastic-memory-hook"
+  printf '%s\n' "$root" > "$tmp/$name/hooks/workspace-root"
+  cut -f1 "$NIXTASTIC_REPOS_TSV" > "$tmp/$name/hooks/repos"
   for s in $NIXTASTIC_BUNDLED_SKILLS; do
     src="$root/meshtastic-mcp/src/meshtastic_mcp/skills/$s"
     [ -d "$src" ] && cp -R "$src" "$tmp/$name/skills/$s"

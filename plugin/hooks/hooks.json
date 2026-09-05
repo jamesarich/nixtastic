@@ -2,7 +2,8 @@
   "description": "Memory pull/push and the two workspace-rule guards. Scripts resolve under the plugin root.",
   "hooks": {
     "SessionStart": [
-      { "matcher": "*", "hooks": [ { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/nixtastic-memory-hook start", "timeout": 10 } ] }
+      { "matcher": "*", "hooks": [ { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/nixtastic-memory-hook start", "timeout": 10 } ] },
+      { "matcher": "*", "hooks": [ { "type": "command", "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/orient.sh", "timeout": 5 } ] }
     ],
     "Stop": [
       { "matcher": "", "hooks": [ { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/nixtastic-memory-hook stop", "timeout": 15 } ] }

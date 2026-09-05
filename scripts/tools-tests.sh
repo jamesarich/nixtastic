@@ -713,5 +713,26 @@ wt="$root/kzstd/.claude/worktrees/guard"
 [ "$(edit "$root/kzstd" "$root/kzstd/tracked.txt")" = allow ] || { echo "T30: main checkout session blocked"; exit 1; }
 git -C "$root/kzstd" worktree remove --force "$wt"; git -C "$root/kzstd" branch -D guard -q
 
+echo "--- T31: orient hook — five cwd cases, silence elsewhere, valid additionalContext"
+oh="$root/.cache/agent-marketplace/nixtastic/hooks/orient.sh"
+[ -x "$oh" ] || { echo "T31: orient.sh not rendered"; exit 1; }
+[ "$(cat "$root/.cache/agent-marketplace/nixtastic/hooks/workspace-root")" = "$root" ] || { echo "T31: workspace-root not rendered"; exit 1; }
+orient() { printf '{"cwd":%s,"hook_event_name":"SessionStart"}' "$(jq -Rn --arg c "$1" '$c')" | bash "$oh"; }
+ctx() { orient "$1" | jq -r '.hookSpecificOutput.additionalContext'; }
+[ "$(orient "$HOME")" = "" ] || { echo "T31: not silent outside the workspace"; orient "$HOME"; exit 1; }
+orient "$root" | jq -e '.hookSpecificOutput.hookEventName == "SessionStart"' >/dev/null || { echo "T31: bad JSON at root"; orient "$root"; exit 1; }
+ctx "$root" | grep -q 'workspace root' || { echo "T31: root not classified"; ctx "$root"; exit 1; }
+ctx "$root" | grep -q 'just brief <repo>' || { echo "T31: spellings missing"; exit 1; }
+ctx "$root/android" | grep -q 'primary checkout of `android`' || { echo "T31: repo not classified"; ctx "$root/android"; exit 1; }
+git -C "$root/kzstd" worktree add -q "$root/kzstd/.claude/worktrees/orient-wt" -b orient-wt
+ctx "$root/kzstd/.claude/worktrees/orient-wt" | grep -q 'worktree `orient-wt` of `kzstd`' || { echo "T31: repo worktree not classified"; ctx "$root/kzstd/.claude/worktrees/orient-wt"; exit 1; }
+ctx "$root/kzstd/.claude/worktrees/orient-wt" | grep -qF "$root/kzstd" || { echo "T31: primary path missing"; exit 1; }
+git -C "$root" worktree add -q "$root/.claude/worktrees/ws-wt" -b ws-wt
+ctx "$root/.claude/worktrees/ws-wt" | grep -q 'worktree of the workspace repo' || { echo "T31: workspace worktree not classified"; ctx "$root/.claude/worktrees/ws-wt"; exit 1; }
+ctx "$root/.claude/worktrees/ws-wt" | grep -q 'org repos are NOT here' || { echo "T31: workspace worktree warning missing"; exit 1; }
+[ "$(ctx "$root" | wc -l)" -le 14 ] || { echo "T31: too long: $(ctx "$root" | wc -l) lines"; exit 1; }
+git -C "$root" worktree remove --force "$root/.claude/worktrees/ws-wt"; git -C "$root" branch -D ws-wt -q
+git -C "$root/kzstd" worktree remove --force "$root/kzstd/.claude/worktrees/orient-wt"; git -C "$root/kzstd" branch -D orient-wt -q
+
 echo "all tests passed"
 touch "$out"
