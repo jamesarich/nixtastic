@@ -122,13 +122,17 @@ because that radio cannot hold an Apple connection long enough to exercise it).
    `nrf52BluetoothReady`). Flashed by UF2 (`meshtastic --enter-dfu`, copy to
    `/Volumes/RAK4631`), `enabled_protocols=2`. **BLE-adv RX proven:** the Pixel's
    Send test landed as `BLE mesh RX from=0x6337995d rssi=-36` the same second.
-   **BLE-adv TX NOT observed:** two Pocket-originated texts reached the Pixel over
-   LoRa only (`ble-adv` rx counter flat). Boot says why to look:
-   `BLE mesh: no spare adv set (0x4), sharing the phone's` — S140 has one
-   advertising set, Bluefruit owns it, and the mesh borrows it per send
-   (`NRF52BLEMesh.cpp:107-125`) with no error logged and no frame received. Next
-   work item: make the shared-set path actually radiate (or time-share the one
-   set for both phone API and mesh), then GATT mesh-peer on nRF52. Pocket console:
+   **BLE-adv TX works too (2026-09-05 morning; yesterday's "not observed" retracted).**
+   Burst diagnostics (`a4fc82349`) show every frame leave as 3 extended events on the
+   borrowed set 0 (`adv burst ... shared` → `terminated: reason 2 after 3 events`);
+   S140 has one advertising set and the mesh borrows it per send, which is fine.
+   The receiver was the fault: **Android downgrades a filtered LOW_LATENCY scan ~5 min
+   after start** (`BtScan.ScanManager: regularScanTimeout(... monitor ...) Moving
+   filtered scan to downgraded scan`), after which 90 ms bursts are missed and the
+   monitor's `ble-adv` counter freezes while `lora` climbs. Fix in node-kmp: both
+   Android scanners restart every 3 min; a 7.5-min soak then matched Pocket bursts to
+   Pixel receptions to the second past the 5-min mark (15 bursts, counter 15, no
+   timeout logged). Next nRF52 work item: GATT mesh-peer on nRF52. Pocket console:
    USB CDC prints only with **DTR asserted** (the opposite of the V3's UART rule),
    and a config write or `--reboot` re-enumerates USB under an open handle.
 6. **Gate the ESP32-C3:** ESP32-C3 (single-core, tight RAM — likely-fail
