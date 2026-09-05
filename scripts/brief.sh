@@ -86,6 +86,11 @@ brief_one() {
   d=$($g status --porcelain --untracked-files=no | wc -l)
   [ "$d" -gt 0 ] && printf '  tree         %s tracked file(s) modified\n' "$d"
 
+  if [ -n "${NIXTASTIC_PINS:-}" ]; then
+    pl=$("$NIXTASTIC_PINS" --repo "$dir" 2>/dev/null | sed 's/^/    /')
+    [ -n "$pl" ] && { echo ""; echo "  PINS"; printf '%s\n' "$pl"; }
+  fi
+
   echo ""
   echo "  READ BEFORE EDITING (in precedence order)"
   any=false

@@ -755,5 +755,38 @@ run "$brief" --short kzstd
 expect '^kzstd .* dirty! '
 git -C "$root/kzstd" checkout -q -- tracked.txt
 
+echo "--- T33: pins — submodule, toml, resolved, seed pairs; current/behind/unknown; --json; --repo --short"
+# protobufs producer with two tags; firmware submodule at the latest tag, python at the older.
+(cd "$root/protobufs" && git tag v2.7.26 && echo more > proto2 && git add proto2 && git commit -qm "v2.8.0" && git tag v2.8.0 && git push -q --tags origin main 2>/dev/null)
+old=$(git -C "$root/protobufs" rev-parse v2.7.26); new=$(git -C "$root/protobufs" rev-parse v2.8.0)
+addsub() { (cd "$root/$1" && git -c protocol.file.allow=always submodule add -q "$root/protobufs" "$2" >/dev/null 2>&1 && git -C "$2" checkout -q "$3" && git add -A && git commit -qm "pin protobufs"); }
+addsub firmware protobufs "$new"
+addsub meshtastic-python protobufs "$old"
+mkdir -p "$root/android/gradle"; printf '[versions]\nmeshtastic-protobufs = "2.8.0"\ntakpacket-sdk = "0.9.1"\n' > "$root/android/gradle/libs.versions.toml"
+mkdir -p "$root/meshtastic-sdk/gradle"; printf '[versions]\nmeshtasticProtobufs = "2.7.26"\n' > "$root/meshtastic-sdk/gradle/libs.versions.toml"
+(cd "$root/TAKPacket-SDK" && git tag v0.9.1)
+mkdir -p "$root/api/data" "$root/android/androidApp/src/main/assets"
+echo '{"a":1}' > "$root/api/data/maintenanceUf2.json"; echo '{"a":1}' > "$root/android/androidApp/src/main/assets/maintenance_uf2.json"
+echo '{"b":1}' > "$root/api/data/deviceLinks.json";     echo '{"b":2}' > "$root/android/androidApp/src/main/assets/device_links.json"
+run "$pins"
+expect 'producer +protobufs .*latest tag v2\.8\.0'
+expect 'consumer +firmware .*v2\.8\.0 +current'
+expect 'consumer +meshtastic-python .*v2\.7\.26 +behind: v2\.8\.0'
+expect 'consumer +android .*org\.meshtastic:protobufs 2\.8\.0 .*current'
+expect 'consumer +meshtastic-sdk .*2\.7\.26 .*behind: v2\.8\.0'
+expect 'consumer +android .*takpacket-sdk 0\.9\.1 .*current'
+expect 'consumer +apple .*unknown'
+expect 'maintenance_uf2 same'
+expect 'device_links DIFFERS'
+run "$pins" --json
+printf '%s\n' "$res" | jq -e 'map(select(.verdict=="behind: v2.8.0")) | length == 2' >/dev/null || { echo "T33: json verdicts"; exit 1; }
+run "$pins" --repo meshtastic-python --short
+expect '^protobufs v2\.7\.26 behind: v2\.8\.0$'
+run "$pins" --repo labeltastic --short
+expect '^-$'
+# android has two consumer rows; the first (protobufs) is the phrase.
+run "$pins" --repo android --short
+expect '^protobufs v2\.8\.0 current$'
+
 echo "all tests passed"
 touch "$out"

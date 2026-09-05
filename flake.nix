@@ -1177,6 +1177,21 @@
             };
             text = builtins.readFile ./scripts/bootstrap-sdk.sh;
           };
+          # nix run .#pins — cross-repo pin state. Python (stdlib) because it
+          # merges five pin formats into one table; jq for that is pain.
+          pins = pkgs.writeShellApplication {
+            name = "meshtastic-pins";
+            runtimeInputs = [
+              pkgs.git
+              pkgs.coreutils
+              pkgs.python313
+            ];
+            runtimeEnv = {
+              NIXTASTIC_PINS_PY = "${./scripts/pins.py}";
+            };
+            text = ''exec python3 "$NIXTASTIC_PINS_PY" "$@"'';
+          };
+
           # nix run .#brief <repo> — orient before touching a repo.
           #
           # Generated live rather than written down, so it cannot go stale the
@@ -1199,6 +1214,7 @@
             ];
             runtimeEnv = {
               NIXTASTIC_REPOS_TSV = reposTsv;
+              NIXTASTIC_PINS = "${pins}/bin/meshtastic-pins";
             };
             text = builtins.readFile ./scripts/brief.sh;
           };
@@ -1285,6 +1301,7 @@
             brief
             worktree
             doctor
+            pins
             ;
           bootstrap-sdk = bootstrapSdk;
           default = sync;
@@ -1335,6 +1352,7 @@
             sync = "${self.packages.${system}.sync}/bin/meshtastic-sync";
             worktree = "${self.packages.${system}.worktree}/bin/meshtastic-worktree";
             brief = "${self.packages.${system}.brief}/bin/meshtastic-brief";
+            pins = "${self.packages.${system}.pins}/bin/meshtastic-pins";
             doctor = "${self.packages.${system}.doctor}/bin/meshtastic-doctor";
             pluginSrc = "${./plugin}";
           } (builtins.readFile ./scripts/tools-tests.sh);
@@ -1369,6 +1387,17 @@
               ''
                 shellcheck -s bash ${self}/plugin/hooks/*.sh ${self}/plugin/bin/gradle-queue
                 shellcheck -s sh ${self}/plugin/bin/github-mcp-headers
+                touch "$out"
+              '';
+
+          # The Python tools ship verbatim too; at least prove they parse.
+          python-lint =
+            pkgs.runCommand "nixtastic-python-lint"
+              {
+                nativeBuildInputs = [ pkgs.python313 ];
+              }
+              ''
+                python3 -m py_compile ${self}/scripts/*.py
                 touch "$out"
               '';
         }

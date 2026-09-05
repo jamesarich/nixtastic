@@ -29,6 +29,7 @@
 # tooling; must be tracked or pure eval cannot see them.
 !/scripts/
 !/scripts/*.sh
+!/scripts/*.py
 # Thin `just` aliases over the flake apps.
 !/justfile
 # The workspace plugin's hand-written source. sync renders it (plus generated
@@ -76,3 +77,4 @@
 # meshtastic-node-kmp is its own repo now (meshtastic/meshtastic-node-kmp),
 # so it falls under the deny-all above like every other checkout here. It was
 # tracked content until 2026-09-02; its history moved with it via subtree split.
+__pycache__/
