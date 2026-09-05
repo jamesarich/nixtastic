@@ -926,8 +926,9 @@ nudge esp-idf#15311 with the peer-initiated variant and the stock repro.
 ### NOT POSSIBLE: the desktop monitor over GATT
 
 **Superseded on Linux (2026-09-05):** `GattLink.jvm.kt` now picks `BluezGattLink`
-there, so a Linux desktop has both GATT roles. The rest of this section still
-holds for macOS and Windows JVMs. The section is kept as written below.
+there, so a Linux desktop has both GATT roles. The `UnsupportedGattLink` claim
+below still holds for macOS and Windows JVMs; its last sentence does not, since
+the desktop gained LoRa and no longer depends on the V3 for a testable bearer.
 
 `GattLink.jvm.kt` is `UnsupportedGattLink` - `canTransmit = false`, an empty
 inbound flow. The JVM has no BLE, so the desktop dashboard shows a `gatt` row that
@@ -1015,7 +1016,14 @@ cost order:
 
 ### B. Node-logic parity with the firmware
 
-What `node-core` does today: protobuf codec; channel AES with PSK and channel
+**This is the gap survey taken *before* the work, kept as the record of what was
+missing.** Every Tier-1 row and the Tier-2 traceroute, waypoint, neighbour-info
+and MQTT rows were closed the same day; the "node-kmp today" column below
+describes the morning, not now. What actually landed: "Tier-1 parity implemented
+end to end" at the end of this file. Still open from this table: next-hop relay
+semantics (Tier 2), and all of Tier 3.
+
+What `node-core` did that morning: protobuf codec; channel AES with PSK and channel
 URLs; PKI **nonce only** (no PKI DM encrypt/decrypt); dedup (`PacketHistory`);
 hop-limit relay with contention window and cancel-on-overhear (`RelayPolicy`);
 a `NextHopTable`; ACK **sending** (`acknowledge`) but no retransmission; an

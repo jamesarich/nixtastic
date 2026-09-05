@@ -14,10 +14,14 @@ implemented end to end. Everything below is committed and pushed.
    protocol, many bearers**; LoRa stays first-class), its live
    `## Implementation status`, and the dated sittings. That doc is truth; this
    one is the index.
-2. Per the workspace protocol, run `just brief <repo>` before editing under any
+2. [`audit-multi-transport-2026-09-05.md`](./audit-multi-transport-2026-09-05.md)
+   - the whole-feature audit, and the only place **O1-O12** are written down.
+   Most are still open and most are firmware-side; O11 is next step 8 below, and
+   O4, O6, O10 and O12 are node-kmp defects nobody has picked up.
+3. Per the workspace protocol, run `just brief <repo>` before editing under any
    repo, and read that repo's own docs (`meshtastic-node-kmp` → `README.md` then
    `AGENTS.md`; `firmware` → `AGENTS.md`).
-3. Memories worth loading: `ble-mesh-interop-bench` (bench recipe and tooling
+4. Memories worth loading: `ble-mesh-interop-bench` (bench recipe and tooling
    traps), **`node-kmp-monitor-bench-driving`** (driving the monitor on Pixel and
    desktop), **`nrf52-ble-mesh-pocket-bench`**, `bench-serial-recipes` (DTR/RTS
    holders), `esp32-firmware-gotchas` (the PHY-update assert, the shared
