@@ -744,5 +744,16 @@ run_lax "$worktree" --path kzstd nope
 expect 'no worktree'
 run "$worktree" --remove kzstd feat-path-me
 
+echo "--- T35: brief takes several repos; --short is one line each"
+run "$brief" api kzstd protobufs
+[ "$(printf '%s\n' "$res" | grep -c '^  ────')" = 3 ] || { echo "T35: expected 3 sections"; exit 1; }
+run "$brief" --short api kzstd protobufs
+[ "$(printf '%s\n' "$res" | grep -c '^[a-zA-Z]')" = 3 ] || { echo "T35: expected 3 lines"; printf '%s\n' "$res"; exit 1; }
+expect '^api +main +drift -0/\+0 +clean +PRs '
+echo dirty >> "$root/kzstd/tracked.txt"
+run "$brief" --short kzstd
+expect '^kzstd .* dirty! '
+git -C "$root/kzstd" checkout -q -- tracked.txt
+
 echo "all tests passed"
 touch "$out"
