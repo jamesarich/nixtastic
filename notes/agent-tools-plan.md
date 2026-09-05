@@ -158,6 +158,8 @@ In `scripts/plugin.sh` `plugin_render`, after the memory-hook copy line, add:
   cut -f1 "$NIXTASTIC_REPOS_TSV" > "$tmp/$name/hooks/repos"
 ```
 
+Both are render inputs now, so `plugin_input_hash` must see them or a repo added to the table leaves `hooks/repos` stale while `doctor` says ok. Add, as the first lines inside its brace group: `printf '%s\n' "$1"; cat "$NIXTASTIC_REPOS_TSV"`.
+
 Add `orient.sh` to the `plugin-lint` shellcheck line in `flake.nix` (it is covered by `plugin/hooks/*.sh` already; confirm).
 
 - [ ] **Step 4: Run, gate, commit**
@@ -389,6 +391,9 @@ run "$pins" --repo meshtastic-python --short
 expect '^protobufs v2\.7\.26 behind: v2\.8\.0$'
 run "$pins" --repo labeltastic --short
 expect '^-$'
+# android has two consumer rows; the first (protobufs) is the phrase.
+run "$pins" --repo android --short
+expect '^protobufs v2\.8\.0 current$'
 ```
 
 Run → FAIL (`$pins` unset / not built).
@@ -739,7 +744,7 @@ def fetch(repo, n, deep=False):
     sha = view["headRefOid"]
     checks = json.loads(gh("api", f"repos/{repo}/commits/{sha}/check-runs?per_page=100")).get("check_runs", [])
     behind = None
-    try:
+    try:  # informational: gh() exits 3 on failure; here that only drops the column
         behind = json.loads(gh("api", f"repos/{repo}/compare/{view['baseRefName']}...{sha}")).get("behind_by")
     except SystemExit:
         pass
@@ -817,7 +822,7 @@ def render_threads(d, show_all):
 
 def summary_line(d):
     q = d["queue"]
-    return f"{d['state']} threads:{d['threads_unresolved']} pending:{d['checks']['pending']} queue:{'position %s' % q['position'] if q else 'none'}"
+    return f"{d['state']} threads:{d['threads_unresolved']} pending:{d['checks']['pending']} queue: {'position %s' % q['position'] if q else 'none'}"
 
 def wait(repo, n, until, timeout):
     poll = float(os.environ.get("NIXTASTIC_PR_POLL", "30"))
@@ -870,13 +875,15 @@ Next to `pins`:
           # nix run .#pr — PR status for the HEAD sha; encodes six memories.
           pr = pkgs.writeShellApplication {
             name = "meshtastic-pr";
-            runtimeInputs = [ pkgs.coreutils pkgs.python313 pkgs.gh ];
+            # gh is the user's install, resolved from PATH (like direnv for
+            # doctor) — so the fixture's stub gh is what the tests exercise.
+            runtimeInputs = [ pkgs.coreutils pkgs.python313 ];
             runtimeEnv = { NIXTASTIC_PR_PY = "${./scripts/pr.py}"; NIXTASTIC_REPOS_TSV = reposTsv; };
             text = ''exec python3 "$NIXTASTIC_PR_PY" "$@"'';
           };
 ```
 
-`pkgs.gh` in `runtimeInputs` puts the real `gh` **ahead** of the test's stub on PATH. So the wrapper must prefer an ambient `gh`: change `text` to `''PATH="''${NIXTASTIC_GH_PATH:-$PATH}" exec python3 …''` is wrong too. Simplest and honest: leave `gh` **out** of `runtimeInputs` (it is the user's install, like `direnv` for doctor) and add a comment saying so; `pins`/`pr` resolve `gh` from the ambient PATH. Tests then see the stub. `tools-tests` attrs gain `pr = "${self.packages.${system}.pr}/bin/meshtastic-pr";`.
+`tools-tests` attrs gain `pr = "${self.packages.${system}.pr}/bin/meshtastic-pr";`.
 
 - [ ] **Step 4: Run, fix, gate, commit**
 
