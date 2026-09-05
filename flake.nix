@@ -1192,6 +1192,22 @@
             text = ''exec python3 "$NIXTASTIC_PINS_PY" "$@"'';
           };
 
+          # nix run .#pr — PR status for the HEAD sha; encodes six memories.
+          pr = pkgs.writeShellApplication {
+            name = "meshtastic-pr";
+            # gh is the user's install, resolved from PATH (like direnv for
+            # doctor) — so the fixture's stub gh is what the tests exercise.
+            runtimeInputs = [
+              pkgs.coreutils
+              pkgs.python313
+            ];
+            runtimeEnv = {
+              NIXTASTIC_PR_PY = "${./scripts/pr.py}";
+              NIXTASTIC_REPOS_TSV = reposTsv;
+            };
+            text = ''exec python3 "$NIXTASTIC_PR_PY" "$@"'';
+          };
+
           # nix run .#brief <repo> — orient before touching a repo.
           #
           # Generated live rather than written down, so it cannot go stale the
@@ -1302,6 +1318,7 @@
             worktree
             doctor
             pins
+            pr
             ;
           bootstrap-sdk = bootstrapSdk;
           default = sync;
@@ -1353,6 +1370,7 @@
             worktree = "${self.packages.${system}.worktree}/bin/meshtastic-worktree";
             brief = "${self.packages.${system}.brief}/bin/meshtastic-brief";
             pins = "${self.packages.${system}.pins}/bin/meshtastic-pins";
+            pr = "${self.packages.${system}.pr}/bin/meshtastic-pr";
             doctor = "${self.packages.${system}.doctor}/bin/meshtastic-doctor";
             pluginSrc = "${./plugin}";
           } (builtins.readFile ./scripts/tools-tests.sh);

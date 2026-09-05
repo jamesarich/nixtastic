@@ -788,5 +788,70 @@ expect '^-$'
 run "$pins" --repo android --short
 expect '^protobufs v2\.8\.0 current$'
 
+echo "--- T32: pr — status from the HEAD sha, threads, queue, conflicts, wait, rereview (stub gh)"
+FIX="$HOME/prfix"; mkdir -p "$FIX" "$PWD/fakebin"
+cat > "$PWD/fakebin/gh" <<'EOF'
+#!/bin/sh
+# Stub gh: replays fixtures by request shape; counts calls for the wait test.
+n=$(cat "$PRFIX/calls" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "$PRFIX/calls"
+case "$*" in
+  *"pr view"*)        cat "$PRFIX/view.json" ;;
+  *graphql*)          if [ -f "$PRFIX/flip" ] && [ "$n" -ge "$(cat "$PRFIX/flip")" ]; then cat "$PRFIX/gql_after.json"; else cat "$PRFIX/gql.json"; fi ;;
+  *"/check-runs"*)    case "$*" in *aaaaaaa*) cat "$PRFIX/checks_head.json" ;; *) cat "$PRFIX/checks_stale.json" ;; esac ;;
+  *"/compare/"*)      echo '{"behind_by": 0}' ;;
+  *"pr comment"*)     echo "$*" >> "$PRFIX/posted"; echo "https://github.com/x/y/pull/1#issuecomment-1" ;;
+  *) echo "stub gh: unhandled: $*" >&2; exit 1 ;;
+esac
+EOF
+chmod +x "$PWD/fakebin/gh"; export PRFIX="$FIX"
+cat > "$FIX/view.json" <<'EOF'
+{"number":7000,"title":"feat: offline map fallback","state":"OPEN","isDraft":false,"author":{"login":"jamesarich"},"headRefOid":"aaaaaaa1111111111111111111111111111111111","headRefName":"feat/map","baseRefName":"main","mergeStateStatus":"BLOCKED","mergeable":"MERGEABLE","reviewDecision":"APPROVED","url":"https://github.com/meshtastic/Meshtastic-Android/pull/7000"}
+EOF
+cat > "$FIX/gql.json" <<'EOF'
+{"data":{"repository":{"pullRequest":{"mergeQueueEntry":null,"reviews":{"nodes":[{"author":{"login":"garth"},"state":"APPROVED"}]},"reviewThreads":{"nodes":[
+ {"id":"T1","isResolved":false,"comments":{"nodes":[{"author":{"login":"coderabbitai"},"path":"app/MapScreen.kt","line":123,"body":"Consider guarding the null case here.\nmore"}]}},
+ {"id":"T2","isResolved":false,"comments":{"nodes":[{"author":{"login":"jamesarich"},"path":"core/Repo.kt","line":40,"body":"this leaks the scope"}]}},
+ {"id":"T3","isResolved":true,"comments":{"nodes":[{"author":{"login":"garth"},"path":"a.kt","line":1,"body":"done"}]}}]}}}}}
+EOF
+cat > "$FIX/gql_after.json" <<'EOF'
+{"data":{"repository":{"pullRequest":{"mergeQueueEntry":{"position":2,"state":"QUEUED"},"reviews":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
+EOF
+cat > "$FIX/checks_head.json" <<'EOF'
+{"check_runs":[{"id":1,"name":"validate-and-build / Build Desktop Debug","status":"in_progress","conclusion":null},{"id":2,"name":"Unit Tests","status":"completed","conclusion":"success"}]}
+EOF
+cat > "$FIX/checks_stale.json" <<'EOF'
+{"check_runs":[{"id":9,"name":"Unit Tests","status":"completed","conclusion":"failure"}]}
+EOF
+oldpath="$PATH"; PATH="$PWD/fakebin:$PATH"; export PATH
+run "$pr" android 7000
+expect 'meshtastic/Meshtastic-Android #7000 +feat: offline map fallback +OPEN'
+expect '^head +aaaaaaa'
+expect '^merge +BLOCKED +unresolved threads: 2 +queue: not enqueued +conflicts: none'
+expect '^checks@aaaaaaa +ok 1 +fail 0 +pending 1 +validate-and-build / Build Desktop Debug'
+refuse 'fail 1'
+expect '^reviews +APPROVED 1 \(garth\)'
+expect 'coderabbitai +app/MapScreen.kt:123 +"Consider guarding the null case here\.'
+expect '^next +resolve 2 threads'
+run "$pr" android 7000 threads
+expect 'T1'; expect 'T2'; refuse 'T3'
+run "$pr" android 7000 threads --all
+expect 'T3'
+run "$pr" android 7000 --json
+printf '%s\n' "$res" | jq -e '.threads_unresolved == 2 and .checks.pending == 1' >/dev/null || { echo "T32: json shape"; exit 1; }
+# wait: the queue entry appears on the 3rd graphql call; poll fast.
+echo 0 > "$FIX/calls"; echo 9 > "$FIX/flip"
+NIXTASTIC_PR_POLL=0.1 run "$pr" android 7000 wait --until queue --timeout 30
+expect 'queue: position 2'
+echo 0 > "$FIX/calls"; rm -f "$FIX/flip"
+NIXTASTIC_PR_POLL=0.1 run_lax "$pr" android 7000 wait --until queue --timeout 1
+printf '%s\n' "$res" | grep -q 'timed out' || { echo "T32: no timeout message"; exit 1; }
+rc=0; NIXTASTIC_PR_POLL=0.1 "$pr" android 7000 wait --until queue --timeout 1 >/dev/null 2>&1 || rc=$?
+[ "$rc" = 75 ] || { echo "T32: timeout exit must be 75, got $rc"; exit 1; }
+run "$pr" android 7000 rereview
+[ "$(grep -c 'full review' "$FIX/posted")" = 1 ] || { echo "T32: rereview did not post once"; exit 1; }
+run_lax "$pr" notarepo 1
+expect 'unknown repo'
+PATH="$oldpath"; export PATH
+
 echo "all tests passed"
 touch "$out"
