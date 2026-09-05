@@ -1397,7 +1397,9 @@
                 nativeBuildInputs = [ pkgs.python313 ];
               }
               ''
-                python3 -m py_compile ${self}/scripts/*.py
+                # py_compile writes next to the source by default, and the
+                # store copy is read-only — send the bytecode to scratch.
+                PYTHONPYCACHEPREFIX="$TMPDIR/pyc" python3 -m py_compile ${self}/scripts/*.py
                 touch "$out"
               '';
         }
