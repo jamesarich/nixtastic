@@ -358,6 +358,13 @@ Manual acceptance on both machines, recorded under [Evidence](#evidence):
   `github mcp` warning is therefore not cosmetic: until the user-scope entry is
   removed the plugin server is not used at all.
 
+- **The Desktop app creates worktrees of the workspace repo.** Three exist
+  under `~/nixtastic/.claude/worktrees/` (`claude/new-session-*` branches).
+  That is the harness-worktree trap `CLAUDE.md` warns about: no org repos
+  inside, and an unlinked memory slug, so those sessions start blind and
+  their memory hooks do nothing. Decide whether `sync` should link those
+  slugs anyway, or whether the app can be steered to `.#worktree`.
+
 ## Out of scope
 
 Moving the meshtastic MCP or the aggregated agents into the plugin; the
@@ -480,7 +487,12 @@ session: after `claude mcp remove -s user github`, `/mcp` listed
 `headersHelper` works on macOS when a GUI session owns the keychain, and the
 shadowing follow-up below is confirmed as the cause of its earlier absence.
 
-Unverified on both machines: whether a session launched from the Claude
-Desktop app (160 of the laptop's 244 sessions) loads plugin hooks. Check: age
-the store's `FETCH_HEAD` by ten minutes, open one Desktop-app session in the
-workspace, `stat` it again.
+*Claude Desktop app, laptop, 2026-09-04 16:43.* Sessions launched from the
+Desktop app (160 of the laptop's 244) do load plugin hooks: with the store's
+`FETCH_HEAD` aged to 16:31, a Desktop-app session opened on `~/nixtastic`
+(transcript `entrypoint: claude-desktop`, first write 16:43:53) advanced it to
+16:43:54; the only other sessions in the window were an earlier `cli` one and
+an `sdk-cli` one in an unlinked temp cwd, which the hook's slug gate ignores.
+A first attempt was inconclusive because the Desktop app had opened the
+session inside `~/nixtastic/.claude/worktrees/android-unit-localization-626f77`,
+a worktree of the *workspace* repo whose slug is unlinked — see Follow-ups.
