@@ -887,7 +887,9 @@ worktree exists to test its own flake edits.
 
 Even with that guard, harness isolation is the wrong tool for **repo** work:
 the repos are not in the worktree. Use `nix run .#worktree -- <repo>
-<branch>`.
+<branch>`. A session that lands in one anyway is told so by the plugin's
+orient hook, and its memory slug is linked — by `sync` for existing
+worktrees, by the memory hook itself at the first session of a new one.
 
 Ignoring is done two ways, neither of them a tracked `.gitignore` — editing one
 in an org repo is not ours to do. `.claude/worktrees/` and `.mcp.json` go in

@@ -366,7 +366,10 @@ Manual acceptance on both machines, recorded under [Evidence](#evidence):
   That is the harness-worktree trap `CLAUDE.md` warns about: no org repos
   inside, and an unlinked memory slug, so those sessions start blind and
   their memory hooks do nothing. Decide whether `sync` should link those
-  slugs anyway, or whether the app can be steered to `.#worktree`.
+  slugs anyway, or whether the app can be steered to `.#worktree`. **Done
+  2026-09-05:** both — the orient hook tells such a session what it is, and
+  `sync` links those slugs; the memory hook links a brand-new worktree at its
+  first session. Details in `notes/agent-memory-sync.md` → Hooks.
 
 ## Out of scope
 

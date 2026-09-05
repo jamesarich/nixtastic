@@ -298,10 +298,11 @@ finds — run it before diagnosing by hand.
   every worktree, and the other machine each start with an empty
   `~/.claude/projects/<slug>/memory` and never see what the root session
   learned. `.#sync` links every slug it owns into one private store
-  (`~/.nixtastic-agent`, repo `jamesarich/nixtastic-agent`), `.#worktree`
-  links at creation, and the `nixtastic` plugin's hooks pull at `SessionStart`
-  and push at `Stop`. `doctor` reports an unlinked slug, an unpushed store, and memories
-  not touched in 90 days. A memory true on one machine only (the bench,
+  (`~/.nixtastic-agent`, repo `jamesarich/nixtastic-agent`) — including the
+  Desktop app's worktrees of this repo — `.#worktree` links at creation, a
+  brand-new worktree is linked by the memory hook at its first session, and
+  the plugin's hooks pull at `SessionStart` and push at `Stop`. `doctor`
+  reports an unlinked slug, an unpushed store, and memories not touched in 90 days. A memory true on one machine only (the bench,
   `/dev/serial`, Xcode) gets `machine: james-pc` or `machine: darwin` under
   its `metadata:`; `sync` renders that into the index line, where selection
   happens. Design: [`notes/agent-memory-sync.md`](./notes/agent-memory-sync.md).

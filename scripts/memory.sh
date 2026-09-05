@@ -36,7 +36,8 @@ slug_of() {
   printf '%s\n' "$1" | sed 's/[^a-zA-Z0-9]/-/g'
 }
 
-# Every Claude Code project directory this workspace owns — the root, each
+# Every Claude Code project directory this workspace owns — the root, its
+# own worktrees (the Desktop app and harness isolation make those), each
 # cloned repo, every worktree of each repo — as "<projects>/<slug>\t<label>".
 # The label is what a human reads in a report ("android/feat-thing", not
 # the 80-character slug). Only REAL directories are slugged: the workspace
@@ -44,6 +45,11 @@ slug_of() {
 memory_slug_dirs() {
   pd=$(claude_projects_dir)
   s=$(slug_of "$1") && printf '%s/%s\troot\n' "$pd" "$s"
+  git -C "$1" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' | tail -n +2 |
+  while read -r wt; do
+    [ -d "$wt" ] || continue
+    s=$(slug_of "$wt") && printf '%s/%s\tworkspace/%s\n' "$pd" "$s" "${wt##*/}"
+  done
   while IFS=$'\t' read -r dir _ _; do
     [ -d "$1/$dir/.git" ] || continue
     s=$(slug_of "$1/$dir") && printf '%s/%s\t%s\n' "$pd" "$s" "$dir"
@@ -212,6 +218,7 @@ write_memory_hook() {
     echo '# Every step best-effort; design in notes/agent-memory-sync.md.'
     printf 'store="%s"\n' "$(memory_store)"
     printf 'projects="%s"\n' "$(claude_projects_dir)"
+    printf 'root="%s"\n' "$1"
     echo '[ -d "$store/.git" ] || exit 0'
     echo '# Only a session in a LINKED project touches the store. Claude Code hands'
     echo '# the cwd as JSON on stdin; a terminal (no stdin) is treated as linked.'
@@ -219,7 +226,16 @@ write_memory_hook() {
     echo '  cwd=$(sed -n '"'"'s/.*"cwd" *: *"\([^"]*\)".*/\1/p'"'"' | head -1)'
     echo '  if [ -n "$cwd" ]; then'
     echo '    slug=$(printf '"'"'%s'"'"' "$cwd" | sed '"'"'s/[^a-zA-Z0-9]/-/g'"'"')'
-    echo '    [ "$(readlink "$projects/$slug/memory" 2>/dev/null)" = "$store/memory" ] || exit 0'
+    echo '    if [ "$(readlink "$projects/$slug/memory" 2>/dev/null)" != "$store/memory" ]; then'
+    echo '      # A worktree made since the last sync (Desktop app, harness) has no'
+    echo '      # slug yet: link it now instead of running blind. Only for a tree of'
+    echo '      # a repo under the workspace, never over a real memory dir (sync imports).'
+    echo '      common=$(cd "$cwd" 2>/dev/null && git rev-parse --git-common-dir 2>/dev/null) || exit 0'
+    echo '      common=$(cd "$cwd" && cd "$common" 2>/dev/null && pwd -P) || exit 0'
+    echo '      case "$common" in "$root"/*) ;; *) exit 0 ;; esac'
+    echo '      [ -e "$projects/$slug/memory" ] && exit 0'
+    echo '      mkdir -p "$projects/$slug" && ln -s "$store/memory" "$projects/$slug/memory" || exit 0'
+    echo '    fi'
     echo '  fi'
     echo 'fi'
     echo 'cd "$store" || exit 0'

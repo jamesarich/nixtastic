@@ -391,6 +391,12 @@ grep -q WINNER "$store/memory/dup.md" || { echo "T18: store file was clobbered";
 [ -f "$store/memory/only-here.md" ] || { echo "T18: new file not imported"; exit 1; }
 [ -f "$pre/memory.pre-sync/dup.md" ] || { echo "T18: loser not preserved beside the link"; exit 1; }
 [ "$(readlink "$pre/memory")" = "$store/memory" ] || { echo "T18: android slug not linked after import"; exit 1; }
+# A worktree of the WORKSPACE repo (what the Desktop app makes) is a slug too.
+git -C "$root" worktree add -q "$root/.claude/worktrees/desktop-ws" -b desktop-ws
+run "$sync"
+[ "$(readlink "$projects/$(slug "$root/.claude/worktrees/desktop-ws")/memory")" = "$store/memory" ] \
+  || { echo "T18: workspace worktree slug not linked"; exit 1; }
+git -C "$root" worktree remove --force "$root/.claude/worktrees/desktop-ws"; git -C "$root" branch -D desktop-ws -q
 # The import is committed and pushed, so the other machine can pull it.
 # Not grep -q: it closes the pipe on the first match and pipefail then
 # reports git log's SIGPIPE as a failure — a race that flips as the log grows.
@@ -507,6 +513,22 @@ printf '{"cwd":"/nowhere/linked","hook_event_name":"Stop"}' | run "$root/bin/nix
 [ -n "$(git -C "$store" status --porcelain)" ] || { echo "T21: unlinked cwd committed to the store"; exit 1; }
 printf '{"cwd":"%s","hook_event_name":"Stop"}' "$root" | run "$root/bin/nixtastic-memory-hook" stop
 [ -z "$(git -C "$store" status --porcelain)" ] || { echo "T21: linked cwd did not commit"; exit 1; }
+# A worktree created after the last sync links ITSELF at its first session;
+# a real memory dir there is left for sync's import; a foreign repo is not touched.
+git -C "$root" worktree add -q "$root/.claude/worktrees/fresh-ws" -b fresh-ws
+fs="$projects/$(slug "$root/.claude/worktrees/fresh-ws")"
+[ ! -e "$fs/memory" ] || { echo "T21: fresh worktree slug pre-exists"; exit 1; }
+printf '{"cwd":"%s","hook_event_name":"SessionStart"}' "$root/.claude/worktrees/fresh-ws" | run "$root/bin/nixtastic-memory-hook" start
+[ "$(readlink "$fs/memory")" = "$store/memory" ] || { echo "T21: fresh worktree did not self-link"; exit 1; }
+git -C "$root" worktree remove --force "$root/.claude/worktrees/fresh-ws"; git -C "$root" branch -D fresh-ws -q
+git -C "$root/kzstd" worktree add -q "$root/kzstd/.claude/worktrees/fresh-repo" -b fresh-repo
+fr="$projects/$(slug "$root/kzstd/.claude/worktrees/fresh-repo")"; mkdir -p "$fr/memory"; echo x > "$fr/memory/real.md"
+printf '{"cwd":"%s","hook_event_name":"SessionStart"}' "$root/kzstd/.claude/worktrees/fresh-repo" | run "$root/bin/nixtastic-memory-hook" start
+[ ! -L "$fr/memory" ] || { echo "T21: hook linked over a real memory dir"; exit 1; }
+git -C "$root/kzstd" worktree remove --force "$root/kzstd/.claude/worktrees/fresh-repo"; git -C "$root/kzstd" branch -D fresh-repo -q; rm -rf "$fr"
+mkdir -p "$HOME/foreign" && git init -q -b main "$HOME/foreign"
+printf '{"cwd":"%s","hook_event_name":"SessionStart"}' "$HOME/foreign" | run "$root/bin/nixtastic-memory-hook" start
+[ ! -e "$projects/$(slug "$HOME/foreign")/memory" ] || { echo "T21: hook linked a foreign repo"; exit 1; }
 
 echo "--- T22: doctor — store, links, hooks, state, age"
 run_lax "$doctor"

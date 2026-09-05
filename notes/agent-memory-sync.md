@@ -233,6 +233,17 @@ Both machines need the hooks. They were first installed per machine with
 `--install-hooks`; since [agent-surface.md](./agent-surface.md) they ship in
 the plugin `sync` installs, and `doctor` is what keeps it honest.
 
+**Worktrees made between syncs, 2026-09-05.** The Desktop app's worktree
+mode and harness isolation both create a worktree and start a session in it
+at once — before any `sync` could link its slug, so the "not linked, leave"
+gate made exactly those sessions blind. Two changes: `memory_slug_dirs` now
+lists the workspace repo's own worktrees (the laptop had three, each with
+its own stranded memory dir), so `sync` links and imports them like any repo
+worktree; and the `SessionStart` hook, on an unlinked cwd whose
+`--git-common-dir` resolves under the workspace root, creates the link
+itself when no memory dir exists there yet. A real directory is still left
+for `sync`'s import rules; a repo outside the workspace is never touched.
+
 ## Conflicts
 
 One file per memory means concurrent sessions almost never touch the same file.
@@ -355,6 +366,7 @@ Steps 1–4 are an afternoon. Step 5 is twenty minutes.
 Tracked here so they are not silently folded into this work.
 
 - **Agent-surface consolidation.** Done — [agent-surface.md](./agent-surface.md).
+- **Workspace-repo worktrees.** Done 2026-09-05, see Hooks above.
 - **Workspace directory name.** The laptop uses `~/nixtastic`, the desktop
   `~/meshtastic`. Aligning them does *not* help the slug problem (`/home` vs
   `/Users`), so it is cosmetics — but `~/meshtastic/meshtastic` reads badly, and
