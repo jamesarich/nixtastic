@@ -64,10 +64,15 @@ it.
    actually does.
 
 4. **A session's work comes from its transcript, not its cwd.** See
-   [The join](#the-join). `herdr`'s `foreground_cwd` is not trustworthy: on
-   2026-09-05 it reported `meshtastic-mcp` for four of five live sessions,
-   including one that had never touched that repo. Rejected: **joining on
-   `cwd`** — most sessions run from the workspace root, so it resolves nothing.
+   [The join](#the-join). `herdr`'s `foreground_cwd` tracks the deepest child
+   process, which for any session with the meshtastic MCP server attached is
+   always the server: `.mcp.json` launches it as `uv run --directory
+   .../meshtastic-mcp`. Verified 2026-09-05 — four of five live sessions
+   reported `foreground_cwd=meshtastic-mcp`, including one that had never
+   touched that repo, and the fifth (no MCP server) reported correctly. So the
+   field is right about the process and useless about the session. Rejected:
+   **joining on `cwd`** — most sessions run from the workspace root, so it
+   resolves nothing.
 
 5. **No panel ever goes blank, and no source can kill the app.** Every source
    carries `(value, fetched_at, error)`. A panel shows its age once it exceeds
@@ -84,13 +89,13 @@ degradation. Nothing else in the app knows how data arrives.
 | --- | --- | --- | --- | --- |
 | `sessions.herdr` | `herdr agent list` | 2 s | memory | skip (absent on the laptop) |
 | `sessions.claude` | `claude agents --json` | 10 s | memory | skip |
-| `sessions.files` | `~/.claude/sessions/*.json` + `kill -0` liveness | 3 s | memory | always available |
+| `sessions.files` | `~/.claude/sessions/*.json`, liveness by `kill -0` **and** matching `procStart` | 3 s | memory | always available |
 | `sessions.work` | tail each live session's transcript JSONL | 10 s | memory | row shows no repo |
 | `worktrees` | `git worktree list --porcelain` per repo | 15 s | memory | — |
 | `git` | branch, ahead/behind, dirty count | 15 s | memory | — |
 | `prs.hot` | per-PR detail, reusing `pr.py` | 60 s, staggered | disk | cache + age |
 | `prs.org` | `gh search prs --owner meshtastic --state open` | 5 min | disk | cache + age |
-| `issues.org` | `gh search issues --owner meshtastic --state open` | 5 min | disk | cache + age |
+| `issues.org` | `gh search issues --owner meshtastic` filtered to assignee/mentions, plus per-repo counts | 5 min | disk | cache + age |
 | `pins` | `pins.py` | 5 min | disk | cache + age |
 | `limits` | `~/.claude/abtop-rate-limits.json` (by mtime) | 5 s | memory | hide the segment |
 | `system` | `psutil` | 2 s | memory | — |
@@ -102,6 +107,11 @@ minute. The **cold** tier is the whole org in *two* calls, because
 repo count, and only the deep detail is per-item. Steady state is roughly ten
 GitHub calls a minute against a 5 000/hour REST budget and 30/minute for
 search.
+
+Open issues across nineteen repos are in the hundreds, so the issues tab is
+not a list of them. It is per-repo counts, plus the subset assigned to or
+mentioning you — the only ones a glance can act on. `gh-dash` stays the tool
+for browsing the rest.
 
 Cache files are `~/.cache/nixtastic-dash/<source>.json` holding
 `{fetched_at, value}`, written tmp+rename so a killed process cannot leave a
@@ -119,9 +129,15 @@ run with `cwd=/home/james/meshtastic`, so a path-based join resolves nothing.
 Resolution order for "what is this session working on":
 
 1. Tail the session's transcript at
-   `~/.claude/projects/<slug>/<sessionId>.jsonl`, take file paths out of recent
-   tool calls, and map the most frequent one to a repo and worktree. This is
-   ground truth and it is the primary signal.
+   `~/.claude/projects/<slug>/<sessionId>.jsonl` (verified: it exists per live
+   session and is written continuously), take paths out of recent tool calls,
+   and map the most frequent to a repo and worktree. This is the primary
+   signal. Both shapes matter: `file_path` from `Edit`/`Write`, **and**
+   path-like tokens out of `Bash` `command` strings — under the workspace's
+   auto permission mode nearly all work goes through `Bash`, so a `file_path`-
+   only parser sees almost nothing. Hook invocations
+   (`${CLAUDE_PLUGIN_ROOT}/hooks/...`) and the memory hook's own commands are
+   noise and get filtered.
 2. Fall back to the session's `cwd` when it resolves inside a worktree or a
    repo checkout.
 3. Otherwise show no repo. Do not guess from `foreground_cwd`.
