@@ -62,15 +62,27 @@ slot. Everything below is what remains.
 plan doc's last section has the exact readings, the three wrong turns it took to
 get there, and the bench state.
 
-**The one hard blocker left is firmware-side, not ours:** the V3's BLE
-**controller** asserts ~200 ms after *any Apple central* connects — before
-discovery or the CCCD write — and reboots. 13/13, `writes=0`. Decoded from 22
-panics, 11 sharing a remote-PHY-update signature
+**The Apple-central bootloop is FIXED on the spike (2026-09-04, `fcc3c0582`).** The
+V3's BLE **controller** asserted ~200 ms after an Apple central connected — before
+discovery or the CCCD write — and rebooted, 0 of ~170 connects surviving. Decoded
+from 22 panics, 11 sharing a remote-PHY-update signature
 (`r_llc_rem_phy_upd_proc_continue_eco` → `ll_phy_update_ind_handler_hack`),
-matching its `BLE assert lld_con.c 3397`. Apple requests a PHY update on connect,
-Android does not. **Untried mitigation:** pin the link to 1M PHY
-(`ble_gap_set_prefer_le_phy` on connect) or refuse 2M in the controller sdkconfig.
-Until that is done, no iOS ↔ firmware GATT testing is possible at all.
+matching `BLE assert lld_con.c 3397`. It is Espressif's open esp-idf#15311 (same
+assert, same PC), reproduced on **stock develop and the nightly** with the stock
+iOS app, so it was never the spike. Ruled out on the bench: serial (one held-open
+port and a closed port both crash), the mesh-peer service (phone-API set crashes),
+`LL_CFG_FEAT_LE_2M_PHY` (host-only, never reaches the S3 controller), the
+controller's `BT_CTRL_BLE_LLCP_*` flags (1/27), a newer controller blob (none
+exists through IDF v6.1). A Pixel requesting 2M PHY never crashes it — the
+trigger is what the A16 does inside the procedure, not the procedure itself.
+**Fix:** Apple's own accessory guidance — indicate 1M-only PHY preferences —
+sent as raw HCI `LE Set Default PHY` after `ble_hs_synced()` in
+`NimbleBluetooth::setup()` (the NimBLE wrapper is compiled out). 9/9 iPad
+connects survive, subscribe and carry frames (`GATT mesh RX from=0x9ebca8df`).
+Owed: a develop PR, a nudge on esp-idf#15311. Bench trap learnt on the way: an
+iOS app whose connect never completes leaves bluetoothd retrying for ~10 min
+after the app is killed *and* uninstalled; Settings > Bluetooth off (not the
+Control Center toggle) clears it.
 
 **Also settled, so nobody re-attempts it:** the **desktop monitor cannot do GATT**
 — `GattLink.jvm.kt` is `UnsupportedGattLink` (the JVM has no BLE), so its `gatt`

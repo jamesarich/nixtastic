@@ -861,11 +861,11 @@ confident conclusion from partial evidence, and the bench refuted all three.
   `conn 1 subscribed (via phone-API advertisement)` — `subscribed` set,
   `viaMeshAdv` left alone, which is exactly the conflation that commit removed.
 
-### BLOCKED: any Apple node against this firmware
+### FIXED: the Apple-central controller assert (`fcc3c0582`)
 
-The iPad, on a fresh build, cannot connect at all: **the V3's BLE controller
-asserts ~200 ms after an Apple central connects**, before service discovery or the
-CCCD write, and reboots. 13 attempts, 13 crashes, `writes=0`. Decoded from 22
+The iPad, on a fresh build, could not connect at all: **the V3's BLE controller
+asserted ~200 ms after an Apple central connected**, before service discovery or
+the CCCD write, and rebooted — 0 of ~170 connects survived. Decoded from 22
 captured backtraces (`addr2line` against the flashed ELF), 11 sharing one
 signature:
 
@@ -876,11 +876,29 @@ r_lld_llcp_rx_ind_handler_hack / r_ke_task_schedule_hack
 ```
 
 That is the controller's **remote-PHY-update** procedure, inside Espressif's own
-errata routines, and it matches the `BLE assert lld_con.c 3397` printed alongside.
-Apple centrals request a PHY update immediately on connecting; Android does not —
-that is the entire difference, and why the Pixel is unaffected. Untried
-mitigation: pin the link to 1M PHY (`ble_gap_set_prefer_le_phy` on connect) or
-refuse 2M in the controller's sdkconfig.
+errata routines, and it matches the `BLE assert lld_con.c 3397` printed alongside
+— Espressif's open **esp-idf#15311**, same assert string, same PC. It reproduces
+on **stock develop and the nightly** with the stock iOS app, so it was never the
+spike's doing. Everything else was eliminated on the bench, one held-open serial
+port as the witness: the serial link itself (crashes with the port closed too),
+the mesh-peer service (the phone-API set crashes), the host's
+`LL_CFG_FEAT_LE_2M_PHY`/`CODED_PHY` flags (host-only; the S3's link layer is the
+binary controller), the controller's `BT_CTRL_BLE_LLCP_*` "terminate on Instant
+Passed" flags (1 survivor in 27), and a newer controller blob (the
+`lib_esp32c3_family` commit is identical through IDF v6.1). A Pixel calling
+`setPreferredPhy(2M)` negotiates 2M and never crashes it, so the trigger is what
+the A16 does inside the procedure — the Link-Layer quirks esp-idf#18884 lists for
+this iPad — not the procedure itself.
+
+**The fix is Apple's own guidance for accessories: indicate 1M-only PHY
+preferences.** iOS negotiates 2M at the controller level and apps cannot change
+it. NimBLE's `ble_gap_set_default_le_phy()` is compiled out of the prebuilt host,
+but `ble_hs_hci_cmd_tx` is exported, so `NimbleBluetooth::setup()` now sends HCI
+`LE Set Default PHY` (1M/1M) once `ble_hs_synced()`. Result: 9/9 iPad connects
+survive, subscribe, and carry frames (`BLE GATT mesh RX from=0x9ebca8df`); the
+boot counter did not move. iPadOS 26 stays on 1M rather than dropping the link.
+Cost: iOS phone-API links run at 1M on S3/C3. Owed: cherry-pick to a develop PR,
+nudge esp-idf#15311 with the peer-initiated variant and the stock repro.
 
 ### NOT POSSIBLE: the desktop monitor over GATT
 
