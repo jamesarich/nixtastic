@@ -69,11 +69,12 @@ SDK).
   **simultaneously**. `android` is not a submodule consumer — it takes the
   published `org.meshtastic:protobufs` artifact pinned in
   `gradle/libs.versions.toml`, so a bump there is a version bump.
-- `meshtastic-sdk` is consumed by **neither app yet** (checked 2026-09-05: no
-  `org.meshtastic.sdk` import in `android`, no reference in `apple`); both talk to
-  radios through their own phone-API transports. Until one adopts it, an SDK ABI
-  change breaks nothing downstream. The node library (`meshtastic-node-kmp`) is
-  designed to sit *below* the SDK, never depend on it.
+- `meshtastic-sdk` is consumed by **neither `android` nor `apple`** (checked
+  2026-09-05: no `org.meshtastic.sdk` import in either; both talk to radios
+  through their own phone-API transports) — but it **does** have a downstream
+  consumer outside this workspace (Jonathan's TAK-related work), so an ABI change
+  still breaks someone without touching a repo here. The node library
+  (`meshtastic-node-kmp`) is designed to sit *below* the SDK, never depend on it.
 - `gradle-flatpak-sources` packages `android`'s `:desktopApp` for Flathub.
 - `meshtastic-python` is what `labeltastic` and `meshtastic-mcp` both import to
   reach a radio, so it sits under every Python-side device test in this
