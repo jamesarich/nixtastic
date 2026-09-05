@@ -35,7 +35,7 @@ been skipped in practice, which is why `.#brief` exists.
 | Repo | Role | Stack | Shell | Branch | Commits | Agent docs |
 | --- | --- | --- | --- | --- | --- | --- |
 | `firmware` | device firmware | C++ / PlatformIO | `.#firmware` | `develop` | sentence-style, ad-hoc prefixes | `AGENTS.md` |
-| `device-ui` | MUI: LVGL on-device UI lib (vendored into `firmware` builds as a zip pin) | C++ / LVGL | `.#firmware` | `master` | sentence-style | → [`notes/device-ui.md`](./notes/device-ui.md) |
+| `device-ui` | MUI: LVGL on-device UI lib (vendored into `firmware` builds as a zip pin) | C++ / LVGL | `.#firmware` | `master` | Conventional PR title (enforced), loose commits | → [`notes/device-ui.md`](./notes/device-ui.md) |
 | `android` | Android + desktop app | Kotlin / Compose | `.#android` | `main` | Conventional | `AGENTS.md`, Spec Kit, skills, subagents |
 | `apple` | Apple platform clients | Swift / Xcode | `.#apple` | `main` | Conventional | Spec Kit → [`notes/apple.md`](./notes/apple.md) |
 | `meshtastic-sdk` | KMP client SDK | Kotlin MP | `.#kotlin` | `main` | Conventional | `AGENTS.md`, `GOVERNANCE.md`, `CODEOWNERS`, Spec Kit |

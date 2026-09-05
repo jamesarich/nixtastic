@@ -1,6 +1,6 @@
 # Heard-on-current-LoRa node bit — cross-repo umbrella
 
-Status: planned
+Status: planned — issues filed, no code yet
 Started: 2026-09-05
 
 ## Goal
@@ -26,11 +26,11 @@ preset is changed from the device UI or CLI while the phone is disconnected.
 | repo | change | branch / worktree | verification | landed (SHA or PR) |
 | --- | --- | --- | --- | --- |
 | protobufs | `NodeInfo.heard_on_current_lora` bool tag 15; `NodeInfoLite.bitfield` doc note | — | `buf lint` | |
-| firmware | bitfield bit 11; set on hear, clear on slot change; mirror in `TypeConversions`; submodule bump | — | `bin/run-tests.sh` (native), bench flash | |
-| device-ui | grey stale rows in the node list; zip pin bumped into firmware | — | on-device (TFT + OLED views) | |
-| android | `Capabilities` gate, node-list marking, stale banner + one-tap clear | — | `nixtastic:android-baseline` | |
-| apple | parity | — | repo's own gate | |
-| design | cross-platform render rule; docs gap tracked as sub-issues | — | issue only | |
+| firmware | bitfield bit 11; set on hear, clear on slot change; mirror in `TypeConversions`; submodule bump | — | `bin/run-tests.sh` (native), bench flash | issue #11745 |
+| device-ui | grey stale rows in the node list; zip pin bumped into firmware | — | native CMake/ctest, on-device TFT | issue #387 |
+| android | `Capabilities` gate, node-list marking, stale banner + one-tap clear | — | `nixtastic:android-baseline` | issue #7053 |
+| apple | parity | — | repo's own gate | issue #2427 |
+| design | cross-platform feature spec; docs as a sub-issue | — | issue only | **#146 (parent)**, docs meshtastic#2649 |
 
 `meshtastic-sdk` and `meshtastic-python` are deliberately out of scope
 (both are behind at protobufs v2.7.26; they pick the field up on their next
@@ -78,34 +78,40 @@ timestamp scheme fails.
 
 `design` runs in parallel; it gates nothing.
 
-## Open questions / unproven
+## Decisions taken since scoping
 
-- **Persistence.** `AdminModule::saveChanges` calls
-  `MeshService::reloadConfig(saveWhat)` → `nodeDB->saveToDisk(saveWhat)`, and
-  a LoRa config write passes `SEGMENT_CONFIG` (1), not `SEGMENT_NODEDATABASE`
-  (16). The clear happens in RAM and the path then reboots, so as written the
-  cleared bits are lost. The change must OR in `SEGMENT_NODEDATABASE` on the
-  slot-affecting paths. Not yet verified on hardware.
-- **Trigger coverage.** `AdminModule.cpp:1162` keys on `modem_preset` alone.
-  The clear needs the full slot-affecting set: `region`, `use_preset` (or
-  bandwidth/spread_factor/coding_rate when custom), `override_frequency`,
-  `channel_num` — and a primary-channel rename in `handleSetChannel`
-  (`AdminModule.cpp:1457`), because the slot is the channel name's hash.
-- **Warm tier.** `WarmNodeStore` steals the low 7 bits of `last_heard` for
-  role/protected/xeddsa-signed and explicitly restores the XEdDSA bit on
-  re-admission, because it is "learned from verified traffic, not from
-  NodeInfo" — the same class of fact as this bit. Bit 7 of that stolen field
-  is free (`WARM_META_BITS` 7 → 8 coarsens LRU recency from 128 s to 256 s).
-  Cheaper alternative: carry nothing, let re-admission default the bit to 0
-  and let the normal set-site set it if the re-admission was an actual RF
-  hear. Needs checking that re-admission is always hear-driven.
-- **Field sense.** `not_heard_on_current_lora` would make proto3's false
-  default safe against old firmware with no capability gate, at the cost of a
-  negative-sense bool and an inversion between the firmware bit and the wire.
-  Recommended: keep positive sense, gate on `Capabilities`.
-- **Upgrade wave.** Nodes predating the firmware upgrade have bit=0 and read
-  stale until heard again. Either set the bit for all nodes in the NodeDB
-  version migration, or accept a one-time wave.
+All four scoping questions are now settled in design#146 and the firmware
+sub-issue:
+
+- **Clear at the choke point, not in `AdminModule`.** `MenuHandler.cpp` calls
+  `service->reloadConfig(SEGMENT_CONFIG)` from ~15 sites — the device's own
+  screen menu never touches `AdminModule`, and that is the MUI path this whole
+  change exists for. Hook `MeshService::reloadConfig`, comparing a slot-tuple
+  snapshot. That also picks up `set_channel_url`/`set_config_url` (scanned QR),
+  licensed-mode region changes, `resetRadioConfig` and factory reset.
+- **Persistence confirmed as a real gap.** `reloadConfig` ends in
+  `saveToDisk(saveWhat)` and a LoRa write passes `SEGMENT_CONFIG`, not
+  `SEGMENT_NODEDATABASE`, so the clear would be lost across the reboot. The
+  fix belongs at the same choke point, which also covers the edit-transaction
+  deferral.
+- **Warm tier: carry nothing.** `getOrCreateMeshNode` is reached from
+  favourite-add, ignore, `add_contact` and NodeInfo ingestion — none are hears
+  — so a cleared bit on re-admission is the correct outcome, not a limitation.
+  Bit 7 of the stolen `last_heard` field stays free.
+- **Upgrade wave: one-time watermark.** A spare bitfield bit needs no schema
+  change, so no migration hook fires. Do not bump `DEVICESTATE_CUR_VER` (it
+  also drives the legacy-decode gate; 26 is reserved). Use the
+  `POSITION_TELEMETRY_OPTIN_VER` pattern instead.
+- **Field sense: positive**, gated on a client capability check. Clients must
+  gate persistence as well as display, or a false read from old firmware
+  outlives the firmware upgrade.
+
+## Still unproven
+
+- Nothing has been built or flashed. Every claim above is read from source.
+- `device-ui#387` could not be attached as a native GitHub sub-issue of #146
+  (the endpoint 404s for that repo); it is linked by reference in #146's
+  checklist only.
 
 ## Out of scope, worth recording
 

@@ -9,7 +9,13 @@ the code and from here.
   a **commit-pinned zip** in `platformio.ini` (`meshtastic/device-ui` digest,
   bumped by Renovate). Local development against firmware needs a
   `lib_deps` override (e.g. `symlink://`) in the consuming env.
-- **Default branch:** `master` · commits are sentence-style, no prefixes.
+- **Default branch:** `master` · **Conventional PR titles are enforced** —
+  `.github/workflows/action-semantic-pull-request.yml` runs
+  `amannn/action-semantic-pull-request@v5` on every PR, and master's squash
+  titles match (`feat: add NM CYD C5 (#385)`, `perf(MUI): …`). Individual
+  commits inside a PR stay free-form (`trunk fmt`, `fix numChannels
+  calculation`). This note previously said "sentence-style, no prefixes",
+  which was wrong.
 - **Shell:** `.#firmware` (same PlatformIO toolchain family).
 
 ## Architecture facts (verified 2026-08-31)
