@@ -107,12 +107,17 @@ case "${1:-}" in
     [ "${1:-}" = --apply ] && { apply=true; shift; }
     have_gh=false; command -v gh >/dev/null 2>&1 && have_gh=true
     reap=0; keep=0
+    # The workspace repo's own worktrees (Desktop app, harness isolation)
+    # are candidates too — label "workspace", asked about on GitHub like any.
     while read -r d; do
-      p="$root/$d"; [ -d "$p/.git" ] || continue
-      gh_repo=$(git -C "$p" remote get-url origin 2>/dev/null | sed 's|.*github.com[:/]||; s|\.git$||')
-      def=$(git -C "$p" symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null | sed 's|^refs/remotes/||')
+      if [ "$d" = . ]; then p="$root"; d=workspace; else p="$root/$d"; fi
+      [ -d "$p/.git" ] || continue
+      # `|| true` on both: under pipefail a repo with no origin (or no
+      # origin/HEAD) would otherwise abort the whole pass.
+      gh_repo=$(git -C "$p" remote get-url origin 2>/dev/null | sed 's|.*github.com[:/]||; s|\.git$||' || true)
+      def=$(git -C "$p" symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null | sed 's|^refs/remotes/||' || true)
       if [ -z "$def" ]; then
-        for c in origin/main origin/master origin/develop; do
+        for c in origin/main origin/master origin/develop main master develop; do
           git -C "$p" rev-parse -q --verify "$c" >/dev/null 2>&1 && { def="$c"; break; }
         done
       fi
@@ -127,10 +132,11 @@ case "${1:-}" in
         head=$(git -C "$wt" rev-parse HEAD 2>/dev/null || echo "")
         dirty=$(git -C "$wt" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
         beyond="?"; [ -n "$def" ] && beyond=$(git -C "$wt" rev-list --count "$def..HEAD" 2>/dev/null || echo "?")
-        open=""; merged=""
+        open=""; merged=""; asked=false
         if [ "$have_gh" = true ] && [ "$branch" != HEAD ] && [ -n "$gh_repo" ]; then
-          prs=$(gh pr list --repo "$gh_repo" --head "$branch" --state all --limit 5 --json number,state,headRefOid 2>/dev/null || echo "")
-          if [ -n "$prs" ]; then
+          # A failed call (no auth over ssh, offline) must not read as "no PR".
+          if prs=$(gh pr list --repo "$gh_repo" --head "$branch" --state all --limit 5 --json number,state,headRefOid 2>/dev/null); then
+            asked=true
             open=$(printf '%s' "$prs" | jq -r 'map(select(.state=="OPEN")) | .[0].number // empty')
             merged=$(printf '%s' "$prs" | jq -r --arg h "$head" 'map(select(.state=="MERGED" and .headRefOid==$h)) | .[0].number // empty')
           fi
@@ -144,7 +150,8 @@ case "${1:-}" in
           # worktree's .git file is written once, at creation.
           if [ -n "$(find "$wt/.git" -maxdepth 0 -mtime +0 2>/dev/null)" ]; then class=reap; why="no commits beyond $def"
           else why="no commits yet, created today"; fi
-        elif [ "$have_gh" = false ]; then why="$beyond commit(s) beyond $def; gh unavailable, cannot ask GitHub"
+        elif [ "$have_gh" = false ]; then why="$beyond commit(s) beyond $def; gh not on PATH, cannot ask GitHub"
+        elif [ "$asked" = false ]; then why="$beyond commit(s) beyond $def; GitHub query failed (gh auth?)"
         else why="$beyond commit(s) beyond $def, no merged PR at this HEAD"
         fi
         if [ "$class" = reap ]; then
@@ -167,7 +174,7 @@ case "${1:-}" in
           printf '  keep   %-52s %s\n' "$label" "$why"
         fi
       done <<< "$(git -C "$p" worktree list --porcelain | sed -n 's/^worktree //p' | tail -n +2)"
-    done <<< "$(targets "${1:-}")"
+    done <<< "$(if [ -n "${1:-}" ]; then echo "$1"; else echo .; all_repos; fi)"
     echo ""
     if [ "$apply" = true ]; then
       printf '  %s reaped, %s kept\n' "$reap" "$keep"

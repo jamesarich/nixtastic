@@ -890,6 +890,7 @@ cat > "$PWD/fakebin/gh" <<'EOF'
 #!/bin/sh
 # Stub gh for --gc: `pr list --head <branch>` replays $GCFIX/<branch-with-slashes-as-dashes>.json, else [].
 b=""; prev=""; for a in "$@"; do [ "$prev" = "--head" ] && b="$a"; prev="$a"; done
+[ "$b" = gc-ghfail ] && { echo "HTTP 401: Requires authentication" >&2; exit 1; }
 f="$GCFIX/$(printf '%s' "$b" | tr '/' '-').json"
 if [ -f "$f" ]; then cat "$f"; else echo '[]'; fi
 EOF
@@ -902,7 +903,9 @@ mk gc-dirty;    echo d > "$root/kzstd/.claude/worktrees/gc-dirty/tracked.txt"
 mk gc-unpushed; (cd "$root/kzstd/.claude/worktrees/gc-unpushed" && echo u > u.txt && git add u.txt && git commit -qm unpushed)
 mk gc-empty-old; touch -d '2 days ago' "$root/kzstd/.claude/worktrees/gc-empty-old/.git"
 mk gc-empty-new
+mk gc-ghfail;   (cd "$root/kzstd/.claude/worktrees/gc-ghfail"   && echo g > g.txt && git add g.txt && git commit -qm ghfail)
 git -C "$root/kzstd" worktree add -q "$HOME/parked-elsewhere" -b gc-parked
+git -C "$root" worktree add -q "$root/.claude/worktrees/ws-empty" -b ws-empty; touch -d '2 days ago' "$root/.claude/worktrees/ws-empty/.git"
 printf '[{"number":11,"state":"MERGED","headRefOid":"%s"}]' "$(git -C "$root/kzstd/.claude/worktrees/gc-merged" rev-parse HEAD)" > "$GCFIX/gc-merged.json"
 printf '[{"number":12,"state":"MERGED","headRefOid":"%s"}]' "$(git -C "$root/kzstd/.claude/worktrees/gc-behind" rev-parse HEAD~1)" > "$GCFIX/gc-behind.json"
 printf '[{"number":13,"state":"OPEN","headRefOid":"%s"}]' "$(git -C "$root/kzstd/.claude/worktrees/gc-open" rev-parse HEAD)" > "$GCFIX/gc-open.json"
@@ -916,19 +919,24 @@ expect '^  keep +kzstd/gc-unpushed .*no merged PR'
 expect '^  reap +kzstd/gc-empty-old .*no commits beyond'
 expect '^  keep +kzstd/gc-empty-new .*created today'
 expect '^  keep +kzstd/parked-elsewhere .*parked by another tool'
+expect '^  keep +kzstd/gc-ghfail .*GitHub query failed'
 expect '2 reapable, [0-9]+ kept'
+run "$worktree" --gc
+expect '^  reap +workspace/ws-empty .*no commits beyond'
+expect '3 reapable, [0-9]+ kept'
 [ -d "$root/kzstd/.claude/worktrees/gc-merged" ] || { echo "T36: report mode removed a worktree"; exit 1; }
-run "$worktree" --gc --apply kzstd
+run "$worktree" --gc --apply
 expect '^  reaped +kzstd/gc-merged .*branch gc-merged deleted'
 expect '^  reaped +kzstd/gc-empty-old'
-expect '2 reaped, [0-9]+ kept'
+expect '3 reaped, [0-9]+ kept'
 [ ! -d "$root/kzstd/.claude/worktrees/gc-merged" ] || { echo "T36: merged worktree still there"; exit 1; }
 git -C "$root/kzstd" rev-parse -q --verify gc-merged >/dev/null && { echo "T36: merged branch not deleted"; exit 1; }
 [ -d "$root/kzstd/.claude/worktrees/gc-behind" ] || { echo "T36: tree with commits past the PR was removed"; exit 1; }
 [ -d "$root/kzstd/.claude/worktrees/gc-dirty" ] || { echo "T36: dirty tree removed"; exit 1; }
 [ -d "$HOME/parked-elsewhere" ] || { echo "T36: foreign tree removed"; exit 1; }
 PATH="$oldpath"; export PATH
-for w in gc-behind gc-open gc-unpushed gc-empty-new; do git -C "$root/kzstd" worktree remove --force "$root/kzstd/.claude/worktrees/$w"; git -C "$root/kzstd" branch -D -q "$w"; done
+[ ! -d "$root/.claude/worktrees/ws-empty" ] || { echo "T36: workspace worktree not reaped"; exit 1; }
+for w in gc-behind gc-open gc-unpushed gc-empty-new gc-ghfail; do git -C "$root/kzstd" worktree remove --force "$root/kzstd/.claude/worktrees/$w"; git -C "$root/kzstd" branch -D -q "$w"; done
 git -C "$root/kzstd" worktree remove --force "$root/kzstd/.claude/worktrees/gc-dirty"; git -C "$root/kzstd" branch -D -q gc-dirty
 git -C "$root/kzstd" worktree remove --force "$HOME/parked-elsewhere"; git -C "$root/kzstd" branch -D -q gc-parked
 run "$sync"
