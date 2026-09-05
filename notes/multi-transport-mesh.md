@@ -10,29 +10,31 @@ The ask that started this: *"holistically leverage / interoperate / bridge
 between all transports available on each device - LoRa, UDP, BLE-adv, BLE-GATT,
 Wi-Fi, MQTT - extend the mesh via as many transports as possible."*
 
-## Implementation status (updated 2026-09-05, afternoon)
+## Implementation status (updated 2026-09-05, end of day)
 
-**Availability seam landed (2026-09-05 afternoon), `meshtastic-node-kmp` `main`
-pushed through `c14c4b4`.** A transport now declares whether it can carry
-anything and why not - `MeshTransport.availability` (`Unavailable(reason)`,
-`NeedsPermission`, `Ready`, `Active`), `absentTransports()` for bearers a
-platform never builds, and a constant `receiveOnly` for ones that can never
-speak. Closes the "fix first" of the monitor-honesty item and the state/fault
-half of the commonization item; the Material 3 pass and the live mesh diagram
-remain. Verified on the desktop (three bearers greyed with reasons), the Pixel
-(BLE rows flipping live as Bluetooth went off and back), and the iPad (`gatt`
-transmitting, `ble-adv` marked rx-only, `udp`/`lora` greyed as absent). Details
-and the two design corrections it took: the handoff's "Availability seam"
-section.
+**The "Parity and coverage plan" below is implemented end to end**, on
+`meshtastic-node-kmp` `main`, pushed. Identity and keypair persistence, reliable
+delivery, the NodeInfo/Position/telemetry beacons, PKI DMs, traceroute answering,
+desktop LoRa, desktop BLE over BlueZ, iOS UDP, the MQTT bridge, and the
+availability seam that made a dead bearer distinguishable from an idle one. Every
+slice, what hardware proved, and what is still blocked on something outside the
+code: "Tier-1 parity implemented end to end" at the end of this file.
+
+Left standing from that plan: the commonization pass James asked for
+(per-peer send queues, scan and advertise scheduling, the stats and counter
+shape), the monitor's Material 3 pass and live mesh diagram, and step 0's
+remaining app-side adapters.
 
 Caught in the same sitting: the `api/` binary-compatibility dumps had gone stale
 because the gate documented in node-kmp's `AGENTS.md` never named `apiCheck`,
 even though BCV was wired for klib and JVM all along. Dumps regenerated and
 `apiCheck` now leads the gate.
 
-`meshtastic-node-kmp` `main` was previously **pushed** through `d669e8d`. The `firmware`
-`spike/ble-mesh-transport` branch is **pushed** through `df1ae63bf`. **Its
-`protobufs` submodule pointer (`8db5d3e`) is on no remote** - see the handoff.
+`meshtastic-node-kmp` `main` is **pushed**. The `firmware`
+`spike/ble-mesh-transport` branch is **pushed** through `df1ae63bf`, and its
+`protobufs` submodule pointer (`8db5d3e`) is on `meshtastic/protobufs`
+`spike/ble-mesh-transport`, so a fresh clone of the spike resolves. Landing those
+protos on `master` and publishing the artifact is still owed.
 Since the 2026-09-04 status below: the Apple-central controller assert is fixed on
 ESP32-S3/C3 (1M-only PHY); **nRF52 is a full peer** (BLE-adv both ways, mesh-peer
 GATT both ways with Android and iOS, two phones at once, on a WisMesh Pocket);
@@ -152,12 +154,9 @@ ESP32-C3 links build-only; Android's 5-minute scan downgrade is worked around.
     92.0% with GATT), BLE-adv and GATT proven both ways with Android and iOS.
     ESP32-C3 links build-only (`heltec-ht62-esp32c3-sx1262`: RAM 34.2%, flash
     87.2%); no C3 on the bench.
-  - **Current v3 bench state (2026-09-04, evening):** `enabled_protocols=7`,
-    `network.wifi_enabled=true` (turned back on so it is the UDP peer; reachable
-    at 192.168.1.180, **no USB serial attached**), `bluetooth.mode=NO_PIN` (the
-    user's original was `RANDOM_PIN`). On this S3 build WiFi, BLE and LoRa run
-    together. **Cleanup owed once the GATT investigation is done:**
-    `enabled_protocols=3`, `bluetooth.mode=RANDOM_PIN`, reboot; WiFi stays on.
+  - **v3 bench state:** unplugged since 2026-09-05 morning, and erased before
+    that, so the 2026-09-04 config above no longer describes it. The handoff's
+    bench section carries what it was left holding.
 - **Phase 4 - future** (Wi-Fi Aware, anti-entropy sync).
 
 ---
@@ -926,6 +925,10 @@ nudge esp-idf#15311 with the peer-initiated variant and the stock repro.
 
 ### NOT POSSIBLE: the desktop monitor over GATT
 
+**Superseded on Linux (2026-09-05):** `GattLink.jvm.kt` now picks `BluezGattLink`
+there, so a Linux desktop has both GATT roles. The rest of this section still
+holds for macOS and Windows JVMs. The section is kept as written below.
+
 `GattLink.jvm.kt` is `UnsupportedGattLink` - `canTransmit = false`, an empty
 inbound flow. The JVM has no BLE, so the desktop dashboard shows a `gatt` row that
 can never move. macOS *does* have a real CoreBluetooth path through
@@ -980,30 +983,33 @@ does with a packet once it has one**. Sources: the module source sets and
 
 ### A. Bearer coverage by platform
 
-| Bearer | Android | iOS | macOS (native) | JVM desktop / Linux | Firmware |
-| --- | --- | --- | --- | --- | --- |
-| BLE-adv rx | ✓ | ✓ | ✓ (`appleMain`, test-bench only) | stub | ✓ |
-| BLE-adv tx | ✓ | **impossible** (CoreBluetooth cannot advertise arbitrary data) | impossible | stub | ✓ |
-| GATT mesh-peer (dual role) | ✓ | ✓ | ✓ (`appleMain`, not in the JVM app) | **stub** (`UnsupportedGattLink`) | ✓ S3, ✓ nRF52 |
-| UDP multicast | ✓ | **needs entitlement** (`com.apple.developer.networking.multicast`) + a native socket | ✓ (JVM) | ✓ | ✓ (WiFi/eth) |
-| LoRa (USB SX1262 stick) | ✓ | impossible (no USB serial) | possible (IOKit) | **stub** (`libusb UsbBulkPipe` unwritten) | native |
+Updated 2026-09-05, after the parity sitting closed most of it. The JVM desktop
+is now two platforms, not one, so it gets two columns.
 
-So today: Android = 4/4, iOS = GATT + adv-rx, desktop = UDP only. The desktop
-gap is the largest single unlock because the desktop is also the natural
-**Linux gateway** (a Pi with BlueZ and a stick is a firmware-shaped node with a
-real OS). Enablers, in cost order:
+| Bearer | Android | iOS | macOS (native) | Linux JVM | macOS/Windows JVM | Firmware |
+| --- | --- | --- | --- | --- | --- | --- |
+| BLE-adv rx | ✓ | ✓ | ✓ (`appleMain`, test-bench only) | ✓ BlueZ, **proven** | none (BlueZ is Linux-only) | ✓ |
+| BLE-adv tx | ✓ | **impossible** (CoreBluetooth cannot advertise arbitrary data) | impossible | ✓ built, **blocked by the adapter** | none | ✓ |
+| GATT mesh-peer (dual role) | ✓ | ✓ | ✓ (`appleMain`) | ✓ built, **not yet run** | none | ✓ S3, ✓ nRF52 |
+| UDP multicast | ✓ | ✓ built, **needs entitlement** (`com.apple.developer.networking.multicast`) | ✓ | ✓ | ✓ | ✓ (WiFi/eth) |
+| LoRa (USB SX1262 stick) | ✓ | impossible (no USB serial) | ✓ (libusb, **proven**) | ✓ (libusb) | ✓ (libusb, **proven** on macOS) | native |
 
-1. **Desktop LoRa** - `UsbBulkPipe` over libusb (usb4java or JNA). The SPI/SX1262
-   layer is shared with Android and already proven; only the bulk pipe is new.
-   Medium. Verified with the Meshtadpole on the Mac.
-2. **Desktop BLE (Linux)** - BlueZ over D-Bus gives both GATT roles *and*
-   extended advertising tx/rx; `bluez-dbus-java` or hand D-Bus. Medium-large.
-   Verified on the uConsole (Pi CM4) against the Pocket. macOS-native BLE for the
-   JVM app is a separate, smaller path (a CoreBluetooth binding via the existing
-   `appleMain` code exposed to the JVM) - decide whether the desktop app targets
-   macOS natively or stays JVM-only.
-3. **iOS UDP** - request the multicast entitlement, then a `Network.framework`
-   socket the app supplies. Small code, external gate (Apple).
+So today: Android 4/4; iOS GATT + adv-rx + UDP-pending-entitlement; Linux JVM
+4/4 by construction with adv-tx blocked on one adapter; macOS/Windows JVM UDP +
+LoRa. The remaining desktop gap is BLE on the two JVMs BlueZ cannot serve, and
+that is what [`desktop-ble-plan.md`](./desktop-ble-plan.md) is for. Enablers, in
+cost order:
+
+1. **Desktop LoRa** - done. `UsbBulkPipe` over libusb, JNA rather than usb4java
+   (no `darwin-aarch64` native, last release 2018). The SPI/SX1262 layer is shared
+   with Android. Proven with the Meshtadpole on the Mac.
+2. **Desktop BLE (Linux)** - done in code. BlueZ over D-Bus gives both GATT roles
+   *and* extended advertising. Scanning is proven on `james-pc`; advertising is
+   refused by that host's controller (`bluetoothctl` fails identically), and the
+   GATT roles have not been exercised on Linux hardware yet. macOS and Windows
+   need a different path entirely, since BlueZ is Linux-only.
+3. **iOS UDP** - written and in `commonMain`; the multicast entitlement is Apple's
+   gate and this project does not hold it. External, not code.
 4. **iOS background** - `bluetooth-central`/`peripheral` modes are declared; the
    node has never been exercised backgrounded. Test, then fix what stops.
 
@@ -1132,3 +1138,240 @@ plus the Android `IRadioInterface` adapter, proven by the stock Android app
 connecting to the local node and completing its config handshake. It fixes the
 record shape (`NodeInfo`) and the persistence contents at once, and it is the
 first moment a stock app can *use* the phone node.
+
+## Tier-1 parity implemented end to end (2026-09-05, `meshtastic-node-kmp` `main`)
+
+The "Parity and coverage plan" above, worked through in one sitting. Every
+constant is cited from firmware source rather than remembered; research ran as a
+7-agent fan-out over firmware module semantics and node-kmp's own gaps.
+
+### Gate holes closed first (`c14c4b4`, `a8c2afe`, `08f6bfd`, `bf4f4cd`)
+
+Three, each of which had already let a real defect through:
+
+- The `api/` dumps had been stale for four commits. Binary-compatibility
+  validation was wired for klib **and** JVM all along; the documented gate never
+  named `apiCheck`.
+- **Spotless does not read `.editorconfig`.** The 120-column limit it appeared to
+  honour is ktlint's own `intellij_idea` default, so every override in that file,
+  including two per-file exemptions already sitting there, had never bound.
+  Settings that must bind are now an explicit `editorConfigOverride` map.
+- The gate ran `jvmTest` and only *compiled* the native targets, which is the
+  org's named KMP anti-pattern verbatim. It hid four comma-bearing test names that
+  Kotlin/Native rejects, so `gradle build` was broken on `main` for four commits
+  while everything read green.
+
+Gate is now `spotlessCheck detekt apiCheck allTests testAndroidHostTest`.
+
+### Slices
+
+- **Identity and keypair persistence** (`ef264e5`, `894bc39`). `NodeIdentityRecord`
+  holds the address seed and the X25519 pair as one record written in a single
+  save, so "persist the address and the keypair together" is structural rather
+  than advisory. The node had **no keypair in production at all**:
+  `Config.privateKey` had no caller outside tests, so `LocalRadio` told every
+  phone `hasPKC=false`. A failed load is fatal to the node on purpose, because
+  minting a replacement discards the address every peer has pinned.
+- **Keyless-first eviction** (`ef264e5`). `BoundedLru` evicted strict-LRU, so
+  keyless chatter evicted the peers whose keys we hold, the inverse of firmware.
+- **`pki_encrypted` derived, not trusted** (`9da2e8e`). `toMeshPacket` copied the
+  wire's bit through and never set `public_key`, so anyone holding the channel PSK
+  could hand a phone a channel message wearing a private message's lock icon.
+- **Telemetry, traceroute, waypoints, neighbour info decoded** (`522e76b`,
+  `ccf3677`). All four surfaced as `Opaque`, "could not be read", having in fact
+  been read. Nullable fields throughout, because the wire's `optional` exists to
+  separate "not measured" from "measured zero".
+- **Reliable delivery** (`e9ca481`). Firmware budgets, 5 unicast and 3 broadcast
+  total attempts. The hard part is not retrying but refusing to stop wrongly: a
+  neighbour's rebroadcast is an implicit ack, our own UDP-multicast loopback is
+  not, and `hopsAway` separates them.
+- **Beacon scheduler and `want_response` replies** (`b2dd0fd`). The node never
+  announced, so it was invisible in every stock app and its public key never
+  travelled. The reply path also stops a radio NAKing us with `NO_RESPONSE`.
+- **Self-telemetry over the phone API** (`ccf3677`), bounded by what the node can
+  honestly measure: uptime always; battery and voltage only from a host that can
+  read them; `channel_utilization` and `air_util_tx` **never**, because they
+  describe a shared radio medium and a node on GATT/BLE-adv/UDP occupies no air.
+  0.0 there is a claim about someone else's channel being idle.
+- **Position beacon with a host seam** (`8814a85`). `PositionSource` is a pull, so
+  a phone is never obliged to keep GPS warm. Smart position measures movement from
+  the last position **sent**, not the last read: against the last read a slow walk
+  never crosses the threshold and 300 m goes unreported. Precision rounds to the
+  cell **centre**, so the error is symmetric and the true point cannot be
+  recovered from the rounding direction. Off by default.
+- **NAKs decoded** (`1edbeef`). A Routing packet carrying an error fell through to
+  `Other`, so a rejection was invisible *and* did not stop the retransmit queue.
+  Latent bug fixed alongside: the ack test read `error_reason == NONE`, but the
+  field is nullable and a plain ack leaves it **unset**, so testing only for NONE
+  loses every real acknowledgement.
+- **Traceroute answered** (`d74c263`), not just decoded. Follows the firmware's own
+  distinctions: append our SNR but **not** our node id (a destination is not a hop
+  on the way to itself), the SNR is the reserved "not known" sentinel because most
+  bearers measure none, a multi-hop **broadcast** request is ignored, and a reply
+  is never answered. Not done, and said so: appending ourselves to a traceroute we
+  *relay*, which would need a relayed packet decrypted, rewritten and re-sealed.
+  This node relays opaquely by design.
+- **Desktop LoRa over libusb** (`393a527`). JNA straight to libusb, chosen by
+  running usb4java and watching it die on Apple silicon (no `darwin-aarch64`
+  native, last release 2018). Hot-plug is a 1 s poll, not libusb's callback.
+- **DUAL-role GATT arbitration** (`393a527`). The obvious "lower nodeNum is
+  central" cannot work: a `GattLink` sits below the mesh layer and its peer ids
+  are per-connection tokens, not identities. Settled by an in-band HELLO on the
+  characteristic the link already has, intercepted in `GattLinkBase` (commonMain),
+  so neither platform file changed. Advertising the id was rejected because Apple
+  cannot advertise arbitrary payload and a stable advertised id is passively
+  trackable.
+- **MQTT bridge** (`5b10a80`, `6d33342`), on the org's own MQTTastic-Client-KMP.
+  Topic `<root>/2/e/<channelId>/<gatewayId>` read from `MQTT.cpp`; there is **no
+  region segment**, `msh/US` is an operator setting `root`, which is the detail
+  reimplementations get wrong. The `via_mqtt` anti-loop pair is exact. JSON topics
+  deliberately unsupported: firmware PR #10152 removed the JSON libraries.
+- **Desktop BLE over BlueZ** (`5b10a80`). Linux gets both GATT roles *and*
+  extended advertising. Linux-only and cannot be otherwise; the platform check
+  runs **before any BlueZ type is touched**, since dbus-java is on every desktop's
+  classpath.
+- **iOS UDP** (`5b10a80`). The transport moved to `commonMain` behind a
+  `UdpMulticastSocket` seam, with the JVM/Android socket code **moved rather than
+  rewritten** and a POSIX actual for Apple. The multicast entitlement is Apple's
+  gate and this project does not hold it, so a refused join surfaces as an
+  unavailable bearer naming the entitlement rather than a silently dead one.
+
+### Availability seam (`0885f03`, `30d12c4`, `d2d0baa`)
+
+Every bearer published the same thing dead as idle, `rx 0 tx 0 failed 0`, so the
+desktop offered four live toggles while only UDP had a backend and an Android node
+with Bluetooth off looked untouched rather than broken.
+
+- `MeshTransport.availability: Flow<TransportAvailability>`: `Unavailable(reason)`,
+  `NeedsPermission(permission)`, `Ready`, `Active`. Defaulted on the interface,
+  the additive shape `name` took.
+- Platform seams supply the base. `TransportActivity` in `node-core` adds the one
+  fact no platform knows, whether anything is collecting the cold flow, and is the
+  only place `Active` is decided. Only a `Ready` base becomes `Active`.
+- The two `bluetoothAvailability` helpers live in `node-core` for the reason
+  `BleMeshAdvert` does: both BLE modules need them and share no other module.
+  Apple's is narrower on purpose, because `CBPeripheralManager.authorization` is a
+  class property and reads authorization *without* constructing a manager, and
+  constructing one is what raises the prompt. The cost is that Apple cannot see
+  the power state, which only a live manager carries.
+- `absentTransports()` names bearers a platform never builds. A transport can only
+  speak for itself, so iOS silently omitted UDP and LoRa, making "iOS refuses
+  this" and "nobody wrote it yet" look identical.
+- `MeshTransport.receiveOnly` is a **constant**, for a bearer that can never
+  transmit (Apple's advertisement radio). Explicitly *not* `canTransmit`, which is
+  a live sample: an Apple GATT link answers false until CoreBluetooth powers on,
+  and the Apple availability flow emits once, at start, so sampling `canTransmit`
+  cached that transient false and labelled the iPad's healthy `gatt` row "rx only".
+  A commonTest holds the line.
+
+### What hardware proved, 2026-09-05
+
+**The beacon, end to end.** Pixel and desktop, both on UDP:
+`0:46.657 rx[udp] peer !a6e88506 MON`, and the Pixel's peer list shows
+`!a6e88506 MON`. One node announced on its schedule and another listed it by name.
+
+**Desktop LoRa, first run**, Meshtadpole plugged into the Mac:
+
+```
+lora: 13374234: SX1261 V2D 2D02 tuned 906.875 MHz LongFast UNSET slot 19/104 power 10 dBm
+rx[lora] opaque from !3061b02e (chan #50)
+rx[lora] peer !7263cc65 956a
+```
+
+The whole chain: libusb load, CH341 enumeration and claim (kernel detach plus
+`claim_interface(0)`), the SPI bridge, and the SX1262 driver reading the chip's
+version registers and getting real silicon back before tuning it. The endpoint
+numbers 0x02/0x82, taken from flashrom rather than measured, are therefore right
+in practice. The desktop then held a three-node, two-bearer mesh: the Pixel over
+UDP and the WisMesh Pocket over the air.
+
+**LoRa transmit**, region armed to US at James's request, power left at the 10 dBm
+default because the stick is bus-powered and 22 dBm browns out an OTG port:
+
+```
+tx[udp,lora] data id=3818401404 to=!a6e88506
+lora: tx ok len=24 toa=436ms
+rx[lora] delivered: !a6e88506 ack req=3818401404
+```
+
+Real computed airtime (436-477 ms at LongFast) and **acknowledgements back over
+LoRa**, so a real radio received our transmission and answered it. Those
+`delivered:` lines are `MeshEvent.Delivered` out of the retransmit queue written
+the same day, so reliable delivery is exercised on hardware and not only under
+virtual time. `tx[udp,lora]` on one line is a single frame going out on two
+bearers at once.
+
+**PKI DM round-trip** to the Pocket, acknowledged by real firmware:
+
+```
+lora: tx ok len=56 toa=681ms
+dm to !7263cc65 queued: dm probe from node-kmp
+rx[lora] delivered: !7263cc65 ack req=3640905761
+```
+
+The Pocket could only ack it by decrypting it, so the persisted keypair is real
+and usable and PKI DM sealing matches the firmware in practice, not only in a unit
+test. 56 bytes against 24-29 for the broadcasts is the PKI overhead.
+
+**GATT arbitration, three DUAL nodes at once.** Mac (Kotlin/Native), Pixel and
+iPad, all node-kmp DUAL, all meshing over GATT:
+
+```
+Pixel:  central=[5D:9E:6F:0C:22:EB(chunk=514), EF:E2:0A:BE:95:6A(chunk=244)]
+        subscribers=[2C:CA:16:30:A7:A2]        <- the Mac won that pair
+Mac:    notify state BADA1045 on=true chunk=512
+        notify state 6B496E38 on=true chunk=512  <- central to both of its peers
+```
+
+Mixed roles, **exactly one per pair**, which is what a per-pair election produces
+and what a race cannot: without arbitration the same peer appears in both
+`central` and `subscribers`. `gatt rx 11` on the Pixel, so the triangle carries
+traffic rather than just roles.
+
+**MQTT against a real broker**, `tools/mqtt-broker` (a loopback-bound mosquitto in
+compose, committed, because the public broker feeds the project map and a node
+under development should not publish into it). The broker's own log:
+
+```
+New client connected as !000a11ce (p5, c1, k30)
+Received PUBLISH from !00000b0b, 'msh/2/e/LongFast/!00000b0b', 59 bytes
+Sending PUBLISH to !000a11ce,   'msh/2/e/LongFast/!00000b0b', 59 bytes
+```
+
+Firmware topic layout exactly, `!%08x` client ids, MQTT 5, a 59-byte
+ServiceEnvelope from one bridge to another. `MqttBrokerInteropTest` is env-guarded
+(`MESH_MQTT_BROKER`) like the other hardware tests.
+
+**Availability seam on hardware.** The desktop greys three bearers with reasons
+and drops the `GATT:` header line; the Pixel's BLE rows flipped from carrying real
+frames off `!3061b02e` to `needs permission: Bluetooth to be switched on` the
+instant Bluetooth went off, and back on return, which is the live
+`ACTION_STATE_CHANGED` path.
+
+**macOS TCC spike.** The `macosArm64` CoreBluetooth binary spawned from a plain
+JVM `ProcessBuilder` reaches `state=5` (poweredOn, not the `unauthorized` 3 a
+denial gives), advertises, connects and subscribes, in both GATT roles. So the
+helper-process bridge for macOS desktop BLE is viable rather than speculative.
+Unsettled: it ran from a terminal-launched JVM, so TCC attributed to the terminal,
+and a bundled `.app` needs its own `Info.plist` key. Plan:
+[`desktop-ble-plan.md`](./desktop-ble-plan.md).
+
+### Still blocked, each on something outside the code
+
+- **BlueZ advertising on `james-pc`.** The adapter refuses every
+  `RegisterAdvertisement` with `Invalid Parameters (0x0d)` at any payload size and
+  with `SecondaryChannel` removed, and `bluetoothctl` fails identically on the
+  same host, so it is the controller or its driver rather than this code. Scanning
+  is proven on that machine.
+- **iOS UDP without the multicast entitlement.** Apple grants it by application.
+  The socket itself is proven on macOS native (11 tests, including a real
+  multicast round trip); what is unread is what the iPad's `udp` row says, because
+  iOS 26 has no working screenshot path.
+
+### Bench condition worth knowing, not a code defect
+
+UDP multicast is **asymmetric on this network**: the Pixel receives the desktop's
+frames, the desktop receives none of the Pixel's (`udp tx 6 rx 0` while the Pixel
+reads them fine). Classic wired-to-wireless AP behaviour. It worked on 2026-09-04,
+so it is the network and not the transport. Do not diagnose a dead UDP bearer from
+it.

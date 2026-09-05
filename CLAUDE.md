@@ -75,6 +75,11 @@ SDK).
   consumer outside this workspace (Jonathan's TAK-related work), so an ABI change
   still breaks someone without touching a repo here. The node library
   (`meshtastic-node-kmp`) is designed to sit *below* the SDK, never depend on it.
+- `MQTTastic-Client-KMP` is consumed by `meshtastic-node-kmp` (2026-09-05):
+  `node-transport-mqtt` takes `org.meshtastic:mqtt-client-core` and
+  `mqtt-client-transport-tcp` from Maven Central, which is the reason that library
+  exists. So an ABI change there now breaks the node's MQTT bearer. It publishes
+  no `iosX64` artifact, which is the one target that module omits.
 - `gradle-flatpak-sources` packages `android`'s `:desktopApp` for Flathub.
 - `meshtastic-python` is what `labeltastic` and `meshtastic-mcp` both import to
   reach a radio, so it sits under every Python-side device test in this
