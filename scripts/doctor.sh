@@ -353,6 +353,14 @@ if jq -e '.mcpServers.github' "$HOME/.claude.json" >/dev/null 2>&1; then
 else
   ok "github mcp" "plugin only"
 fi
+# The orient hook and every doc spell the tools as `just …`; without it on
+# PATH the hook falls back to `nix run <root>#…`, which is longer, not broken.
+if command -v just >/dev/null 2>&1; then
+  ok "just on PATH" "$(command -v just)"
+else
+  warn "just on PATH" "not found — the orient hook prints nix run forms instead"
+  fix "nix profile install nixpkgs#just"
+fi
 # Informational: what this machine has that the core does not.
 np=$(jq -r '.enabledPlugins // {} | to_entries[] | select(.value) | .key' "$cfg" 2>/dev/null | grep -vc "^$pname@" || true)
 ns=0

@@ -10,6 +10,11 @@
 
 **Spec:** `notes/agent-tools.md`
 
+**Status 2026-09-05:** all eight tasks landed on `main` (6117b7a … f5ebcd9 plus
+the `just`-fallback follow-up); acceptance recorded in `notes/agent-tools.md`
+→ Evidence → Acceptance runs. The `- [ ]` boxes below are the record of the
+steps, not open work.
+
 ## Global Constraints
 
 - Workspace commits go straight to `main`, sentence-style, **no attribution footers**.

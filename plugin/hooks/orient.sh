@@ -42,8 +42,10 @@ case "$cwd" in
     fi ;;
 esac
 
-ctx="$where
-Workspace tools (work from any cwd; \`nix run .#\` does not resolve inside a repo):
+# The just recipes are the short forms; a machine without just on PATH (the
+# laptop's login shell) gets the nix run spellings, which always resolve.
+if command -v just >/dev/null 2>&1; then
+  tools="Workspace tools (work from any cwd; \`nix run .#\` does not resolve inside a repo):
   just brief <repo>            orient on one repo (docs to read, branch, drift)
   just brief --short a b c     one line per repo
   just pins                    cross-repo pin state (protobufs, design, api seeds)
@@ -51,6 +53,18 @@ Workspace tools (work from any cwd; \`nix run .#\` does not resolve inside a rep
   just wt <repo> <name> <cmd>  run in a worktree with its env; just in <repo> <cmd> for the primary
   just worktree <repo> <br>    create a worktree the right way
   just sync | just doctor
-Run just from $root (justfile: $root/justfile)."
+Run just from any cwd under $root (justfile: $root/justfile)."
+else
+  tools="Workspace tools (\`just\` is not on PATH here; \`nix profile install nixpkgs#just\` gives the short forms):
+  nix run $root#brief -- <repo>                orient on one repo (docs to read, branch, drift)
+  nix run $root#brief -- --short a b c         one line per repo
+  nix run $root#pins                            cross-repo pin state (protobufs, design, api seeds)
+  nix run $root#pr -- <repo> <n>                PR status: checks for the head SHA, threads, queue
+  nix run $root#worktree -- --path <repo> <name>   a worktree's path; then cd there && direnv exec . <cmd>
+  nix run $root#worktree -- <repo> <br>         create a worktree the right way
+  nix run $root#sync | nix run $root#doctor"
+fi
+ctx="$where
+$tools"
 jq -n --arg c "$ctx" '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $c}}'
 exit 0

@@ -170,7 +170,10 @@ The spellings block, identical everywhere and at most eight lines:
 the command: `just` takes `+CMD` variadics as-is.)
 
 It does not tell the model to `cd` (decision 1) and it does not print memory
-(the store does that).
+(the store does that). When `just` is not on PATH (the laptop's login shell
+has it only inside a dev shell) the block switches to `nix run <root>#…`
+spellings and says how to get the short ones; `doctor` reports `just on
+PATH` for the same reason.
 
 ## Worktree paths and multi-repo `brief`
 
@@ -270,4 +273,28 @@ submodule `static/design` @ 77fafb2 (60 commits behind `design` master);
 TAKPacket-SDK's latest tag; `apple/MeshtasticProtobufs/Package.resolved` pins
 only `swift-protobuf 1.36.1`.
 
-**Acceptance runs.** Appended per machine when the rollout lands.
+**Acceptance runs.**
+
+*james-pc, 2026-09-05 07:44 CDT* (main `f5ebcd9`, plugin `0.1788612279.0`):
+`just pins` printed twelve rows: meshtastic-python `behind: v2.8.0`, apple
+`v2.8.0+2  ahead of v2.8.0`, meshtastic-sdk `behind: v2.8.0`, design consumer
+`behind by 60 commits`, two api seeds `DIFFERS`. `just pr android 7045` printed
+`head 056eed6` and `checks@056eed6  ok 5  fail 1  pending 0  labeler`; `gh pr
+view --json headRefOid` gave `056eed6`. `just wt android
+feat-map-offline-fallback pwd` and `just in kzstd pwd` printed the worktree and
+`kzstd` paths. `claude -p` from that android worktree, asked where it was with
+no tools, answered with the worktree name, its branch and the primary
+`/home/james/meshtastic/android`. `doctor` all clear. Fixtures T31–T35 pass;
+`just check` green.
+
+*MacBook Air, 2026-09-05 over ssh* (same main, plugin `0.1788612472.0`):
+`sync` rendered and updated the plugin; `doctor` all clear. `nix run .#pins`
+printed the same twelve rows (design `behind by 58`, the laptop's `design`
+being two commits older). `brief --short android apple firmware` printed three
+lines, android `dirty!` on `feat/api-cache-tuning` (another session's work),
+apple `drift -34/+0`, firmware `drift -28/+0`, PRs `?` (no `gh` auth in ssh).
+The installed hook run from `~/nixtastic/.claude/worktrees/android-startup-crash-2a7b03`
+said the org repos are not there; from `android` it named the primary
+checkout. **Not proven there:** a live Claude session (no OAuth over ssh),
+and `just` — it is not on the laptop's login PATH, which is what produced the
+`nix run` fallback and the `just on PATH` doctor line.

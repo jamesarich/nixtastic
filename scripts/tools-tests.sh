@@ -719,6 +719,10 @@ oh="$root/.cache/agent-marketplace/nixtastic/hooks/orient.sh"
 [ "$(cat "$root/.cache/agent-marketplace/nixtastic/hooks/workspace-root")" = "$root" ] || { echo "T31: workspace-root not rendered"; exit 1; }
 orient() { printf '{"cwd":%s,"hook_event_name":"SessionStart"}' "$(jq -Rn --arg c "$1" '$c')" | bash "$oh"; }
 ctx() { orient "$1" | jq -r '.hookSpecificOutput.additionalContext'; }
+# Without just on PATH the hook must still name working spellings.
+command -v just >/dev/null 2>&1 || { ctx "$root" | grep -qF "nix run $root#brief" || { echo "T31: no nix run fallback without just"; ctx "$root"; exit 1; }; }
+mkdir -p "$PWD/fakebin"; printf '#!/bin/sh\n' > "$PWD/fakebin/just"; chmod +x "$PWD/fakebin/just"
+oldpath="$PATH"; PATH="$PWD/fakebin:$PATH"; export PATH
 [ "$(orient "$HOME")" = "" ] || { echo "T31: not silent outside the workspace"; orient "$HOME"; exit 1; }
 orient "$root" | jq -e '.hookSpecificOutput.hookEventName == "SessionStart"' >/dev/null || { echo "T31: bad JSON at root"; orient "$root"; exit 1; }
 ctx "$root" | grep -q 'workspace root' || { echo "T31: root not classified"; ctx "$root"; exit 1; }
@@ -733,6 +737,7 @@ ctx "$root/.claude/worktrees/ws-wt" | grep -q 'org repos are NOT here' || { echo
 [ "$(ctx "$root" | wc -l)" -le 14 ] || { echo "T31: too long: $(ctx "$root" | wc -l) lines"; exit 1; }
 git -C "$root" worktree remove --force "$root/.claude/worktrees/ws-wt"; git -C "$root" branch -D ws-wt -q
 git -C "$root/kzstd" worktree remove --force "$root/kzstd/.claude/worktrees/orient-wt"; git -C "$root/kzstd" branch -D orient-wt -q
+PATH="$oldpath"; export PATH; rm -f "$PWD/fakebin/just"
 
 echo "--- T34: worktree --path resolves branch or dir name; unknown exits 1"
 run "$worktree" kzstd feat/path-me
