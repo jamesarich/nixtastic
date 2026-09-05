@@ -1041,10 +1041,66 @@ Pocket + Pixel + iPad, with the radio as the oracle for every wire behaviour.
 6. **Traceroute, waypoints, neighbor info** — decode parity.
 7. **MQTT bridge** and **iOS UDP** — Phase 4 bearers.
 
-### D. Open question, not a decision
+### D. Integration: the node is a radio
 
-`meshtastic-sdk` (the KMP *phone-API client*) already models nodes, channels and
-config for the apps. `node-kmp` needs the same model for its own NodeDB. Two
-copies will drift; one shared model means the SDK depends on the node or the
-node on the SDK. Decide before Tier 1 step 1 is designed, because the
-persistence seam is where the model gets fixed.
+Every consumer that could host the node already talks to a radio through one
+contract, the phone API (`ToRadio`/`FromRadio` protobuf stream):
+
+| Consumer | Seam today | State |
+| --- | --- | --- |
+| Android app | `IRadioInterface` implementations (BLE/TCP/serial/mock) feeding `RadioTransportCallback.handleFromRadio(bytes)` | imports nothing from `meshtastic-sdk` |
+| Apple app | `Accessory/Protocols/Transport.swift` (discover → connect) and `Connection.swift` (`send(ToRadio)`, `AsyncStream<ConnectionEvent>` of `FromRadio`) | no SDK dependency |
+| `meshtastic-sdk` | `RadioTransport` (`send(Frame)`, `frames(): Flow<Frame>`, identity, state) chosen with `RadioClient { transport(...) storage(...) }`; its `MeshNode` wraps the wire `NodeInfo` | not consumed by either app yet |
+
+So the integration primitive is **a phone-API server inside `node-kmp`**: one
+`commonMain` `LocalPhoneApi` that implements the firmware's `PhoneAPI`/`StreamAPI`
+state machine — `want_config` → `MyNodeInfo`, `DeviceMetadata`, one `NodeInfo`
+per entry of the node's NodeDB, `Config`/`ModuleConfig`/`Channel`,
+`config_complete`; inbound `MeshPacket`s as `FromRadio`; `ToRadio.packet` →
+`MeshNode.send`; `AdminMessage` for local settings (owner, channels, region) →
+the node's `Config`; `queueStatus`, `rebooted`, `logRecord`. Three thin adapters
+around it, each a few hundred lines:
+
+- Android: an `IRadioInterface` ("local node") beside BLE/TCP/serial, selectable
+  like any radio. The app's Room NodeDB, messaging, channels and settings UI work
+  unchanged, because to the app this *is* a radio.
+- Apple: a `Transport` + `Connection` pair backed by the node-kmp iOS framework
+  the monitor already builds.
+- SDK: a `transport-local-node` module implementing `RadioTransport`, for when an
+  app adopts the SDK.
+
+**What this settles.** The two NodeDBs are not copies. The node's own DB is the
+mesh-layer record of what *it* heard, exactly the firmware's `NodeDB`; the app's
+is the client-layer mirror fed over the phone API, exactly as it is fed by a radio
+today. Same relationship, same code paths, no new sync. And the node's record
+shape should be the wire `NodeInfo` (as the SDK's `MeshNode.raw` already is), so
+parity with the firmware's `NodeInfoLite` fields (user, position, snr,
+last_heard, device_metrics, hops_away, via_mqtt, is_favorite…) is by
+construction, and the phone-API dump is a straight copy.
+
+**What it gives the plan.** The firmware's `PhoneAPI.cpp` becomes the parity
+yardstick for Tier 1: everything the config dump must contain is exactly the
+state the node must persist (step 1), and every `FromRadio` a stock app expects
+(NodeInfo on schedule, position, telemetry, routing ACK/NAK) is a Tier 1 item.
+The stock app's own screens become the test oracle: connect the stock Android
+app to the local node and it must show the same node list, battery and messages
+it shows against the Pocket.
+
+**Two radios.** An app connects to one radio. With the local node as its radio,
+a physical radio is reached as a *mesh peer* of the node (GATT mesh-peer or
+BLE-adv), giving the app LoRa through the phone node — but the app then no
+longer administers that radio directly; that goes over the mesh (remote admin,
+Tier 3) or by switching connections. Interim: both paths exist, the user picks
+the radio as today. End state to aim for, not to build first.
+
+**Persistence.** The seam from step 1 stays host-supplied (Room on Android,
+SwiftData/files on Apple, files on desktop); when the SDK is the host, its
+`storage-sqldelight` already persists `NodeInfo` and can hold the node's DB
+keyed by the node's identity. `meshtastic-node-kmp` must not depend on the SDK:
+the node is the lower layer.
+
+**Sequence change.** Step 0, before the persistence seam: the phone-API server
+plus the Android `IRadioInterface` adapter, proven by the stock Android app
+connecting to the local node and completing its config handshake. It fixes the
+record shape (`NodeInfo`) and the persistence contents at once, and it is the
+first moment a stock app can *use* the phone node.

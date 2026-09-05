@@ -145,8 +145,11 @@ links at chunk 512 against the V3 and 244 against the Pocket.
    (2026-09-05)" section is the sequenced plan from here: persistence seam
    (NodeDB + config) → reliable delivery → scheduled NodeInfo/Position/Telemetry
    → PKI DMs → desktop LoRa then desktop BLE → traceroute/waypoints/neighbors →
-   MQTT bridge + iOS UDP. Its section D asks the model question (node-kmp vs
-   meshtastic-sdk) that must be answered before the persistence seam is drawn.
+   MQTT bridge + iOS UDP — preceded by **step 0: a phone-API server in node-kmp
+   plus an Android `IRadioInterface` adapter, so the node is a radio to the apps**
+   (section D of the plan: neither app consumes `meshtastic-sdk` today; all three
+   speak ToRadio/FromRadio; the node's NodeDB is the mesh-layer DB, the app's the
+   client-layer mirror, same as with a radio).
 8. **Tuning backlog** (all in the plan doc): iOS-*central* discovery flakiness
    (`didDiscoverPeripheral` unreliable; inbound link is solid); DUAL-role
    connection arbitration + a low connection cap; per-peer send-queue concurrency;
