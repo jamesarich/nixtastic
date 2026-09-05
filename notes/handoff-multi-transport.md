@@ -362,14 +362,41 @@ test. 56 bytes against 24-29 for the broadcasts is the PKI overhead. Sending it
 needed a monitor change - the dogfood app could only broadcast, so a leading `!hex`
 in the send field now addresses a DM.
 
-**BLOCKED, not skipped - each needs hardware or a grant that is not here:**
-- **BlueZ on Linux.** The uConsole (`james@192.168.1.247`) was offline when tried;
-  it is the Linux box this wants. Nothing about the Linux path has executed.
-- **iOS UDP.** Needs Apple's multicast entitlement, granted by application. The
-  code reports a refused join as an unavailable bearer naming the entitlement,
-  which is the honest behaviour without it, but that path is unexercised too.
-- **DUAL-role GATT arbitration.** Needs three DUAL nodes reachable at once. The
-  Pocket is powered and on the air but was not USB-attached this sitting.
+**GATT ARBITRATION PROVEN, 2026-09-05 - three DUAL nodes.** Mac (Kotlin/Native),
+Pixel and iPad, all node-kmp DUAL, all meshing over GATT at once:
+
+```
+Pixel:  central=[5D:9E:6F:0C:22:EB(chunk=514), EF:E2:0A:BE:95:6A(chunk=244)]
+        subscribers=[2C:CA:16:30:A7:A2]        <- the Mac won that pair
+Mac:    notify state BADA1045 on=true chunk=512
+        notify state 6B496E38 on=true chunk=512  <- central to both of its peers
+```
+
+Mixed roles, **exactly one per pair**, which is what a per-pair election produces and
+what a race cannot: without arbitration the same peer appears in both `central` and
+`subscribers`. `gatt rx 11` on the Pixel, so the triangle carries traffic rather than
+just roles. The HELLO is visible as the 10-byte control write, intercepted in
+`GattLinkBase` (commonMain), so neither platform file needed changing.
+
+The third node is the **macOS native binary**, which is also how the desktop BLE spike
+got run - see `desktop-ble-plan.md`.
+
+**macOS TCC SPIKE PASSED, 2026-09-05.** The `macosArm64` CoreBluetooth binary spawned
+from a plain JVM `ProcessBuilder` reaches `state=5` (poweredOn, not the `unauthorized`
+3 a denial gives), advertises, connects, and subscribes - both GATT roles. So the
+helper-process bridge for macOS desktop BLE is viable, not speculative. Unsettled: it
+ran from a terminal-launched JVM, so TCC attributed to the terminal; a bundled `.app`
+needs its own `Info.plist` key.
+
+**STILL BLOCKED, and each on something outside the code:**
+- **BlueZ advertising.** The adapter refuses every `RegisterAdvertisement` with
+  `Invalid Parameters (0x0d)` at any payload size, and `bluetoothctl` fails
+  identically on the same host - so it is the controller or its driver. Scanning is
+  proven on that machine.
+- **iOS UDP without the multicast entitlement.** Apple grants it by application. The
+  socket itself is proven on macOS native (11 tests, including a real multicast round
+  trip); what is unread is what the iPad's udp row says, because iOS 26 has no working
+  screenshot path.
 
 **The plan's sequence (`multi-transport-mesh.md` -> "Parity and coverage plan") is
 now implemented end to end.** Later slices, all pushed:

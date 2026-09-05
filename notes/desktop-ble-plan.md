@@ -78,10 +78,25 @@ fix automatically. `node-phone-api`'s `StreamFrame.kt` already compiles for both
 Kotlin/Native macOS target, and `node-transport-lora` is jvm+android only — that route
 would cost the LoRa bearer outright, which is the one bearer proven on hardware.
 
-**De-risk before writing any of it.** Two TCC questions decide whether the route ships
-at all, and both are answerable in an afternoon: build the existing `macosArm64` test
-binary, spawn it from a plain `java` process, and see whether the Bluetooth prompt
-appears and to whom it is attributed. Then note that the monitor's
+**The de-risking spike is DONE, 2026-09-05, and it passed.** The existing
+`macosArm64` test binary was spawned from a plain `java` process via `ProcessBuilder`,
+exactly as a bridge would:
+
+```
+[from JVM child] MNGATT peripheralManager state=5        (poweredOn, not unauthorized)
+[from JVM child] MNGATT addService + startAdvertising    (peripheral role)
+[from JVM child] MNGATT notify state BADA1045 on=true chunk=512   (central role)
+[from JVM child] MNGATT central subscribed 7F157477 negotiated=512
+[from JVM child] MNGATT didReceiveWrite 10B control
+```
+
+Both GATT roles work in a JVM-spawned child, and TCC did not block it - the manager
+reaches `poweredOn` rather than the `unauthorized` state (3) a denial produces. So the
+process boundary is not the problem, and route A is viable rather than speculative.
+
+**What the spike does NOT settle:** it ran from a terminal-launched JVM, so TCC
+attributed the request to the terminal. A bundled `.app` is attributed to the app and
+still needs its `Info.plist` key. Note also that the monitor's
 `nativeDistributions` block has **no macOS section at all**, so
 `NSBluetoothAlwaysUsageDescription` is missing, and the documented
 `java -jar MeshMonitor-*.jar` launch has no `Info.plist` — TCC attributes the request
@@ -125,6 +140,7 @@ firmware, not in the archaeology afterwards. Recorded in `AGENTS.md` too.
 
 ## Suggested order
 
+0. ~~De-risk the macOS bridge with a TCC spike.~~ **Done, and it passed** - see above.
 1. **Settle the on-air format**, knowing the above. It constrains everything else and
    changing it later breaks every deployed node.
 2. **macOS GATT bridge.** Best value per line: a quarter of a new backend's cost,
