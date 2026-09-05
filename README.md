@@ -323,6 +323,7 @@ repo builds.
 | `nix run .#pr -- <repo> <n> [status\|threads\|wait\|rereview]` | PR status for the **head SHA**: checks, unresolved threads, queue, conflicts. `wait` exits 75 on timeout |
 | `nix run .#worktree -- <repo> <branch>` | worktree with the correct shell |
 | `nix run .#worktree -- --list \| --remove \| --prune \| --path` | manage worktrees across all repos; `--path` prints one's directory |
+| `nix run .#worktree -- --gc [--apply]` | reap worktrees whose branch merged (GitHub says so, at this exact HEAD) or that never got a commit; report only unless `--apply` |
 | `just wt <repo> <name> <cmd>` / `just in <repo> <cmd>` | run a command inside a worktree or a primary checkout with its env, from any cwd |
 | `nix run .#bootstrap-sdk` | install Android SDK packages from the pinned list |
 | `nix run .#doctor` | check the wiring below; exits non-zero if anything is broken |

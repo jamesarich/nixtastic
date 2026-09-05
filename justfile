@@ -29,7 +29,7 @@ pull:
 brief repo:
     nix run {{ justfile_directory() }}#brief -- {{ repo }}
 
-# Worktrees: `just worktree android fix/thing`, `--list`, `--remove`, `--prune`.
+# Worktrees: `just worktree android fix/thing`, `--list`, `--remove`, `--prune`, `--gc [--apply]`.
 worktree *ARGS:
     nix run .#worktree -- {{ ARGS }}
 

@@ -13,6 +13,7 @@ usage() {
   echo "  nix run .#worktree -- --remove <repo> <name>   remove one"
   echo "  nix run .#worktree -- --path <repo> <branch|name>   print its path"
   echo "  nix run .#worktree -- --prune [repo]           drop dead registrations"
+  echo "  nix run .#worktree -- --gc [--apply] [repo]    reap merged/empty worktrees (report by default)"
 }
 
 repo_shell() {
@@ -95,6 +96,85 @@ case "${1:-}" in
         echo "           git -C $p branch -D $branch   to force"
       fi
     fi
+    exit 0 ;;
+  --gc)
+    # Squash merges leave a branch's commits outside main forever, so git
+    # alone cannot say "merged" (AGENTS.md → Worktrees accumulate). Ask
+    # GitHub: a MERGED PR whose head SHA is the local HEAD means nothing
+    # here is unpublished. Reap that and the empty (no commits, older than
+    # a day, so not one just created) — everything else is kept and named.
+    apply=false; shift
+    [ "${1:-}" = --apply ] && { apply=true; shift; }
+    have_gh=false; command -v gh >/dev/null 2>&1 && have_gh=true
+    reap=0; keep=0
+    while read -r d; do
+      p="$root/$d"; [ -d "$p/.git" ] || continue
+      gh_repo=$(git -C "$p" remote get-url origin 2>/dev/null | sed 's|.*github.com[:/]||; s|\.git$||')
+      def=$(git -C "$p" symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null | sed 's|^refs/remotes/||')
+      if [ -z "$def" ]; then
+        for c in origin/main origin/master origin/develop; do
+          git -C "$p" rev-parse -q --verify "$c" >/dev/null 2>&1 && { def="$c"; break; }
+        done
+      fi
+      while read -r wt; do
+        [ -d "$wt" ] || continue
+        label="$d/${wt##*/}"
+        case "$wt" in
+          "$p"/.claude/worktrees/*) ;;
+          *) printf '  keep   %-52s parked by another tool at %s\n' "$label" "$wt"; keep=$((keep + 1)); continue ;;
+        esac
+        branch=$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)
+        head=$(git -C "$wt" rev-parse HEAD 2>/dev/null || echo "")
+        dirty=$(git -C "$wt" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+        beyond="?"; [ -n "$def" ] && beyond=$(git -C "$wt" rev-list --count "$def..HEAD" 2>/dev/null || echo "?")
+        open=""; merged=""
+        if [ "$have_gh" = true ] && [ "$branch" != HEAD ] && [ -n "$gh_repo" ]; then
+          prs=$(gh pr list --repo "$gh_repo" --head "$branch" --state all --limit 5 --json number,state,headRefOid 2>/dev/null || echo "")
+          if [ -n "$prs" ]; then
+            open=$(printf '%s' "$prs" | jq -r 'map(select(.state=="OPEN")) | .[0].number // empty')
+            merged=$(printf '%s' "$prs" | jq -r --arg h "$head" 'map(select(.state=="MERGED" and .headRefOid==$h)) | .[0].number // empty')
+          fi
+        fi
+        class=keep; why=""
+        if [ "$dirty" != 0 ]; then why="$dirty uncommitted file(s)"
+        elif [ -n "$open" ]; then why="open PR #$open"
+        elif [ -n "$merged" ]; then class=reap; why="merged as PR #$merged, HEAD is the PR head"
+        elif [ "$beyond" = 0 ]; then
+          # A tree with no commits is either abandoned or just made; the
+          # worktree's .git file is written once, at creation.
+          if [ -n "$(find "$wt/.git" -maxdepth 0 -mtime +0 2>/dev/null)" ]; then class=reap; why="no commits beyond $def"
+          else why="no commits yet, created today"; fi
+        elif [ "$have_gh" = false ]; then why="$beyond commit(s) beyond $def; gh unavailable, cannot ask GitHub"
+        else why="$beyond commit(s) beyond $def, no merged PR at this HEAD"
+        fi
+        if [ "$class" = reap ]; then
+          reap=$((reap + 1))
+          if [ "$apply" = true ]; then
+            if git -C "$p" worktree remove "$wt" 2>/dev/null; then
+              msg="removed"
+              if [ "$branch" != HEAD ]; then
+                git -C "$p" branch -D "$branch" >/dev/null 2>&1 && msg="removed, branch $branch deleted"
+              fi
+              printf '  reaped %-52s %s (%s)\n' "$label" "$why" "$msg"
+            else
+              printf '  FAILED %-52s %s — git worktree remove refused\n' "$label" "$why"
+            fi
+          else
+            printf '  reap   %-52s %s\n' "$label" "$why"
+          fi
+        else
+          keep=$((keep + 1))
+          printf '  keep   %-52s %s\n' "$label" "$why"
+        fi
+      done <<< "$(git -C "$p" worktree list --porcelain | sed -n 's/^worktree //p' | tail -n +2)"
+    done <<< "$(targets "${1:-}")"
+    echo ""
+    if [ "$apply" = true ]; then
+      printf '  %s reaped, %s kept\n' "$reap" "$keep"
+    else
+      printf '  %s reapable, %s kept — nix run .#worktree -- --gc --apply to remove them\n' "$reap" "$keep"
+    fi
+    [ "$have_gh" = true ] || echo "  (gh not on PATH: only empty trees can be classified as reapable)"
     exit 0 ;;
   --prune)
     while read -r d; do

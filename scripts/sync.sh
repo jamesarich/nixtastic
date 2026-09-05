@@ -490,6 +490,17 @@ write_claude_launcher "$root"
 memory_pass
 plugin_pass "$root"
 
+# Worktrees outlive their PRs (squash merges hide it from git); say how many
+# exist and where the merged ones get reaped. Counting is cheap, classifying
+# is a GitHub call per tree, so that stays in the tool.
+nwt=0
+while IFS=$'\t' read -r d _ _; do
+  [ -d "$root/$d/.git" ] || continue
+  n=$(git -C "$root/$d" worktree list --porcelain | grep -c '^worktree ' || true)
+  nwt=$((nwt + n - 1))
+done < "$NIXTASTIC_REPOS_TSV"
+[ "$nwt" -gt 0 ] && printf '  worktrees %s open — nix run .#worktree -- --gc reports which are reapable\n' "$nwt"
+
 if write_mcp_json "$root" "$root"; then
   echo "  .mcp.json written — meshtastic-mcp server for this workspace"
   # A project-scope server is approved once per machine, the

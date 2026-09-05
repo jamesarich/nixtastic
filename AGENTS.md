@@ -871,7 +871,15 @@ only copy of the work.
 `--prune` does not close this either: `git worktree prune` drops **dead
 registrations** (a directory already deleted), not live worktrees whose work
 landed. Removing a live one is a judgement call about unpushed work — an
-unpushed branch is the only copy of it — so it stays manual.
+unpushed branch is the only copy of it — so it stayed manual until
+2026-09-05, when `--gc` made the *provable* part mechanical: a clean tree
+whose branch has a **merged** PR whose head SHA **is** the local HEAD holds
+nothing unpublished, and a clean tree with no commits beyond the default
+branch, older than a day, holds nothing at all. `--gc` reports those as
+reapable and removes them under `--apply`; everything else — dirty, open
+PR, commits past the PR head, created today, or parked outside the repo by
+herdr/paseo — is kept and says why. The first run reaped 24 of 47 across
+both machines. `sync` prints the open-worktree count with a pointer to it.
 
 ### Agent-harness worktree isolation makes a decoy workspace
 

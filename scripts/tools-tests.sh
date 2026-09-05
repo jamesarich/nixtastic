@@ -884,5 +884,55 @@ run_lax "$pr" notarepo 1
 expect 'unknown repo'
 PATH="$oldpath"; export PATH
 
+echo "--- T36: worktree --gc — merged-at-head and stale-empty reaped; dirty, open, unpushed, fresh, foreign kept"
+mkdir -p "$PWD/fakebin"; GCFIX="$HOME/gcfix"; mkdir -p "$GCFIX"; export GCFIX
+cat > "$PWD/fakebin/gh" <<'EOF'
+#!/bin/sh
+# Stub gh for --gc: `pr list --head <branch>` replays $GCFIX/<branch-with-slashes-as-dashes>.json, else [].
+b=""; prev=""; for a in "$@"; do [ "$prev" = "--head" ] && b="$a"; prev="$a"; done
+f="$GCFIX/$(printf '%s' "$b" | tr '/' '-').json"
+if [ -f "$f" ]; then cat "$f"; else echo '[]'; fi
+EOF
+chmod +x "$PWD/fakebin/gh"
+mk() { git -C "$root/kzstd" worktree add -q "$root/kzstd/.claude/worktrees/$1" -b "$1"; }
+mk gc-merged;   (cd "$root/kzstd/.claude/worktrees/gc-merged"   && echo m > m.txt && git add m.txt && git commit -qm merged)
+mk gc-behind;   (cd "$root/kzstd/.claude/worktrees/gc-behind"   && echo b > b.txt && git add b.txt && git commit -qm behind && echo b2 > b2.txt && git add b2.txt && git commit -qm "after the PR")
+mk gc-open;     (cd "$root/kzstd/.claude/worktrees/gc-open"     && echo o > o.txt && git add o.txt && git commit -qm open)
+mk gc-dirty;    echo d > "$root/kzstd/.claude/worktrees/gc-dirty/tracked.txt"
+mk gc-unpushed; (cd "$root/kzstd/.claude/worktrees/gc-unpushed" && echo u > u.txt && git add u.txt && git commit -qm unpushed)
+mk gc-empty-old; touch -d '2 days ago' "$root/kzstd/.claude/worktrees/gc-empty-old/.git"
+mk gc-empty-new
+git -C "$root/kzstd" worktree add -q "$HOME/parked-elsewhere" -b gc-parked
+printf '[{"number":11,"state":"MERGED","headRefOid":"%s"}]' "$(git -C "$root/kzstd/.claude/worktrees/gc-merged" rev-parse HEAD)" > "$GCFIX/gc-merged.json"
+printf '[{"number":12,"state":"MERGED","headRefOid":"%s"}]' "$(git -C "$root/kzstd/.claude/worktrees/gc-behind" rev-parse HEAD~1)" > "$GCFIX/gc-behind.json"
+printf '[{"number":13,"state":"OPEN","headRefOid":"%s"}]' "$(git -C "$root/kzstd/.claude/worktrees/gc-open" rev-parse HEAD)" > "$GCFIX/gc-open.json"
+oldpath="$PATH"; PATH="$PWD/fakebin:$PATH"; export PATH
+run "$worktree" --gc kzstd
+expect '^  reap +kzstd/gc-merged .*merged as PR #11'
+expect '^  keep +kzstd/gc-behind .*2 commit\(s\) beyond .*no merged PR at this HEAD'
+expect '^  keep +kzstd/gc-open .*open PR #13'
+expect '^  keep +kzstd/gc-dirty .*1 uncommitted'
+expect '^  keep +kzstd/gc-unpushed .*no merged PR'
+expect '^  reap +kzstd/gc-empty-old .*no commits beyond'
+expect '^  keep +kzstd/gc-empty-new .*created today'
+expect '^  keep +kzstd/parked-elsewhere .*parked by another tool'
+expect '2 reapable, [0-9]+ kept'
+[ -d "$root/kzstd/.claude/worktrees/gc-merged" ] || { echo "T36: report mode removed a worktree"; exit 1; }
+run "$worktree" --gc --apply kzstd
+expect '^  reaped +kzstd/gc-merged .*branch gc-merged deleted'
+expect '^  reaped +kzstd/gc-empty-old'
+expect '2 reaped, [0-9]+ kept'
+[ ! -d "$root/kzstd/.claude/worktrees/gc-merged" ] || { echo "T36: merged worktree still there"; exit 1; }
+git -C "$root/kzstd" rev-parse -q --verify gc-merged >/dev/null && { echo "T36: merged branch not deleted"; exit 1; }
+[ -d "$root/kzstd/.claude/worktrees/gc-behind" ] || { echo "T36: tree with commits past the PR was removed"; exit 1; }
+[ -d "$root/kzstd/.claude/worktrees/gc-dirty" ] || { echo "T36: dirty tree removed"; exit 1; }
+[ -d "$HOME/parked-elsewhere" ] || { echo "T36: foreign tree removed"; exit 1; }
+PATH="$oldpath"; export PATH
+for w in gc-behind gc-open gc-unpushed gc-empty-new; do git -C "$root/kzstd" worktree remove --force "$root/kzstd/.claude/worktrees/$w"; git -C "$root/kzstd" branch -D -q "$w"; done
+git -C "$root/kzstd" worktree remove --force "$root/kzstd/.claude/worktrees/gc-dirty"; git -C "$root/kzstd" branch -D -q gc-dirty
+git -C "$root/kzstd" worktree remove --force "$HOME/parked-elsewhere"; git -C "$root/kzstd" branch -D -q gc-parked
+run "$sync"
+expect 'worktrees [0-9]+ open — nix run .#worktree -- --gc'
+
 echo "all tests passed"
 touch "$out"
