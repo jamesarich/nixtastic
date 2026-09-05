@@ -1052,6 +1052,16 @@ contract, the phone API (`ToRadio`/`FromRadio` protobuf stream):
 | Apple app | `Accessory/Protocols/Transport.swift` (discover → connect) and `Connection.swift` (`send(ToRadio)`, `AsyncStream<ConnectionEvent>` of `FromRadio`) | no SDK dependency |
 | `meshtastic-sdk` | `RadioTransport` (`send(Frame)`, `frames(): Flow<Frame>`, identity, state) chosen with `RadioClient { transport(...) storage(...) }`; its `MeshNode` wraps the wire `NodeInfo` | not consumed by either app yet |
 
+**Status (2026-09-05).** The server exists: `node-phone-api` (`StreamFrame`,
+`LocalRadio`, `PhoneApiSession`, JVM `PhoneApiTcpServer` on 4403), served by
+the desktop monitor whenever its node runs. Proven with the Python CLI
+(`--host`) and the stock Android app over TCP: both handshake stages, a held
+link, a typed message on the air. Not yet: the three adapters below and
+`AdminMessage`. Lessons: the dump must be shaped by the nonce (69420 omits
+other nodes, 69421 sends only node infos — a `my_info` there resets the
+Android app to stage 1); and the node must never be silent for 90 s, so the
+session answers heartbeats and emits a `queueStatus` every 30 s.
+
 So the integration primitive is **a phone-API server inside `node-kmp`**: one
 `commonMain` `LocalPhoneApi` that implements the firmware's `PhoneAPI`/`StreamAPI`
 state machine — `want_config` → `MyNodeInfo`, `DeviceMetadata`, one `NodeInfo`

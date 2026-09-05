@@ -145,11 +145,22 @@ links at chunk 512 against the V3 and 244 against the Pocket.
    (2026-09-05)" section is the sequenced plan from here: persistence seam
    (NodeDB + config) → reliable delivery → scheduled NodeInfo/Position/Telemetry
    → PKI DMs → desktop LoRa then desktop BLE → traceroute/waypoints/neighbors →
-   MQTT bridge + iOS UDP — preceded by **step 0: a phone-API server in node-kmp
-   plus an Android `IRadioInterface` adapter, so the node is a radio to the apps**
+   MQTT bridge + iOS UDP — preceded by **step 0: the node is a radio to the apps**
    (section D of the plan: neither app consumes `meshtastic-sdk` today; all three
    speak ToRadio/FromRadio; the node's NodeDB is the mesh-layer DB, the app's the
-   client-layer mirror, same as with a radio).
+   client-layer mirror, same as with a radio). **Step 0 server landed 2026-09-05**
+   (`meshtastic-node-kmp` `aadec77`): `node-phone-api` module + desktop TCP
+   listener on 4403; the stock Android app connects to the desktop node over
+   TCP, completes both handshake stages, holds the link, and a message it sends
+   leaves as a multicast frame. Still owed under step 0: the Android
+   `IRadioInterface` adapter, the Apple `Transport`/`Connection` pair, the SDK
+   `RadioTransport` module, and `AdminMessage` handling. Two facts the stock
+   app taught: its TCP transport drops a radio silent for 90 s (18 read
+   timeouts, reset only by received bytes) — the session answers heartbeats and
+   sends a `queueStatus` every 30 s; and without Routing ACK/NAK from the node
+   its sent messages sit at "Sending..." and end as "Failed to deliver to mesh",
+   so step 2 (reliable delivery) owes the phone the implicit ACK and the
+   `MAX_RETRANSMIT` NAK that `ReliableRouter` sends.
 8. **Tuning backlog** (all in the plan doc): iOS-*central* discovery flakiness
    (`didDiscoverPeripheral` unreliable; inbound link is solid); DUAL-role
    connection arbitration + a low connection cap; per-peer send-queue concurrency;
