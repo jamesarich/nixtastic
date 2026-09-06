@@ -271,7 +271,12 @@ None of the three refutations survives reading:
 - **want_ack stripped from broadcasts** was refuted as "working as deliberately
   designed, not an unintended bug", which does not engage the claim - that the
   stated rationale misdescribes the protocol and leaves the 3-attempt broadcast
-  budget as dead code.
+  budget as dead code. Confirmed on hardware the next morning: a channel message
+  sent from the stock Android app through the phone API sat at "Sending..." for
+  five minutes and then went red. The app's own send-ack timeout stamped
+  `Routing.Error.TIMEOUT`, which `getMessageRoutingErrorStringResFrom` renders
+  with the same string as `MAX_RETRANSMIT` - so "Failed to deliver to mesh" on
+  screen was the app giving up, not a NAK from the node.
 - **the phone session bound to a cancelled node** was refuted with the words
   "Without seeing platform..." in the reasoning. Refuting on admittedly
   incomplete evidence is the failure mode this whole exercise is meant to catch.

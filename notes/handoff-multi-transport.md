@@ -124,13 +124,32 @@ found to make a bearer *throw* on this device, see the traps) and
 - **`restart()`**: arming the region produced exactly one `node stopped` per
   `node started`, and the attached phone session was dropped with it.
 
-**What the next bench sitting still owes.** These change behaviour a stock app
-sees and none has been run against one - a phone did connect during the sitting
-(`phone api: 192.168.1.182 connected`) but no message was sent through it:
+**Proven against the stock app 2026-09-06** (Pixel 6a on wifi adb, TCP to
+192.168.1.138:4403):
 
-1. **Routing receipts to the phone.** Connect the stock Android app to the desktop
-   node and send a channel message. It should resolve rather than sit at
-   "Sending..." and end as "Failed to deliver to mesh".
+- **Routing receipts for a broadcast, which is what the phone actually sends.**
+  A channel message from the app resolved in ~20 s with
+  `[ackNak] req=188409998 routeErr=5 isAck=false` - a real MAX_RETRANSMIT NAK
+  from the node after its three broadcast attempts. Before `5cc41af` both senders
+  stripped `want_ack` from every broadcast, so nothing was tracked, no receipt of
+  any kind was possible, and the app's own five-minute send-ack timeout stamped
+  the message `Routing.Error.TIMEOUT` instead. Both render as "Failed to deliver
+  to mesh" (`getMessageRoutingErrorStringResFrom` folds TIMEOUT, GOT_NAK and
+  MAX_RETRANSMIT into one string), so the screen looks identical either way - the
+  logcat `routeErr` is the only way to tell a receipt from a give-up.
+  MAX_RETRANSMIT is the honest verdict here: the node was on `Island`, so nothing
+  could rebroadcast it and no implicit ack was reachable.
+- **The refusal of a phone's local AdminMessage** is visible on connect as five
+  `queueStatus res=-1` in a row - the app pushing its own owner/config at the
+  radio, addressed to the radio itself.
+
+**What the next bench sitting still owes.**
+
+1. **The `Delivered` half of the receipt path.** Needs a relayer, so it needs
+   `relay` on with `hopLimit` 1 and a LoRa bearer that can transmit: the Pocket
+   rebroadcasts at hop_limit 0, we overhear it with `hopsAway = 1`, and the app
+   should read "Delivered to mesh". That puts the node on the live local mesh as a
+   one-hop relayer, so it is James's call.
 2. **The config dump.** It now runs to the firmware's ConfigType and
    ModuleConfigType maxima (10 and 17, up from 8 and 13). Confirm the stock app
    still completes its handshake - more sections is the safer direction, but it is
@@ -146,6 +165,13 @@ emission the fix exists to prevent. It is unit-tested and mutation-checked, and
 that is the right place for it. Whether the shared airtime ledger survives a
 tuning change is still unrun - the monitor surfaces no airtime figure, so it
 needs either a log line or a test hook first.
+
+**A monitor restart silences LoRa.** `TransportTuning.loraRegion` defaults to
+`UNSET` and the tuning is not persisted, so a relaunched dashboard comes back
+`LoRa: 906.875 MHz rx-only` however the previous session was armed. Nothing warns
+about it; the bearer row and the header line are the only tell, and a send then
+goes out over UDP alone. Arming is a transmit decision, so a remembered region
+would have to be an explicit opt-in rather than a silent restore.
 
 ## Next steps, in order
 

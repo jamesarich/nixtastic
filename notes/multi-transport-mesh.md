@@ -1211,10 +1211,14 @@ Gate is now `spotlessCheck detekt apiCheck allTests testAndroidHostTest`.
   `ccf3677`). All four surfaced as `Opaque`, "could not be read", having in fact
   been read. Nullable fields throughout, because the wire's `optional` exists to
   separate "not measured" from "measured zero".
-- **Reliable delivery** (`e9ca481`). Firmware budgets, 5 unicast and 3 broadcast
-  total attempts. The hard part is not retrying but refusing to stop wrongly: a
-  neighbour's rebroadcast is an implicit ack, our own UDP-multicast loopback is
-  not, and `hopsAway` separates them.
+- **Reliable delivery** (`e9ca481`, broadcasts `5cc41af`). Firmware budgets, 5
+  unicast and 3 broadcast total attempts. The hard part is not retrying but
+  refusing to stop wrongly: a neighbour's rebroadcast is an implicit ack, our own
+  UDP-multicast loopback is not, and `hopsAway` separates them. The broadcast
+  budget was unreachable until `5cc41af`, because both senders stripped `want_ack`
+  from a broadcast on a rationale that described `want_response`: nothing acks a
+  broadcast, in this library or the firmware, so what the flag buys there is the
+  retry budget and the implicit ack.
 - **Beacon scheduler and `want_response` replies** (`b2dd0fd`). The node never
   announced, so it was invisible in every stock app and its public key never
   travelled. The reply path also stops a radio NAKing us with `NO_RESPONSE`.
