@@ -31,7 +31,8 @@ even though BCV was wired for klib and JVM all along. Dumps regenerated and
 `apiCheck` now leads the gate.
 
 `meshtastic-node-kmp` `main` is **pushed**. The `firmware`
-`spike/ble-mesh-transport` branch is **pushed** through `df1ae63bf`, and its
+`spike/ble-mesh-transport` branch is **pushed** through `ca0a39c51` (the audit fixes
+are in that head, not in the earlier `df1ae63bf` these notes used to name), and its
 `protobufs` submodule pointer (`8db5d3e`) is on `meshtastic/protobufs`
 `spike/ble-mesh-transport`, so a fresh clone of the spike resolves. Landing those
 protos on `master` and publishing the artifact is still owed.
@@ -207,8 +208,8 @@ whole plan is drawn on.
 | Bearer | FW ESP32-S3/C3 | FW nRF52840 | Android | iOS / macOS | JVM / Linux |
 | --- | --- | --- | --- | --- | --- |
 | **LoRa** (RF backbone, km) | ✓ backbone | ✓ backbone | - | - | - |
-| **BLE-adv** (connectionless, ext-adv) | spike ✓ | spike ✓ (rak4631 RX) | ✓ | **RX only** (no TX) | BlueZ (future) |
-| **BLE-GATT** (connection, dual-role) | spike ✓ mesh-peer service | spike ✓ mesh-peer service (rak4631_blemesh) | ✓ | ✓ | BlueZ (future) |
+| **BLE-adv** (connectionless, ext-adv) | spike ✓ | spike ✓ (rak4631 RX) | ✓ | **RX only** (no TX) | ✓ BlueZ (Linux only; scan proven, advertise refused by the bench adapter) |
+| **BLE-GATT** (connection, dual-role) | spike ✓ mesh-peer service | spike ✓ mesh-peer service (rak4631_blemesh) | ✓ | ✓ | ✓ BlueZ (Linux only; built, not yet run on Linux hardware) |
 | **UDP multicast** (LAN) | ✓ (wifi/eth) | ~ (eth) | ✓ | ~ (entitlement) | ✓ |
 | **Wi-Fi Aware** (Android↔Android) | - | - | ✓ (future) | - | - |
 | **MQTT** (internet, infra-backed) | ✓ (wifi/eth) | ~ | ✓ | ✓ | ✓ |

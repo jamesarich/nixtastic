@@ -38,7 +38,7 @@ implemented end to end. Everything below is committed and pushed.
 | Phase | State | Where |
 | --- | --- | --- |
 | 1 - client N-transport node | **done**; four bearers (gatt, ble-adv, udp, lora) in one node, instrumented per bearer, proven live | `meshtastic-node-kmp` `main`, pushed |
-| 2 - firmware transport registry | done, green (native 1392/1392) | `firmware` `spike/ble-mesh-transport` (through `df1ae63bf`, pushed) |
+| 2 - firmware transport registry | done, green (native 1392/1392) | `firmware` `spike/ble-mesh-transport` (through `ca0a39c51`, pushed) |
 | 3 - firmware BLE-GATT mesh-peer edge | **proven both ways** on ESP32-S3 (Android; iOS after the 1M-PHY fix) and nRF52 (Android and iOS, two phones at once) | `ESP32BLEGattMesh`, `NRF52BLEGattMesh`; `BLEGattMeshHandler` shared |
 | Tier-1 node parity | **done end to end** 2026-09-05 | `meshtastic-node-kmp` `main`, pushed |
 | 4 - new bearers (Wi-Fi Aware, anti-entropy) | future | - |
