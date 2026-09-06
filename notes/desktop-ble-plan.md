@@ -235,10 +235,34 @@ firmware, not in the archaeology afterwards. Recorded in `AGENTS.md` too.
      `unauthorized`, a denial; 0 is `unknown`, which is what the first run logged with
      the prompt still on screen). So dylib, JNI, bundling, signing and the TCC grant all
      hold in-process.
-   - **Next: the transport itself.** Export `gattLink()`'s surface rather than a probe,
-     and back `GattMeshTransport` on the JVM with it. Two things the probe deliberately
-     did not touch: passing packets across JNI without copying per fragment, and what a
-     Kotlin/Native exception does to the calling JVM thread.
+   - ~~The transport itself.~~ **Done, `5615484`.** `Platform.jvm.kt` asks the bridge
+     first and falls back to the BlueZ diagnosis only when no link started, so a missing
+     dylib or a denied grant still explains itself. Bench, packaged app, one real peer:
+
+     ```
+     GATT: central=[21C93FD3-...(opening,notify=pending,chunk=20)]   then
+     GATT: central=[21C93FD3-...(ready,notify=enabled,chunk=244)]
+     gatt  rx=2  tx=1  relayed=0  failed=0
+     ```
+
+     Discovery, a CCCD write the peer accepted, an MTU negotiated to 247, inbound chunks
+     decoded into mesh frames, and a packet written back out. Both directions.
+   - **The two design calls, and why.** The crossing is **polled, not pushed**: native
+     buffers events into a bounded channel and the JVM parks a thread in `nativePoll`.
+     No `JavaVM` cached, no thread attached to a CoreBluetooth dispatch queue, nothing
+     calling back up. It costs one parked thread, which is what a bearer's reader thread
+     does anyway, and removes every bug that lives in upcalls from a GCD queue.
+     Marshalling is a **direct `ByteBuffer`** both ways, so native code constructs no JVM
+     object and a chunk allocates nothing on the crossing.
+   - **`BridgeWire` is the only definition of what crosses**, and it lives in
+     `commonMain`: encoder and decoder are the same code compiled into both halves, so
+     they cannot drift. It is also the one part testable without a Mac and a second
+     radio, and its tests run on `jvm` and `macosArm64` from one source - including every
+     truncation of a valid event, because an exception inside a JNI call has no stack a
+     human will see.
+   - **Still open:** `ble-adv` on a Mac stays impossible (see above), the `x64` dylib is
+     not built, and nothing has yet run long enough to say anything about the poll
+     thread's behaviour under a link that churns.
 4. **Windows**, now wanted outright rather than conditionally: the desktop node is a
    full BLE node, and Windows is the only desktop platform that can also advertise,
    which makes it the only way to grow the advertisement mesh past Android.
