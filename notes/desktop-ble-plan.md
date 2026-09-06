@@ -29,12 +29,41 @@ desktop target does not. So "build the dashboard native" is not a route, on any
 platform, and every desktop bearer needs a bridge out of the JVM. This is the same
 conclusion the GATT section below reaches from the LoRa side.
 
-**A JNI dynamic library was considered and not taken.** Kotlin/Native
-`binaries.sharedLib()` plus a cinterop over `jni.h` is the documented way to reach
-CoreBluetooth from a Compose Desktop app, and it would work. It buys nothing over the
-helper process below, which already has a passing spike, and it costs JNI symbol
-plumbing, a per-architecture dylib, and its signing. Revisit only if IPC latency ever
-shows up in a measurement.
+**Both bridges are in-process, and ours** (James, 2026-09-06). No helper process and no
+third-party BLE stack on either platform. That reverses the route below, so read the
+helper-process reasoning as history: what it argued for is the *seam* (behind the outer
+`GattLink`, reusing `appleMain` whole), and that part still holds.
+
+The reason the reversal is cheap: the thing an in-process dylib would most likely trip
+on is already handled. `GattLink.apple.kt:130` builds a private serial queue with
+`dispatch_queue_create("org.meshtastic.node.ble.gatt", null)` and hands it to both
+`CBPeripheralManager` and `CBCentralManager`. CoreBluetooth therefore delivers on GCD
+and never needs the main `NSRunLoop`, which a JVM host does not spin. That is also why
+the helper spike worked, and it means the same code works in-process unchanged.
+
+**macOS: Kotlin/Native `macosArm64` `binaries.sharedLib()`, called over JNI.** A
+cinterop over `$JAVA_HOME/include` and `include/darwin` gives the native side `jni.h`;
+functions are exported with `@CName("Java_<package>_<Class>_<method>")`; the JVM side
+declares `external` and loads by full path with `System.load`, not `loadLibrary`. The
+dylib ships in the bundle through Compose Desktop's `appResourcesRootDir` as
+`resources/macos-arm64/`, which also gets it signed by jpackage. Costs: one dylib per
+architecture, `UnsatisfiedLinkError` handling for a build where it is missing.
+
+**Windows: our own code against WinRT, in a JNI DLL.** Not btleplug, which is
+central-only anyway and so could never have carried a node. The open question is the
+language, and it is a build-machine question rather than a taste one, because this repo
+builds on a Mac with CI off:
+
+- **Rust with `windows-rs` and the `jni` crate** cross-compiles to Windows from macOS.
+  Third language in the repo.
+- **C++/WinRT** is the conventional binding. Yesterday's note said mingw ships no WinRT
+  headers, which is only true of stock mingw-w64: `mingw-w64-cppwinrt` supplies them,
+  needing `-std=gnu++20 -fcoroutines`. So cross-compiling is fringe rather than
+  impossible. MSVC on a Windows box is the supported path and there is no Windows box.
+- **Kotlin/Native `mingwX64`** would keep it all Kotlin but is unproven: cinterop is
+  C-only, WinRT's supported binding is C++, and driving its C ABI means hand-writing
+  COM vtables and implementing `IAsyncOperation` completion handlers from Kotlin/Native.
+  Not ruled out, but it needs its own spike before anyone commits.
 
 **Step 1 of the order below is done** (`ac8d3fd`, node-kmp). The monitor now builds as
 a bundle: `bundleID`, `NSBluetoothAlwaysUsageDescription`, and a macOS-only
@@ -112,14 +141,13 @@ The framing "a macOS backend is N lines behind seam X" does not hold, and it mat
 So a JVM macOS backend sits behind the outer `GattLink` interface (4 required
 members), **not** behind `GattLinkBase` (5) - and the work is a *bridge*, not a port.
 
-**Route: a Kotlin/Native `macosArm64` helper process** that instantiates the existing
-`gattLink()` and speaks a framed protocol over stdio or a unix socket to a
-`MacOsHelperGattLink` in `jvmMain`, alongside the existing `isLinux(osName)` branch.
-Roughly **300–400 new lines**, against 711 lines of Apple code and 1357 lines of
-common logic reused unchanged - about a quarter of what the BlueZ backend cost
-(1578 lines), and unlike a new backend it inherits every hardware-earned CoreBluetooth
-fix automatically. `node-phone-api`'s `StreamFrame.kt` already compiles for both
-`macosArm64` and `jvm`, so the framing primitive exists on both ends of the pipe.
+**Superseded 2026-09-06 - the route is in-process, see "Decided" above.** What was
+proposed here was a Kotlin/Native `macosArm64` helper *process* speaking a framed
+protocol to a `MacOsHelperGattLink` in `jvmMain`. Its sizing still stands and is the
+reason either route is worth doing: roughly 300-400 new lines against 711 lines of
+Apple code and 1357 lines of common logic reused unchanged, about a quarter of what the
+BlueZ backend cost (1578 lines), and unlike a new backend it inherits every
+hardware-earned CoreBluetooth fix automatically.
 
 **Rejected: making the desktop app Kotlin/Native.** Compose Multiplatform has no
 Kotlin/Native macOS target, and `node-transport-lora` is jvm+android only - that route
@@ -156,11 +184,9 @@ manufacturer-specific data (`0xFF`).** Better than Apple, level with BlueZ. So
 is a COM/`IInspectable` ABI with no Java projection, so every route needs compiled
 native code or a helper process.
 
-**Route: a Rust helper using `windows-rs` over loopback IPC.** The deciding constraint
-is not elegance - it is that this repo builds on a Mac with CI off, and Rust is the
-only route whose native artifact the existing build can produce (it cross-compiles to
-Windows from macOS; C++/WinRT does not, since mingw ships no WinRT headers and MSVC
-needs a Windows box).
+**Route: our own WinRT code in a JNI DLL, in-process** - see "Decided" above for the
+language question, which is still open. The helper-process framing this section
+originally proposed is superseded along with the macOS one.
 
 **The constraint most likely to sink the route does not.** Checked 2026-09-06: most of
 the Bluetooth API is marked `DualApiPartition` in the WinRT metadata, which is
@@ -200,11 +226,13 @@ firmware, not in the archaeology afterwards. Recorded in `AGENTS.md` too.
    be checked on its own.
 2. **Settle the on-air format**, knowing the above. It constrains everything else and
    changing it later breaks every deployed node.
-3. **macOS GATT bridge.** Best value per line: a quarter of a new backend's cost,
-   reusing code already proven on hardware. Its two preconditions, the TCC spike and
-   the bundle, are both done. First slice should be the packaged app spawning the
-   existing `macosArm64` helper and reporting its manager state, which proves bundle,
-   helper and TCC grant together before any transport code is wired.
+3. **macOS GATT bridge**, in-process. Best value per line: a quarter of a new backend's
+   cost, reusing code already proven on hardware. Its two preconditions, the TCC spike
+   and the bundle, are both done. First slice is a probe: a `macosArm64` sharedLib whose
+   one JNI export brings up a `CBCentralManager` and reports its state, loaded by the
+   packaged app. That proves dylib, JNI, bundling, signing and the TCC grant together,
+   before a line of transport code is wired. State 5 is `poweredOn`; state 3 is
+   `unauthorized`, which is what a TCC denial looks like.
 4. **Windows**, now wanted outright rather than conditionally: the desktop node is a
    full BLE node, and Windows is the only desktop platform that can also advertise,
    which makes it the only way to grow the advertisement mesh past Android.
