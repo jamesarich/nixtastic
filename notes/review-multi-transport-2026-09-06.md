@@ -239,29 +239,16 @@ constructor.
 
 ### Still open
 
-All low, all cosmetic or reporting-accuracy rather than behaviour:
+None. All 19 were fixed across `1a23f41`, `a105afb` and `7cfe055`, with the last
+group being reporting accuracy - the rx counter, the `tx?` sample, diagram label
+clipping, the Android permission split, the desktop LoRa gate, two modules missing
+from `testAndroidHostTest`, and the config dump running two Configs and four
+ModuleConfigs short of the firmware's.
 
-- **[low] The phone-API 'firmware dump order' test checks the library against its own lists, never against the firmware**  
-  `node-phone-api/src/commonTest/kotlin/org/meshtastic/node/phoneapi/PhoneApiSessionTest.kt`  
-  Fix: In `LocalRadio.configs()` add `Config(sessionkey = Config.SessionkeyConfig())` and `Config(device_ui = DeviceUIConfig())`, and in `moduleConfigs()` add `ModuleConfig(statusmessage = ...)`, `ModuleConfig(traffic_management = ...)`, `ModuleConfig(tak = ...)`, `ModuleConfig(mesh_beacon = ...)` in tag order; then move the 
-- **[low] The rx counter counts mesh events, not frames received**  
-  `monitor/src/commonMain/kotlin/org/meshtastic/node/monitor/MonitorController.kt`  
-  Fix: In MonitorController.onEvent add `is MeshEvent.Relayed, is MeshEvent.RelaySuppressed, is MeshEvent.DeliveryFailed -> it` before the `else` branch, and reword MonitorState.rxCount's doc from "every event that stems from a frame heard" to "one per frame heard" - that doc sentence is what currently licenses the double cou
-- **[low] tx? in the status strip is a one-shot sample of a value documented as live**  
-  `monitor/src/commonMain/kotlin/org/meshtastic/node/monitor/MonitorController.kt`  
-  Fix: In the `availabilityJob` collector in MonitorController.kt (the `_state.update { it.copy(transportAvailability = ...) }` block around line 250), add `canTransmit = chosen.any { t -> t.canTransmit },` to that `copy` - `chosen` is in scope, and Android's `bluetoothAvailability` re-emits on `BluetoothAdapter.ACTION_STATE_
-- **[low] Ring labels are clipped for peers near 3 and 9 o'clock when the peer has no short name**  
-  `monitor/src/commonMain/kotlin/org/meshtastic/node/monitor/MeshDiagram.kt`  
-  Fix: In MeshDiagram's Canvas, hoist the label text and TextStyle out of drawPeerLabel and size the reserve from the widest measured label instead of the fixed 44.dp: `val style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp)` then `val reserve = state.peers.maxOf { measurer.measure(labelOf(it), style).size.
-- **[low] The BT metric goes false when a non-Bluetooth permission is denied, and blocks the restart-on-grant**  
-  `monitor/src/androidMain/kotlin/org/meshtastic/node/monitor/Platform.android.kt`  
-  Fix: Split the prompt set from the authorization set, but keep the ALN→restart path the KDoc calls for: add `private val bluetooth = if (SDK_INT >= S) arrayOf(BLUETOOTH_SCAN, BLUETOOTH_CONNECT, BLUETOOTH_ADVERTISE) else arrayOf(ACCESS_FINE_LOCATION)`, keep `required = bluetooth + (SDK_INT >= 37 ? arrayOf(ACCESS_LOCAL_NETWOR
-- **[low] The desktop offers a full LoRa tuning panel for a bearer with no JVM backend**  
-  `monitor/src/jvmMain/kotlin/org/meshtastic/node/monitor/Platform.jvm.kt`  
-  Fix: In `MonitorApp.kt`, gate LoRa on a bearer the platform actually built rather than on the "has a row" list - e.g. carry the absent names in `MonitorState` and use `"lora" in state.availableTransports && "lora" !in state.absentTransports` at both :375 and :432 - and reword the four KDocs (Seams.kt:37-39, MonitorState.kt:
-- **[low] node-transport-mqtt's Android target is never compiled by the documented gate**  
-  `node-transport-mqtt/build.gradle.kts`  
-  Fix: Preferred: add `withHostTest {}` to the `android { }` block in `node-transport-mqtt/build.gradle.kts`, matching the five sibling modules. The gate's existing `testAndroidHostTest` then compiles `androidMain` and runs the module's `commonTest` on the Android host, making AGENTS.md's "every module's tests on every target
+Every one of the 131 findings now has a verdict, and every confirmed high, medium
+and low from the two re-run waves is either fixed or explicitly declined with a
+reason. What remains untouched is the medium and low tail of the **first** pass -
+the one whose verifiers refuted nothing - listed below.
 
 ## Confirmed findings
 
