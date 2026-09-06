@@ -1,6 +1,6 @@
 # Heard-on-current-LoRa node bit — cross-repo umbrella
 
-Status: planned — issues filed, no code yet
+Status: in progress — protobufs merged (9a78479); android draft in flight; apple shipped an interim
 Started: 2026-09-05
 
 ## Goal
