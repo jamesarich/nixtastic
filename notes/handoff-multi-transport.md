@@ -100,9 +100,12 @@ Windows receive-only, because Windows treats service data as system-reserved on
 the publisher.
 
 **The Linux side is proven (2026-09-06):** desktop LoRa rx, the phone API with
-the Python CLI, and the BlueZ GATT central against both firmware and Android,
-after two BlueZ bugs found on the day (a wrong signal field, no retry). Plan doc
-→ "The Linux bench sitting (2026-09-06)".
+the Python CLI, and the BlueZ GATT central against firmware and Android - connect,
+subscribe, write and, after a third fix, receive. Three BlueZ bugs found on the
+day: a wrong `InterfacesAdded` field, no retry-on-sight, and inbound
+notifications arriving as `ArrayList<Byte>` and being dropped as "not bytes" (the
+central looked healthy and received nothing). Plan doc → "The Linux bench sitting
+(2026-09-06)".
 
 **Still unverified on-device:** the `failed` column lighting up at all (no way was
 found to make a bearer *throw* on this device, see the traps) and
@@ -347,7 +350,8 @@ Shared hardware; the USB radios are global mutable state across sessions - see
   `Invalid Parameters (0x0d)` at every payload size and with `SecondaryChannel`
   removed, and `bluetoothctl` fails identically, so it is the adapter or its
   driver rather than this code. **The BlueZ GATT central is proven there
-  (2026-09-06)** against the Pocket's firmware and the Pixel; the peripheral role
+  (2026-09-06), both directions after an inbound-notification fix** against the
+  Pocket's firmware and the Pixel; the peripheral role
   cannot be, since it cannot advertise. The Mac is unreachable from it: BlueZ
   picks the classic bearer (`br-connection-key-missing`). It is also the machine
   whose USB the bench radios normally hang off, and the sitting's recipe is in the

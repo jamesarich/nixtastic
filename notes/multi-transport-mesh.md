@@ -1432,14 +1432,20 @@ yesterday's desktop monitor. No Heltec V3, no iPad, no sudo (so no `btmon`).
 - **The phone API on Linux.** `meshtastic --host 127.0.0.1` from the mcp venv
   connected to the desktop node, listed its node DB, and a `--sendtext` left over
   UDP and appeared on the Pixel as `rx[udp] text chan from !8ad3332e`.
-- **BlueZ GATT central against firmware.** The Linux node holds the Pocket's
-  mesh-peer service: `dev_EF_E2_0A_BE_95_6A(ready,notify=enabled,chunk=244)`, and
-  a text sent from the Linux node over the phone API reached the Pixel as
-  `rx[gatt] text chan from !8ad3332e: gatt probe from linux` - Linux to the Pocket
-  over BlueZ, the Pocket to the Pixel over its second slot. The Pocket also
-  relays LoRa traffic into GATT (the Pixel logs `rx[gatt] peer !454cb8d1`), and
-  a raw `bluetoothctl` session on the same characteristic received a 157-byte
-  frame, so the notification path is real end to end.
+- **BlueZ GATT central against firmware, both directions.** The Linux node holds
+  the Pocket's mesh-peer service: `dev_EF_E2_0A_BE_95_6A(ready,notify=enabled,
+  chunk=244)`. Outbound: a text from the Linux node over the phone API arrived at
+  the Pixel as `rx[gatt] text chan from !8ad3332e: gatt probe from linux` (the
+  write reached the Pixel over GATT; whether via the Pocket's relay or the direct
+  Linux-Pixel central link was not isolated). Inbound took a fix: a subscribed
+  notification arrives from dbus-java as an `ArrayList<Byte>`, not the `ByteArray`
+  a method call returns, so `as? ByteArray ?: return` dropped every frame and the
+  node received nothing while looking healthy (connected, subscribed, writing).
+  That connect/subscribe/write half was proven first; a raw `bluetoothctl notify`
+  on the characteristic caught a 157-byte frame, which is what showed the
+  notifications were arriving at BlueZ but not at the node. After the coercion fix
+  (`asBytes`), rx[gatt] appears on the Linux node: two frames the Pocket relayed
+  from LoRa, deduped against the LoRa copy. Inbound is proven.
 - **BlueZ GATT central against Android.** The Linux node also connected to the
   Pixel's peripheral (`dev_4D_F1_16_61_7C_1E(ready,notify=enabled,chunk=514)`)
   and the Pixel lists james-pc's adapter under `subscribers=[E8:48:B8:C8:20:00]`.
@@ -1470,6 +1476,13 @@ yesterday's desktop monitor. No Heltec V3, no iPad, no sudo (so no `btmon`).
   thread's uncaught handler every time the CLI hung up mid-dump. Caught, logged,
   and the socket closed so the session leaves by the normal path. Real-socket
   test, mutation-checked.
+- **(inbound GATT coercion)** dbus-java delivers a `Value` property change - every
+  inbound notification - as an `ArrayList<Byte>`, so the central read every frame
+  as "not a ByteArray" and dropped it silently. `asBytes` reads either shape. This
+  is why "notification path end to end" was wrong when first written here: the
+  central connected, subscribed and wrote, and received nothing. Found by grepping
+  the Linux stdout for `rx[gatt]` across a whole run and finding zero while the
+  Pixel logged the same LoRa-relayed frames over its own GATT link.
 
 ### Open, found here
 
