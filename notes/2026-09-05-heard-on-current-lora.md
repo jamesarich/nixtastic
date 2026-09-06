@@ -1,6 +1,6 @@
 # Heard-on-current-LoRa node bit - cross-repo umbrella
 
-Status: in progress - protobufs merged (9a78479); android draft in flight; apple shipped an interim
+Status: in progress - protobufs merged (9a78479); android PR #7055 ready for merge; apple shipped an interim
 Started: 2026-09-05
 
 ## Goal
@@ -28,7 +28,7 @@ preset is changed from the device UI or CLI while the phone is disconnected.
 | protobufs | `NodeInfo.heard_on_current_lora` bool tag 15; `NodeInfoLite.bitfield` doc note | - | `buf lint` | |
 | firmware | bitfield bit 11; set on hear, clear on slot change; mirror in `TypeConversions`; submodule bump | - | `bin/run-tests.sh` (native), bench flash | issue #11745 |
 | device-ui | grey stale rows in the node list; zip pin bumped into firmware | - | native CMake/ctest, on-device TFT | issue #387 |
-| android | `Capabilities` gate, node-list marking, stale banner + removal offer | `feat/unheard-on-current-lora` | baseline + mavenLocal preview | draft in progress |
+| android | `Capabilities` gate, marker, banner + removal offer, hide-unheard filter | `feat/unheard-on-current-lora` | full baseline green; CI 17/17 at 96742ad | **PR #7055** ready, 4 CodeRabbit rounds addressed |
 | apple | parity | - | Garth's own | **PR #2429 MERGED** (interim app-side, not the proto field) |
 | design | cross-platform feature spec; docs as a sub-issue | - | issue only | **#146 (parent)**, docs meshtastic#2649 |
 
@@ -123,3 +123,26 @@ Two claims from the Reddit thread that are wrong, checked against the code:
   (`Message.kt:90`). Channel broadcasts have no ack, so those are silent.
 
 Discovery being slow and buried is a separate usability item.
+
+## Android review log (PR #7055)
+
+Four CodeRabbit rounds, 14 findings, 13 fixed and 1 declined. The ones worth
+remembering because they were real bugs, not polish:
+
+- Removal could delete the user's own node: `ourNode` and the node list come
+  from independent flows, so the list held the local node while `ourNode` was
+  still null. Now offers nothing until the local number is known.
+- Normalizing only `nodeState` never reached the UI, which renders from the
+  repository flows. Moved to the database (`markAllHeardOnCurrentLora`), bound
+  to the originating session lease like `insertMetadata`.
+- `Capabilities.forceEnableAll = isDebug` defeated the gate in debug builds:
+  the absent proto3 field decoded false and was persisted. This capability now
+  sits outside the override.
+- Declined: moving the 57->58 migration test to `androidHostTest`. Every
+  existing (n-1)->n test lives in `jvmTest`; `.coderabbit.yaml:156` is stale.
+
+Follow-up: Meshtastic-Android#7059, a regression test for the delayed-session
+normalization race.
+
+Ships on the `2.8.0.16-g9a78479-SNAPSHOT` pin; James confirmed snapshots are
+fine to ship on.
