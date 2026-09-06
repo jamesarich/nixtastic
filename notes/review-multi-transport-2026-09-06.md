@@ -12,8 +12,10 @@ by default**. 131 findings raised.
   for the review - it is a reason to treat the severities as unaudited. The verifiers did push
   back on content (several highs were corrected down, and one headline claim was shown to be
   vacuous for the shipped app) but threw nothing out entirely.
-- **52 were never verified** - those verifier agents hit the session limit. Neither confirmed
-  nor refuted. Listed in full below.
+- **All 131 now have a verdict.** 52 were unverified on the first pass, when those agents hit the
+  session limit. They were re-run in two waves on 2026-09-06 and all 52 came back: those waves
+  refuted 5 of 39 and moved a good number of severities down, which is the sanity check the first
+  pass never got. Treat the original 79 as the softer set.
 - Spot-checked by hand, all held: `pumpRetransmits` has exactly one call site;
   `RetransmitQueue.pending` is a bare `LinkedHashMap` with no lock anywhere in `MeshNode`;
   `MeshChannel.hash` XORs the raw name with no modem-preset substitution; the BLE-advertisement
@@ -64,8 +66,7 @@ mutation-checked - reverted the fix, watched the test fail, put it back.
   of the directory.
 
 **All 18 high-severity findings are now addressed** - 17 by code, one (`6b1a7cf`) by correcting a
-claim rather than pretending the in-memory rule is a pin. What remains below is medium and low, plus
-the 52 nobody verified.
+claim rather than pretending the in-memory rule is a pin. What remains below is medium and low.
 
 ## The big ones
 
