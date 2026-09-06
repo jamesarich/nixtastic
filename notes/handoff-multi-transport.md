@@ -103,29 +103,49 @@ the publisher.
 found to make a bearer *throw* on this device, see the traps) and
 `transport[udp] FAILED: …`.
 
-**What the next bench sitting owes.** The 2026-09-06 review fixes are gated and
-unit-tested, several with mutation checks, but these five change behaviour a radio
-or a stock app sees and none has been run against one:
+**Bench-proven 2026-09-06** (Meshtadpole + WisMesh Pocket on the Mac, region US,
+10 dBm):
 
-1. **The retransmit timer.** A `want_ack` DM on a silent mesh should now go out
-   five times and end in `DeliveryFailed`. Send one to a powered-off peer over
-   LoRa and watch the log; before the fix it was transmitted once and never
-   reported.
-2. **Routing receipts to the phone.** Connect the stock Android app to the desktop
+- **The retransmit budget, end to end.** With the Pocket's `lora.tx_enabled` set
+  false so it hears a DM but cannot ack, a `want_ack` DM went out five times on
+  the same packet id at ~7 s spacing and ended
+  `undelivered ... (MAX_RETRANSMIT after 5 attempts)`. The firmware's unicast
+  budget, on a real radio. `tx_enabled` restored afterwards.
+- **The PKI DM round-trip still works** after the `next_hop` recomputation and the
+  hop-limit ceiling: `rx[lora] delivered: !7263cc65 ack req=...`, so the Pocket
+  decrypted and acknowledged it.
+- **The desktop LoRa status line**, which returned a constant null until that
+  morning: `LoRa: 906.875 MHz 10 dBm 15/8 -52 dBm 5.75 dB`.
+- **`LoraTransport.receiveOnly` both ways**: the bearer row read `rx only` with the
+  region UNSET and lost it the moment US was armed.
+- **The phone API's own warning line**, `listening on 0.0.0.0:4403 -
+  UNAUTHENTICATED, reachable from this network`, which is the monitor opting in
+  explicitly now that the library binds loopback.
+- **`restart()`**: arming the region produced exactly one `node stopped` per
+  `node started`, and the attached phone session was dropped with it.
+
+**What the next bench sitting still owes.** These change behaviour a stock app
+sees and none has been run against one - a phone did connect during the sitting
+(`phone api: 192.168.1.182 connected`) but no message was sent through it:
+
+1. **Routing receipts to the phone.** Connect the stock Android app to the desktop
    node and send a channel message. It should resolve rather than sit at
    "Sending..." and end as "Failed to deliver to mesh".
-3. **The config dump.** It now runs to the firmware's ConfigType and
+2. **The config dump.** It now runs to the firmware's ConfigType and
    ModuleConfigType maxima (10 and 17, up from 8 and 13). Confirm the stock app
    still completes its handshake - more sections is the safer direction, but it is
    untested.
-4. **Wall-clock timestamps.** Messages and peers in the app should carry real
+3. **Wall-clock timestamps.** Messages and peers in the app should carry real
    times, not 1970.
-5. **The phone API bind.** The library binds loopback now and the monitor opts
+4. **The phone API bind.** The library binds loopback now and the monitor opts
    into `ANY_ADDRESS`; confirm the app on the Pixel still reaches the desktop node.
 
-Also unrun: the LoRa preset clamp (EU_868 with a turbo preset should tune inside
-the sub-band) and whether the shared airtime ledger actually survives a tuning
-change on hardware.
+The LoRa preset clamp is **deliberately not bench-tested**: verifying it means
+configuring EU_868 on a radio sitting in the US, which is the out-of-band
+emission the fix exists to prevent. It is unit-tested and mutation-checked, and
+that is the right place for it. Whether the shared airtime ledger survives a
+tuning change is still unrun - the monitor surfaces no airtime figure, so it
+needs either a log line or a test hook first.
 
 ## Next steps, in order
 
