@@ -32,8 +32,17 @@ in that position; the rest of the `notes/` entries cover repos that publish
   the flake. `buf lint` works offline.
 - **Commit style is mixed** - merge commits alongside Conventional Commits
   (`ci:`, `docs:`). Match recent history on the branch rather than assuming.
-- Generated output is committed under `packages/*/`, so a proto change means
-  regenerating and committing artifacts too.
+- **Generated output is NOT committed.** `packages/*/` tracks only build
+  scaffolding (19 files; `packages/rust/src/generated/` is a bare `.gitkeep`).
+  Real proto commits touch the `.proto` and nothing else — see
+  `Add telemetry protos for soil and water metrics (#1055)`. `publish.yml` and
+  `publish-kmp.yml` build the artifacts; `snapshot-kmp.yml` publishes a KMP
+  snapshot on every master push touching `meshtastic/**/*.proto`, which is how
+  a consumer previews a change before it is tagged.
+- **`buf lint` bare fails in a worktree** — `buf.yaml`'s module path is `.` and
+  its excludes don't cover `.direnv/`, so it walks nixpkgs' nanopb test protos
+  and reports `SimpleMessage declared multiple times`. Scope it:
+  `buf lint --path meshtastic` (and the same for `buf breaking`).
 
 ## Before changing a `.proto`
 
