@@ -158,6 +158,21 @@ found to make a bearer *throw* on this device, see the traps) and
   of the implicit ack is that it stops the budget early.
   `loraRelayOnAir` stayed false, so relaying here means LoRa in, UDP out; the node
   put no extra traffic on the air.
+- **The PKI-unknown-key recovery loop**, whole, off a real solar node on the mesh:
+
+  ```
+  1:33.296  rx[lora] opaque from !f2775c7e (chan #0)
+  1:33.296  tx[udp,lora] nak id=2022782888 to=!f2775c7e
+  1:35.471  rx[lora] peer !f2775c7e (key)
+  1:50.664  rx[lora] text DM from !f2775c7e: Test
+  1:50.664  tx[udp,lora] ack id=2022782889 to=!f2775c7e
+  ```
+
+  Before `13e9158` the first line was the whole story: an unreadable `want_ack`
+  packet got silence, the sender spent its five unicast attempts and settled on
+  "Relayed, not confirmed by recipient" - an implicit ack off a neighbour's
+  rebroadcast being the only receipt it ever saw. The NAK is what makes a firmware
+  sender push its NodeInfo, which is the key we were missing, 2.2 s later.
 
 **What the next bench sitting still owes.**
 
