@@ -1409,3 +1409,101 @@ frames, the desktop receives none of the Pixel's (`udp tx 6 rx 0` while the Pixe
 reads them fine). Classic wired-to-wireless AP behaviour. It worked on 2026-09-04,
 so it is the network and not the transport. Do not diagnose a dead UDP bearer from
 it.
+
+## The Linux bench sitting (2026-09-06, `james-pc`)
+
+The first sitting on the Linux box with the bench radios plugged in. What it
+was for: the BlueZ GATT roles had never been exercised on hardware, desktop LoRa
+had only run on the Mac, and the Mac network had been asymmetric for UDP. What
+was in the room: solar RAK4631, XIAO S3, Cardputer and T-Deck, all stock 2.8.0 on
+James's live channel; a T1000-E parked in DFU; the Meshtadpole at `1a86:5512`;
+the Pixel 6a over TLS adb; and, unplanned, the WisMesh Pocket on battery a few
+metres away, still running `rak4631_blemesh`, plus the MacBook still running
+yesterday's desktop monitor. No Heltec V3, no iPad, no sudo (so no `btmon`).
+
+### Proven
+
+- **Desktop LoRa rx on Linux.** The Meshtadpole came up through libusb with no
+  udev rule (the device node was already world-readable), tuned 906.875 MHz slot
+  20, and heard the live mesh at once: 17 frames in the first two minutes, RSSI
+  -17 to -53 dBm. Every frame is `opaque` because the monitor's channel is the
+  default LongFast key, which is the right proof for a bearer: it carries what it
+  cannot read.
+- **The phone API on Linux.** `meshtastic --host 127.0.0.1` from the mcp venv
+  connected to the desktop node, listed its node DB, and a `--sendtext` left over
+  UDP and appeared on the Pixel as `rx[udp] text chan from !8ad3332e`.
+- **BlueZ GATT central against firmware.** The Linux node holds the Pocket's
+  mesh-peer service: `dev_EF_E2_0A_BE_95_6A(ready,notify=enabled,chunk=244)`, and
+  a text sent from the Linux node over the phone API reached the Pixel as
+  `rx[gatt] text chan from !8ad3332e: gatt probe from linux` - Linux to the Pocket
+  over BlueZ, the Pocket to the Pixel over its second slot. The Pocket also
+  relays LoRa traffic into GATT (the Pixel logs `rx[gatt] peer !454cb8d1`), and
+  a raw `bluetoothctl` session on the same characteristic received a 157-byte
+  frame, so the notification path is real end to end.
+- **BlueZ GATT central against Android.** The Linux node also connected to the
+  Pixel's peripheral (`dev_4D_F1_16_61_7C_1E(ready,notify=enabled,chunk=514)`)
+  and the Pixel lists james-pc's adapter under `subscribers=[E8:48:B8:C8:20:00]`.
+- **UDP is symmetric here.** Linux and the Pixel hear each other's frames; a
+  LAN radio also bridges LoRa into UDP, so most LoRa frames arrive twice and the
+  second is logged `dropped (DUPLICATE)`.
+
+### Fixed, on `meshtastic-node-kmp` `main` (pushed)
+
+- **`be23e28`** The BlueZ central read the wrong path off `InterfacesAdded`.
+  dbus-java names the two fields backwards: `objectPath` is the emitter, which
+  for BlueZ's ObjectManager is always `/`, and the added device is
+  `signalSource`. Every peer discovered live was reserved as `/` and faulted
+  `/: BlueZ refused the connection`; only the sweep of BlueZ's cached devices ever
+  connected. The `/` in the fault line is what gave it away. Test builds the real
+  dbus-java signals and fails on the old read.
+- **`803b594`** The central never retried a peer. BlueZ raises `InterfacesAdded`
+  once per device object, so a failed first connect was final. First connects
+  fail often here: the Pocket keeps its device object but stops advertising while
+  both its slots are held, and the connect times out as
+  `le-connection-abort-by-local`. Now an RSSI change on a device the link does
+  not hold reads its UUIDs and reserves it again. Both faults also carry BlueZ's
+  own error text.
+- **`ce75729`** The desktop monitor echoes its log to stdout. GNOME denies the
+  screenshot D-Bus call, XTest clicks from xdotool land nowhere near the rail, and
+  the Log tab was the only record of which bearer carried a frame.
+- **`9be0393`** The phone API writer threw `SocketException: Broken pipe` to the
+  thread's uncaught handler every time the CLI hung up mid-dump. Caught, logged,
+  and the socket closed so the session leaves by the normal path. Real-socket
+  test, mutation-checked.
+
+### Open, found here
+
+- **BlueZ picks the classic bearer for the Mac.** `Device1.Connect()` on the
+  MacBook fails `br-connection-key-missing` and `ConnectProfile(mesh uuid)` says
+  "No more profiles to connect to". BlueZ 5.85 as shipped exposes no
+  `PreferredBearer` on the device (it is behind the experimental flag), so a
+  dual-mode peer whose classic address was seen more recently is unreachable over
+  LE from this link. The retry loop now hammers it every ten seconds. Options: an
+  LE-only address for the mesh (the Mac advertises with its public address), or
+  `bluetoothd --experimental` and the property.
+- **The Pocket has two peripheral slots and stops advertising when both are
+  held.** With the Mac and the Pixel connected it vanishes from scans and a
+  cached connect aborts. Not a bug anywhere, but the reason the first Linux run
+  looked like an adapter fault. Free a slot before diagnosing.
+- **`transport[lora] unavailable: no CH341 stick attached` at 1.2 s, then
+  `tuned 906.875 MHz` at 1.6 s.** The unavailable line is the poll's first miss,
+  before the hot-plug scan finds the stick; harmless but a false alarm on every
+  start.
+- **The gate on a Linux host.** `:node-desktop-ble-macos:klibApiCheck` fails
+  because the macOS target cannot dump here; run the gate with
+  `-x :node-desktop-ble-macos:klibApiCheck` and without the iOS link tasks.
+- **The uConsole** was offered over ssh but `uconsole` does not resolve from
+  james-pc and 192.168.1.247 is unreachable; its address is James's to give.
+
+### Bench recipe for this box
+
+Build with `just in meshtastic-node-kmp ~/.claude/bin/gradle-queue -- <tasks>
+-Dorg.gradle.java.home=$HOME/.gradle/jdks/eclipse_adoptium-21-amd64-linux.2`
+(`direnv exec` does not chdir; `just in` does). Run the jar with the Temurin
+`java` outside the Nix shell, `env -i` plus `DISPLAY`, `WAYLAND_DISPLAY`,
+`XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS`, stdout to a file - that file is
+the log. `import -window $(xdotool search --name "Mesh Monitor" | tail -1)` via
+`nix shell nixpkgs#xdotool nixpkgs#imagemagick` captures the window; clicks do
+not land. The Pixel is `adb connect 192.168.1.182:36201`; `adb exec-out screencap
+-p` reads it, `adb shell input tap 897 2211` is Send test, and
+`adb shell input swipe 540 1950 540 2150 400` scrolls its log box back.

@@ -38,7 +38,7 @@ implemented end to end. Everything below is committed and pushed.
 | Phase | State | Where |
 | --- | --- | --- |
 | 1 - client N-transport node | **done**; four bearers (gatt, ble-adv, udp, lora) in one node, instrumented per bearer, proven live | `meshtastic-node-kmp` `main`, pushed |
-| 2 - firmware transport registry | done, green (native 1392/1392) | `firmware` `spike/ble-mesh-transport` (through `ca0a39c51`, pushed) |
+| 2 - firmware transport registry | done, green (native 1392/1392) | `firmware` `spike/ble-mesh-transport` (through `46b4fdc79`, pushed) |
 | 3 - firmware BLE-GATT mesh-peer edge | **proven both ways** on ESP32-S3 (Android; iOS after the 1M-PHY fix) and nRF52 (Android and iOS, two phones at once) | `ESP32BLEGattMesh`, `NRF52BLEGattMesh`; `BLEGattMeshHandler` shared |
 | Tier-1 node parity | **done end to end** 2026-09-05 | `meshtastic-node-kmp` `main`, pushed |
 | 4 - new bearers (Wi-Fi Aware, anti-entropy) | future | - |
@@ -98,6 +98,11 @@ cross-cutting consequence, recorded in node-kmp's `AGENTS.md`: moving the on-air
 format to *service data* would leave Apple unable to transmit **and** make
 Windows receive-only, because Windows treats service data as system-reserved on
 the publisher.
+
+**The Linux side is proven (2026-09-06):** desktop LoRa rx, the phone API with
+the Python CLI, and the BlueZ GATT central against both firmware and Android,
+after two BlueZ bugs found on the day (a wrong signal field, no retry). Plan doc
+→ "The Linux bench sitting (2026-09-06)".
 
 **Still unverified on-device:** the `failed` column lighting up at all (no way was
 found to make a bearer *throw* on this device, see the traps) and
@@ -210,7 +215,8 @@ would have to be an explicit opt-in rather than a silent restore.
    firmware too. The trade to state when it goes up: iOS phone-API links run at 1M
    on ESP32-S3/C3. Until then the fix lives only on the spike branch.
 
-   **Precondition, found 2026-09-06:** the spike is **not inert on ESP32**.
+   **Precondition, found 2026-09-06 and landed the same day as `46b4fdc79`:**
+   the spike was **not inert on ESP32**. Kept here as the record of why.
    `[ble_mesh_esp32]` calls itself opt-in and is referenced unconditionally from
    `[esp32s3_base]` and `[esp32c3_base]`, so `BLE_MESH_USE_EXT_ADV` is 1 on every
    S3/C3 build and `NimbleBluetooth::startAdvertising()` runs the spike's
@@ -340,8 +346,12 @@ Shared hardware; the USB radios are global mutable state across sessions - see
   proven** there; **advertising is refused by that controller** with
   `Invalid Parameters (0x0d)` at every payload size and with `SecondaryChannel`
   removed, and `bluetoothctl` fails identically, so it is the adapter or its
-  driver rather than this code. The BlueZ GATT roles have not been exercised on it
-  yet. It is also the machine whose USB the bench radios normally hang off.
+  driver rather than this code. **The BlueZ GATT central is proven there
+  (2026-09-06)** against the Pocket's firmware and the Pixel; the peripheral role
+  cannot be, since it cannot advertise. The Mac is unreachable from it: BlueZ
+  picks the classic bearer (`br-connection-key-missing`). It is also the machine
+  whose USB the bench radios normally hang off, and the sitting's recipe is in the
+  plan doc's "The Linux bench sitting (2026-09-06)".
 - **iPad** - devicectl UDID `EF386CA9-5DC4-551F-9D9E-ABDE7F5CF166`; **hardware**
   UDID `00008120-001C1D820A61A01E` (what `idevicesyslog` wants). Bundle
   `org.meshtastic.node.monitor`, wrapper in
