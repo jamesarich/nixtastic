@@ -143,8 +143,16 @@ ESP32-C3 links build-only; Android's 5-minute scan downgrade is worked around.
     targeting are **done** in `ea24b26d5` (notifies go per connection with
     `ble_gatts_notify_custom`, skipping the arrival peer; the spike diagnostics
     dropped). Still open: a subscribe watchdog + DUAL-role arbitration per the
-    research note, and **the notify direction is not delivering in the
-    four-transport monitor** - the Pixel's `gatt` rx stays 0 while its writes
+    research note.
+
+    **Superseded 2026-09-04 evening.** What follows described the notify direction
+    as not delivering, with the Pixel's `gatt` rx stuck at 0. That was root-caused
+    the same evening and was not the notify path at all - the V3 had had its WiFi
+    turned on that morning, and on ESP32 WiFi on means NimBLE never starts. GATT
+    is proven both ways since. DUAL-role arbitration is done and proven on three
+    nodes. Kept for the reasoning it records, not as live status:
+
+    the Pixel's `gatt` rx stays 0 while its writes
     (originations and relays) are accepted (2026-09-04). The
     `tackle-monitor-findings` workflow is root-causing it: CCCD/subscribe on the
     Android client, the firmware's per-peer `subscribed` gate, BLE-adv coexistence

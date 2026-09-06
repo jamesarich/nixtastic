@@ -16,8 +16,11 @@ implemented end to end. Everything below is committed and pushed.
    one is the index.
 2. [`audit-multi-transport-2026-09-05.md`](./audit-multi-transport-2026-09-05.md)
    - the whole-feature audit, and the only place **O1-O12** are written down.
-   Most are still open and most are firmware-side; O11 is next step 8 below, and
-   O4, O6, O10 and O12 are node-kmp defects nobody has picked up.
+   Most are still open and most are firmware-side; O11 is next step 8 below. Of
+   the node-kmp ones, **O4, O10 and O12 were fixed 2026-09-05** and O6 is
+   corrected in the docs but not implemented - see
+   [`review-multi-transport-2026-09-06.md`](./review-multi-transport-2026-09-06.md),
+   which supersedes the audit for node-kmp and adds 131 findings of its own.
 3. Per the workspace protocol, run `just brief <repo>` before editing under any
    repo, and read that repo's own docs (`meshtastic-node-kmp` → `README.md` then
    `AGENTS.md`; `firmware` → `AGENTS.md`).
