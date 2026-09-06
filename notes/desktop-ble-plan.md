@@ -9,6 +9,53 @@ Short answers: **no** to IOBluetooth, **no** to advertising on a Mac at all, **y
 to reusing the Apple GATT code, and **yes** to advertising on Windows - which is the
 surprise, and the one desktop platform whose public API allows it outright.
 
+## Decided 2026-09-06
+
+**The desktop node is a full BLE node, both GATT roles.** Not central-only. That
+settles the library question before it is asked again:
+
+- **Kable is out.** Its JVM target wraps **btleplug**, which says of itself "meant to
+  be host/central mode only" and points at `bluster` for the peripheral role;
+  `bluster` is 0.2.0 and three years stale. So Kable-on-JVM can join a mesh as a
+  client but cannot *be* a node, which is the thing this library exists to do.
+  (`android` pins Kable 0.44.3 for its own central-role radio link, which is a
+  different job and stays.)
+- Nothing else in the ecosystem changes that. Blue Falcon's macOS is Kotlin/Native,
+  not JVM; SimpleBLE is a C++ central stack needing bindings we would write. **No KMP
+  BLE library offers a peripheral role on the JVM at all.**
+
+**Compose Multiplatform desktop is Kotlin/JVM only** - iOS targets Kotlin/Native, the
+desktop target does not. So "build the dashboard native" is not a route, on any
+platform, and every desktop bearer needs a bridge out of the JVM. This is the same
+conclusion the GATT section below reaches from the LoRa side.
+
+**A JNI dynamic library was considered and not taken.** Kotlin/Native
+`binaries.sharedLib()` plus a cinterop over `jni.h` is the documented way to reach
+CoreBluetooth from a Compose Desktop app, and it would work. It buys nothing over the
+helper process below, which already has a passing spike, and it costs JNI symbol
+plumbing, a per-architecture dylib, and its signing. Revisit only if IPC latency ever
+shows up in a measurement.
+
+**Step 1 of the order below is done** (`ac8d3fd`, node-kmp). The monitor now builds as
+a bundle: `bundleID`, `NSBluetoothAlwaysUsageDescription`, and a macOS-only
+`packageVersion = "1.0.0"` because jpackage refuses a leading zero in an app-version.
+
+```
+gradle :monitor:createDistributable
+open monitor/build/compose/binaries/main/app/MeshMonitor.app
+```
+
+Verified: the plist carries the key and the identifier, the bundle is ad-hoc signed
+with the hardened runtime, and it runs the node and serves the phone API when started
+through LaunchServices. The bearers still read `unavailable` because nothing reaches
+CoreBluetooth yet, which is the next step and not a regression.
+
+The cost of the change: `open` gives the app no console and jpackage discards stdout,
+so the dashboard's own log pane is the only view of a packaged run. Getting stdout
+back means cloning the app image and repointing `Contents/app/*.cfg` at a wrapper
+class, and re-signing after every edit. The `java -jar` uber jar stays for Linux and
+for quick dev runs; it can never do BLE on macOS.
+
 ## Where each platform stands
 
 | | ble-adv rx | ble-adv **tx** | GATT (dual role) | Reachable from the JVM today |
@@ -94,13 +141,12 @@ Both GATT roles work in a JVM-spawned child, and TCC did not block it - the mana
 reaches `poweredOn` rather than the `unauthorized` state (3) a denial produces. So the
 process boundary is not the problem, and route A is viable rather than speculative.
 
-**What the spike does NOT settle:** it ran from a terminal-launched JVM, so TCC
-attributed the request to the terminal. A bundled `.app` is attributed to the app and
-still needs its `Info.plist` key. Note also that the monitor's
-`nativeDistributions` block has **no macOS section at all**, so
-`NSBluetoothAlwaysUsageDescription` is missing, and the documented
-`java -jar MeshMonitor-*.jar` launch has no `Info.plist` - TCC attributes the request
-to the terminal there.
+**What the spike did NOT settle, now closed:** it ran from a terminal-launched JVM, so
+TCC attributed the request to the terminal. A bundled `.app` is attributed to the app
+and needs its own `Info.plist` key, and the monitor's `nativeDistributions` block had
+no macOS section at all. `ac8d3fd` adds one. What is still unproven is the whole chain
+at once - bundle, helper binary, TCC grant - because no bundled build has yet spawned
+the helper.
 
 ## Windows
 
@@ -116,9 +162,17 @@ only route whose native artifact the existing build can produce (it cross-compil
 Windows from macOS; C++/WinRT does not, since mingw ships no WinRT headers and MSVC
 needs a Windows box).
 
-Check before committing to it: whether an **unpackaged** desktop app - which a Compose
-Desktop jar is - may use these APIs at all. That is the constraint most likely to sink
-the route.
+**The constraint most likely to sink the route does not.** Checked 2026-09-06: most of
+the Bluetooth API is marked `DualApiPartition` in the WinRT metadata, which is
+Microsoft's own marker for "usable from a desktop application", and `GattServiceProvider`
+is documented as the peripheral-role entry point for exactly that. The capability
+declaration that would be needed is an MSIX/UWP concern, and jpackage's MSI is a plain
+Win32 app, not that. So a full node is reachable on Windows.
+
+Kotlin/Native `mingwX64` was weighed as a way to keep it all Kotlin and set aside:
+WinRT is a COM ABI whose supported binding is C++/WinRT, which is C++ and so beyond
+cinterop, and nothing found suggests anyone has driven the C ABI headers from
+Kotlin/Native. The Rust route stays.
 
 ## The finding that changes a decision not yet made
 
@@ -141,13 +195,18 @@ firmware, not in the archaeology afterwards. Recorded in `AGENTS.md` too.
 ## Suggested order
 
 0. ~~De-risk the macOS bridge with a TCC spike.~~ **Done, and it passed** - see above.
-1. **Settle the on-air format**, knowing the above. It constrains everything else and
+1. ~~Give the desktop app a bundle identity.~~ **Done, `ac8d3fd`** - see above. James's
+   call 2026-09-06 was to do the packaging first, because it gates every route and can
+   be checked on its own.
+2. **Settle the on-air format**, knowing the above. It constrains everything else and
    changing it later breaks every deployed node.
-2. **macOS GATT bridge.** Best value per line: a quarter of a new backend's cost,
-   reusing code already proven on hardware. The TCC spike this depended on is
-   step 0 above, and it is done.
-3. **Windows**, if `ble-adv` beyond Android and Linux is wanted. It is the only
-   desktop platform that can advertise, which makes it the only way to grow the
-   advertisement mesh past Android.
-4. **macOS advertising** - only ever as an external radio, and only if something
+3. **macOS GATT bridge.** Best value per line: a quarter of a new backend's cost,
+   reusing code already proven on hardware. Its two preconditions, the TCC spike and
+   the bundle, are both done. First slice should be the packaged app spawning the
+   existing `macosArm64` helper and reporting its manager state, which proves bundle,
+   helper and TCC grant together before any transport code is wired.
+4. **Windows**, now wanted outright rather than conditionally: the desktop node is a
+   full BLE node, and Windows is the only desktop platform that can also advertise,
+   which makes it the only way to grow the advertisement mesh past Android.
+5. **macOS advertising** - only ever as an external radio, and only if something
    actually needs it.
