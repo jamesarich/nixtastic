@@ -32,14 +32,14 @@ it.
    (8.2.8) and `textual-dev` (1.8.0) are both in nixpkgs, so packaging is the
    same `writeShellApplication` shape as `pins` and `pr`. Textual brings CSS
    layout, focus handling and `App.run_test()` for headless snapshots.
-   Rejected: **ratatui** — Recon, a ratatui TUI for multiple Claude Code
+   Rejected: **ratatui** - Recon, a ratatui TUI for multiple Claude Code
    sessions, proves the fit, but it is tmux-native where this workspace is
    `herdr`, and a Rust crate puts a
    `cargoHash` in the flake that churns on every dep bump, in a repo that is
-   otherwise Python and shell. Rejected: **a `rich` `Live` loop** — that is
+   otherwise Python and shell. Rejected: **a `rich` `Live` loop** - that is
    `notes/mtop.py`'s architecture (whole-frame redraw, no layout engine, no
    focus, hand-drawn braille) and it was not good enough to keep using.
-   Rejected: **forking `gh-dash`** (4.25.2, also in nixpkgs) — best in class for
+   Rejected: **forking `gh-dash`** (4.25.2, also in nixpkgs) - best in class for
    the PR half, but forking means tracking upstream forever and it knows
    nothing about sessions, worktrees or pins. Borrow its sections-by-filter UX,
    not its code.
@@ -47,14 +47,14 @@ it.
 2. **In-process workers with a disk cache, not a collector daemon.** Each
    source owns a `@work(thread=True)` worker on its own interval; the network
    tiers write JSON under `~/.cache/nixtastic-dash/`, so startup paints from
-   cache and never blocks on GitHub. Rejected: **a collector daemon** — it wins
+   cache and never blocks on GitHub. Rejected: **a collector daemon** - it wins
    only when a second consumer exists (a statusline, the laptop reading the
    desktop's state), and it buys that with daemon lifecycle, a `doctor` check,
    and a failure mode where the UI looks alive while nothing updates. That is
    the exact class of silent failure `CLAUDE.md` keeps a list of. The disk
    cache *is* the shared state file, minus the process that can die; promoting
    to a daemon later is moving the workers, not a rewrite. Rejected: **polling
-   only what is visible** — a tab switch would mean a three-second empty panel
+   only what is visible** - a tab switch would mean a three-second empty panel
    every time, which loses the only property that matters.
 
 3. **The dashboard implements nothing.** Every action shells out to a tool that
@@ -67,11 +67,11 @@ it.
    [The join](#the-join). `herdr`'s `foreground_cwd` tracks the deepest child
    process, which for any session with the meshtastic MCP server attached is
    always the server: `.mcp.json` launches it as `uv run --directory
-   .../meshtastic-mcp`. Verified 2026-09-05 — four of five live sessions
+   .../meshtastic-mcp`. Verified 2026-09-05 - four of five live sessions
    reported `foreground_cwd=meshtastic-mcp`, including one that had never
    touched that repo, and the fifth (no MCP server) reported correctly. So the
    field is right about the process and useless about the session. Rejected:
-   **joining on `cwd`** — most sessions run from the workspace root, so it
+   **joining on `cwd`** - most sessions run from the workspace root, so it
    resolves nothing.
 
 5. **No panel ever goes blank, and no source can kill the app.** Every source
@@ -91,26 +91,26 @@ degradation. Nothing else in the app knows how data arrives.
 | `sessions.claude` | `claude agents --json` | 10 s | memory | skip |
 | `sessions.files` | `~/.claude/sessions/*.json`, liveness by `kill -0` **and** matching `procStart` | 3 s | memory | always available |
 | `sessions.work` | tail each live session's transcript JSONL | 10 s | memory | row shows no repo |
-| `worktrees` | `git worktree list --porcelain` per repo | 15 s | memory | — |
-| `git` | branch, ahead/behind, dirty count | 15 s | memory | — |
+| `worktrees` | `git worktree list --porcelain` per repo | 15 s | memory | - |
+| `git` | branch, ahead/behind, dirty count | 15 s | memory | - |
 | `prs.hot` | per-PR detail, reusing `pr.py` | 60 s, staggered | disk | cache + age |
 | `prs.org` | `gh search prs --owner meshtastic --state open` | 5 min | disk | cache + age |
 | `issues.org` | `gh search issues --owner meshtastic` filtered to assignee/mentions, plus per-repo counts | 5 min | disk | cache + age |
 | `pins` | `pins.py` | 5 min | disk | cache + age |
 | `limits` | `~/.claude/abtop-rate-limits.json` (by mtime) | 5 s | memory | hide the segment |
-| `system` | `psutil` | 2 s | memory | — |
+| `system` | `psutil` | 2 s | memory | - |
 
 Two tiers, one panel, `gh-dash`-style sections. The **hot** tier is repos with a
 live session, a worktree, or an open PR of yours: per-PR detail, refreshed each
 minute. The **cold** tier is the whole org in *two* calls, because
-`gh search` is org-scoped rather than per-repo — the cost does not scale with
+`gh search` is org-scoped rather than per-repo - the cost does not scale with
 repo count, and only the deep detail is per-item. Steady state is roughly ten
 GitHub calls a minute against a 5 000/hour REST budget and 30/minute for
 search.
 
 Open issues across nineteen repos are in the hundreds, so the issues tab is
 not a list of them. It is per-repo counts, plus the subset assigned to or
-mentioning you — the only ones a glance can act on. `gh-dash` stays the tool
+mentioning you - the only ones a glance can act on. `gh-dash` stays the tool
 for browsing the rest.
 
 Cache files are `~/.cache/nixtastic-dash/<source>.json` holding
@@ -122,7 +122,7 @@ group=<source id>)`); a slow `gh` call must not queue up behind itself.
 
 ## The join
 
-The joined entity is the **session**, annotated by the work it is doing — not
+The joined entity is the **session**, annotated by the work it is doing - not
 the worktree annotated by sessions. That is forced by decision 4: most sessions
 run with `cwd=/home/james/meshtastic`, so a path-based join resolves nothing.
 
@@ -133,7 +133,7 @@ Resolution order for "what is this session working on":
    session and is written continuously), take paths out of recent tool calls,
    and map the most frequent to a repo and worktree. This is the primary
    signal. Both shapes matter: `file_path` from `Edit`/`Write`, **and**
-   path-like tokens out of `Bash` `command` strings — under the workspace's
+   path-like tokens out of `Bash` `command` strings - under the workspace's
    auto permission mode nearly all work goes through `Bash`, so a `file_path`-
    only parser sees almost nothing. Hook invocations
    (`${CLAUDE_PLUGIN_ROOT}/hooks/...`) and the memory hook's own commands are
@@ -161,8 +161,8 @@ want horizontal room for titles, so columns would cost more than they save.
 │ ◑ Nixtastic TUI dashboard     busy    3m  nixtastic       main                   +2 ~1    │
 │ ◑ Ant evaluation              busy   12m  meshtastic-mcp  main                   +7       │
 │ ✳ Otafix worktree             idle   41m  OTAFIX          feat-lazy-erase-report #42 ✓12  │
-│ ✳ Discord noise sweep         idle    2h  meshtastic-mcp  main                   —        │
-│ ● Serial HAL client      bg blocked   4d  meshtastic-sdk  main                   —        │
+│ ✳ Discord noise sweep         idle    2h  meshtastic-mcp  main                   -        │
+│ ● Serial HAL client      bg blocked   4d  meshtastic-sdk  main                   -        │
 ╰───────────────────────────────────────────────────────────────────────────────────────────╯
 ╭─ Pull requests · mine ───────────────────────────────────────────────────── as of 38s ────╮
 │ ● android   #7020  fix(map): guard MapLibre style reload      ✓18 ⊘0  ⧗queued             │
@@ -221,8 +221,8 @@ makes every source read a file instead of running a subprocess.
 
 1. **Parsers are pure functions**, bytes to dataclass, for `herdr agent list`,
    `claude agents --json`, `gh search` JSON, `git worktree list --porcelain`
-   and the transcript JSONL. They hold the real risk — the transcript
-   heuristic above all — and get the most tests.
+   and the transcript JSONL. They hold the real risk - the transcript
+   heuristic above all - and get the most tests.
 2. **Frame snapshots.** `--snapshot` renders one frame as plain text through
    `App.run_test()` and exits; `tools-tests.sh` diffs it against a golden
    fixture, the same shape as T31-T35.
@@ -250,7 +250,7 @@ Each row is a first-class state with its own rendering, not an exception path.
 ## Packaging
 
 `scripts/dash/` as a package directory rather than the flat single files the
-other tools use — this is an order of magnitude more code than `pins.py`.
+other tools use - this is an order of magnitude more code than `pins.py`.
 Wrapped exactly like `pins`:
 
 ```nix

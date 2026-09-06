@@ -1,21 +1,21 @@
-# Heard-on-current-LoRa node bit — cross-repo umbrella
+# Heard-on-current-LoRa node bit - cross-repo umbrella
 
-Status: in progress — protobufs merged (9a78479); android draft in flight; apple shipped an interim
+Status: in progress - protobufs merged (9a78479); android draft in flight; apple shipped an interim
 Started: 2026-09-05
 
 ## Goal
 
 After a LoRa preset, region or frequency-slot change, every client keeps
 showing the nodes it knew before the change. Nothing marks them, so the node
-list looks populated while every send into it fails — silently for channel
+list looks populated while every send into it fails - silently for channel
 broadcasts, which have no ack. New users read the stale list as "the mesh is
 here, the app is broken".
 
 Origin: <https://redd.it/1w7y2st> (DragonCon event firmware, Atlanta on
 MediumFast vs LongFast), raised by Jonathan.
 
-Fix: firmware carries one bit per node — "heard since the current LoRa
-config took effect" — cleared for every node when the config changes, set
+Fix: firmware carries one bit per node - "heard since the current LoRa
+config took effect" - cleared for every node when the config changes, set
 whenever the node is heard. Clients grey out the unset ones and offer a
 one-tap clear. The bit lives in firmware, not in a client, because MUI has
 no phone at all, and because a phone-side heuristic misfires whenever the
@@ -25,12 +25,12 @@ preset is changed from the device UI or CLI while the phone is disconnected.
 
 | repo | change | branch / worktree | verification | landed (SHA or PR) |
 | --- | --- | --- | --- | --- |
-| protobufs | `NodeInfo.heard_on_current_lora` bool tag 15; `NodeInfoLite.bitfield` doc note | — | `buf lint` | |
-| firmware | bitfield bit 11; set on hear, clear on slot change; mirror in `TypeConversions`; submodule bump | — | `bin/run-tests.sh` (native), bench flash | issue #11745 |
-| device-ui | grey stale rows in the node list; zip pin bumped into firmware | — | native CMake/ctest, on-device TFT | issue #387 |
+| protobufs | `NodeInfo.heard_on_current_lora` bool tag 15; `NodeInfoLite.bitfield` doc note | - | `buf lint` | |
+| firmware | bitfield bit 11; set on hear, clear on slot change; mirror in `TypeConversions`; submodule bump | - | `bin/run-tests.sh` (native), bench flash | issue #11745 |
+| device-ui | grey stale rows in the node list; zip pin bumped into firmware | - | native CMake/ctest, on-device TFT | issue #387 |
 | android | `Capabilities` gate, node-list marking, stale banner + removal offer | `feat/unheard-on-current-lora` | baseline + mavenLocal preview | draft in progress |
-| apple | parity | — | Garth's own | **PR #2429 MERGED** (interim app-side, not the proto field) |
-| design | cross-platform feature spec; docs as a sub-issue | — | issue only | **#146 (parent)**, docs meshtastic#2649 |
+| apple | parity | - | Garth's own | **PR #2429 MERGED** (interim app-side, not the proto field) |
+| design | cross-platform feature spec; docs as a sub-issue | - | issue only | **#146 (parent)**, docs meshtastic#2649 |
 
 `meshtastic-sdk` and `meshtastic-python` are deliberately out of scope
 (both are behind at protobufs v2.7.26; they pick the field up on their next
@@ -39,7 +39,7 @@ bump with no code change required).
 ## Contract changes
 
 `NodeInfo` gains field 15, `bool heard_on_current_lora`. New field number,
-nothing reused or deleted — satisfies the proto rule in
+nothing reused or deleted - satisfies the proto rule in
 `notes/cross-repo-contracts.md` → Changing a proto. No nanopb annotation, so
 no firmware buffer sizing changes.
 
@@ -57,8 +57,8 @@ the UI on a firmware-version `Capabilities` check, not on the field alone.
 
 ## Why a bit and not a timestamp
 
-The obvious alternative — a device-level `lora_config_changed_at`, with
-stale defined as `last_heard < changed_at` — is wrong on this firmware.
+The obvious alternative - a device-level `lora_config_changed_at`, with
+stale defined as `last_heard < changed_at` - is wrong on this firmware.
 `NodeDB` treats `last_heard` as "a real epoch or 0" and routes nodes heard
 while the clock is untrusted into a RAM sidecar
 (`recordHeardWhileClockUntrusted`, backfilled by `backfillHeardAt()`). A
@@ -69,11 +69,11 @@ timestamp scheme fails.
 
 ## Release order
 
-1. `protobufs` — merge and tag. Firmware and apple bump submodules; android
+1. `protobufs` - merge and tag. Firmware and apple bump submodules; android
    waits for the published `org.meshtastic:protobufs` artifact.
-2. `firmware` — implement, release. `device-ui` lands first and is bumped in
+2. `firmware` - implement, release. `device-ui` lands first and is bumped in
    as a zip pin, so MUI is a two-step landing.
-3. `android`, `apple` — bump the pin, implement the UI behind the capability
+3. `android`, `apple` - bump the pin, implement the UI behind the capability
    gate.
 
 `design` runs in parallel; it gates nothing.
@@ -84,7 +84,7 @@ All four scoping questions are now settled in design#146 and the firmware
 sub-issue:
 
 - **Clear at the choke point, not in `AdminModule`.** `MenuHandler.cpp` calls
-  `service->reloadConfig(SEGMENT_CONFIG)` from ~15 sites — the device's own
+  `service->reloadConfig(SEGMENT_CONFIG)` from ~15 sites - the device's own
   screen menu never touches `AdminModule`, and that is the MUI path this whole
   change exists for. Hook `MeshService::reloadConfig`, comparing a slot-tuple
   snapshot. That also picks up `set_channel_url`/`set_config_url` (scanned QR),
@@ -95,8 +95,8 @@ sub-issue:
   fix belongs at the same choke point, which also covers the edit-transaction
   deferral.
 - **Warm tier: carry nothing.** `getOrCreateMeshNode` is reached from
-  favourite-add, ignore, `add_contact` and NodeInfo ingestion — none are hears
-  — so a cleared bit on re-admission is the correct outcome, not a limitation.
+  favourite-add, ignore, `add_contact` and NodeInfo ingestion - none are hears
+  - so a cleared bit on re-admission is the correct outcome, not a limitation.
   Bit 7 of the stolen `last_heard` field stays free.
 - **Upgrade wave: one-time watermark.** A spare bitfield bit needs no schema
   change, so no migration hook fires. Do not bump `DEVICESTATE_CUR_VER` (it
@@ -117,9 +117,9 @@ sub-issue:
 
 Two claims from the Reddit thread that are wrong, checked against the code:
 
-- "Mesh Discovery recommends by SNR" — no. `DiscoverySummaryGenerator.kt:36`
+- "Mesh Discovery recommends by SNR" - no. `DiscoverySummaryGenerator.kt:36`
   ranks by `uniqueNodes` descending, then channel utilization ascending.
-- "Sending fails silently" — half right. DMs surface `MAX_RETRANSMIT`
+- "Sending fails silently" - half right. DMs surface `MAX_RETRANSMIT`
   (`Message.kt:90`). Channel broadcasts have no ack, so those are silent.
 
 Discovery being slow and buried is a separate usability item.
