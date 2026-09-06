@@ -28,8 +28,8 @@ preset is changed from the device UI or CLI while the phone is disconnected.
 | protobufs | `NodeInfo.heard_on_current_lora` bool tag 15; `NodeInfoLite.bitfield` doc note | — | `buf lint` | |
 | firmware | bitfield bit 11; set on hear, clear on slot change; mirror in `TypeConversions`; submodule bump | — | `bin/run-tests.sh` (native), bench flash | issue #11745 |
 | device-ui | grey stale rows in the node list; zip pin bumped into firmware | — | native CMake/ctest, on-device TFT | issue #387 |
-| android | `Capabilities` gate, node-list marking, stale banner + one-tap clear | — | `nixtastic:android-baseline` | issue #7053 |
-| apple | parity | — | repo's own gate | issue #2427 |
+| android | `Capabilities` gate, node-list marking, stale banner + removal offer | `feat/unheard-on-current-lora` | baseline + mavenLocal preview | draft in progress |
+| apple | parity | — | Garth's own | **PR #2429 MERGED** (interim app-side, not the proto field) |
 | design | cross-platform feature spec; docs as a sub-issue | — | issue only | **#146 (parent)**, docs meshtastic#2649 |
 
 `meshtastic-sdk` and `meshtastic-python` are deliberately out of scope
