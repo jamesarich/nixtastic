@@ -113,6 +113,16 @@ found to make a bearer *throw* on this device, see the traps) and
 2. **Develop PR from `fcc3c0582` - ON HOLD, James's call when.** It fixes stock
    firmware too. The trade to state when it goes up: iOS phone-API links run at 1M
    on ESP32-S3/C3. Until then the fix lives only on the spike branch.
+
+   **Precondition, found 2026-09-06:** the spike is **not inert on ESP32**.
+   `[ble_mesh_esp32]` calls itself opt-in and is referenced unconditionally from
+   `[esp32s3_base]` and `[esp32c3_base]`, so `BLE_MESH_USE_EXT_ADV` is 1 on every
+   S3/C3 build and `NimbleBluetooth::startAdvertising()` runs the spike's
+   hand-rolled extended-advertising path instead of the legacy one - on devices
+   whose owners never enabled anything. Make that reference conditional before
+   cutting any PR from this branch. See
+   [`review-multi-transport-2026-09-06.md`](./review-multi-transport-2026-09-06.md)
+   → "Firmware spike - now verified".
 3. **Upstream:** nudge esp-idf#15311 (same assert, same PC 0x40006fcb) with the
    peer-initiated variant, the stock-Meshtastic repro and the 1M workaround; open
    a `meshtastic/firmware` issue so A16-iPad users have somewhere to land.

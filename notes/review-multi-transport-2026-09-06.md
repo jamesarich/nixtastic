@@ -102,6 +102,106 @@ Ordered by what would bite a user first, not by dimension.
 8. **Peer public-key pins do not survive a restart**, so the anti-substitution rule
    `NodeDirectory.mergeKey` documents is re-raced on every launch.
 
+
+## Firmware spike - now verified (2026-09-06)
+
+The 13 firmware findings were re-verified against `spike/ble-mesh-transport` (head `ca0a39c51`),
+read via `git show` only - the branch is checked out in another worktree and `.pio` is shared.
+Each verifier was told to refute by default and to say whether a defect is the spike's or
+pre-existing on develop.
+
+**11 confirmed, 2 refuted.** The severities moved: four claimed highs came back medium, one low
+came back medium, and one high stood. That is a healthier spread than the first pass, which
+refuted nothing.
+
+### The one that stayed high, and what it blocks
+
+**The spike is not inert on ESP32 with the feature disabled** (`variants/esp32s3/esp32s3.ini`,
+`variants/esp32c3/esp32c3.ini`).
+
+`[ble_mesh_esp32]` in `variants/esp32/esp32-common.ini` documents itself as opt-in, and the commit
+that introduced it (`4c5863c09`) is titled "Factor the ESP32 BLE mesh build settings into one
+opt-in block". But it is referenced from `[esp32s3_base]` and `[esp32c3_base]` - the sections
+every S3 and C3 variant extends - with no condition. Intent was opt-in; the wiring is not.
+
+The runtime gate does not save it. `NimbleBluetooth.cpp` wraps `startAdvertising()` in
+`#if BLE_MESH_USE_EXT_ADV`, and that flag is now unconditionally 1 on S3/C3, so the legacy
+advertising branch is dead code on **every** S3/C3 build and the phone advertisement runs the
+spike's hand-rolled extended-advertising path - including a `Rob<>` explicit-instantiation hack
+that reaches a private member of `BLEServer`. The block also rewrites `custom_sdkconfig`, which is
+the shared-framework-sdkconfig trap the workspace `CLAUDE.md` warns about.
+
+**Consequence for the pending work:** the handoff's next step 2 is a develop PR carrying the
+1M-PHY fix. Anything cut from this branch carries this too unless the reference is made
+conditional first. That PR should not go up until it is.
+
+### Confirmed, by verified severity
+
+**[medium] (claimed high) BLE ingress does not sanitise `priority`, letting a radio-range attacker evict genuine packets from the LoRa TX queue**
+
+`src/mesh/BLEMeshHandler.cpp`
+
+BLE-advertisement ingress does not reset `priority`, handing an RF-range attacker a LoRa TX-queue eviction primitive (medium; only when `enabled_protocols` opts into BLE_BROADCAST).
+
+**[medium] (claimed high) `clearCorruptBondStoreOnce()` erases the NimBLE bond database on every ESP32 build, feature enabled or not**
+
+`src/nimble/NimbleBluetooth.cpp`
+
+`clearCorruptBondStoreOnce()` (new in the spike, src/nimble/NimbleBluetooth.cpp:1098) erases the entire NimBLE `nimble_bond` NVS namespace once per device on the first boot of any ESP32 build from this branch. It is called as the first statement of `NimbleBluetooth::setup()` guarded only by `#ifdef ARCH_ESP32` - no enabled_protocols check and no BLE-mesh build flag - so it is not inert when the feature is off. It is one-shot, not per-boot: the `nimbleBondClr` bool in the `meshtastic` Preferences namespace latches it, which means it fires exactly once for every upgrading ESP32 BLE user. The `BLE_MESH_CLEAR_BONDS_ALWAYS` force path is dead code; nothing on the branch defines that macro. The wi
+
+**[medium] (claimed high) NO_PIN pairing mode silently stops offering bonding on every ESP32 build**
+
+`src/nimble/NimbleBluetooth.cpp`
+
+Unguarded security-config change in `NimbleBluetooth::setup()` (src/nimble/NimbleBluetooth.cpp, the NO_PIN `else` branch). develop has `security.setAuthenticationMode(true, false, false)`; the spike changes it to `security.setAuthenticationMode(false, false, false)`. The statement sits in plain `else` with no `#if HAS_BLE_GATT_MESH`, no `BLE_MESH_USE_EXT_ADV`, and no `enabled_protocols` check, in a file every ESP32 build compiles - so it applies whether or not the BLE-mesh feature is enabled.
+
+**[medium] (claimed high) Unbounded, unauthenticated BLE-adv ingress against a drop-oldest receive queue**
+
+`src/mesh/BLEMeshHandler.cpp`
+
+Unbounded, unauthenticated BLE-adv ingress into a shared 4-deep drop-oldest receive queue - real, but the admission control belongs at the shared transport boundary, not in BLEMeshHandler, because develop's UDP bearer has the identical hole.
+
+**[medium] ESP32 phone-API session handle can be stranded on a freed connection when a mesh-peer link drops**
+
+`src/nimble/NimbleBluetooth.cpp`
+
+Corrected mechanism: the phone-API session is NOT keyed on a handle shared with mesh-peer links (each link has its own conn handle, and `nimbleBluetoothConnHandle` is latched only in `onAuthenticationComplete` on an encrypted link, NimbleBluetooth.cpp:719). The real defect is the discriminator: `NimbleBluetoothServerCallback::onDisconnect` (NimbleBluetooth.cpp:797-806) decides "is this the phone's session ending?" from `ESP32BLEGattMesh::onDisconnect()`'s return value, which is `Link::viaMeshAdv` - set only in `ESP32BLEGattMesh::onGapEvent` BLE_GAP_EVENT_CONNECT (ESP32BLEGattMesh.cpp:402), i.e. it means exactly "arrived on advertising instance 2". Neither advertising set is reserved for a ro
+
+**[medium] nRF52 GATT egress can block the main task for seconds inside one runOnce**
+
+`src/mesh/BLEGattMeshHandler.cpp`
+
+nRF52 GATT egress: a stalled-but-connected peer occupies the main task for seconds per packet
+
+**[medium] ESP32 BLE mesh re-enters ble_gap_* from inside a GAP callback, which the spike's own GATT code says crashes**
+
+`src/platform/esp32/ESP32BLEMesh.cpp`
+
+ESP32 BLE mesh restarts scanning from inside the NimBLE GAP callback, and the only path that reaches that branch is a host reset - so it both re-enters ble_gap_* in the window the repo documents as unsafe and fails to actually restore RX.
+
+**[medium] (claimed low) BLEMeshHandler's thread-safety comment asserts the packet pool is safe from other tasks; it is not**
+
+`src/mesh/BLEMeshHandler.h`
+
+The comment is wrong about the packet pool, but not for the reason filed. It does NOT claim "only one task touches the pool" - it explicitly acknowledges the BLE callbacks run on another task, and confines the no-lock argument to the TX ring. The false clause is the parenthetical safety assertion:
+
+**[low] (claimed medium) nRF52: every mesh advertising burst restarts the phone advertisement in fast mode, pinning it there**
+
+`src/platform/nrf52/NRF52BLEMesh.cpp`
+
+In the shared-advertising-set fallback - the only path actually reachable on nRF52, since Bluefruit already owns set 0 and its default configuration (and S140 v6) allows only one set, which the spike's own header comment concedes - NRF52BLEMesh::platformEndAdvertising() hands set 0 back by calling nrf52Bluetooth->resumeAdvertising(). BLEMeshHandler::runOnce() calls platformEndAdvertising() once per burst, and resumeAdvertising() does setInterval(32, 668) + setFastTimeout(30) + start(0), so every burst re-arms a fresh 30 s fast phase at a 20 ms interval. Two failure paths in platformBeginAdvertising() call it as well. Bursts arriving less than 30 s apart therefore keep the phone advertisement
+
+**[low] Raising BLE_GATT_MESH_MAX_LINKS as the header instructs silently gives a third peer that receives nothing**
+
+`src/platform/esp32/ESP32BLEGattMesh.h`
+
+Confirmed, with a sharper mechanism and a corrected threshold.
+
+### Refuted
+
+- **BLE-adv transport is permanently dead after a BLE deinit/re-enable cycle on ESP32** (`src/mesh/BLEMeshHandler.h`, claimed medium) - The cited code facts are real, but the stated failure scenario is unreachable, so the finding as written is refuted and its severity is wrong.
+- **nRF52 GATT mesh re-arms fast advertising on every connect and every disconnect, including the phone's** (`src/platform/nrf52/NRF52BLEGattMesh.cpp`, claimed medium) - Read src/platform/nrf52/NRF52BLEGattMesh.cpp on spike/ble-mesh-transport plus the Bluefruit sources it depends on (~/.platformio/packages/framework-arduinoadafruitnrf52/.../BLEAdvertising.cpp, Bluefruit.cpp).
+
 ## Not covered
 
 Nobody verified these. **Every** firmware-spike and cross-repo-docs finding is in here, so this
