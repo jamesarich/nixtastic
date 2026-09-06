@@ -19,15 +19,42 @@ by default**. 131 findings raised.
   `MeshChannel.hash` XORs the raw name with no modem-preset substitution; the BLE-advertisement
   bearer does supply an RSSI on all three platforms.
 
-## Already fixed (`77f0e3b`)
+## Fixed so far
 
-- `AGENTS.md` said no bearer supplies an RSSI. The advertisement bearer does, on all three
-  platforms; only GATT leaves `LinkChunk.rssi` null. This was an over-correction of an earlier
-  wrong claim, made the day before.
-- The monitor's freshness clock stopped advancing as soon as anything was logged, freezing every
-  peer on the mesh diagram at the age it had when the log last moved.
-- Both platform entry points did `stop()` then `start()`, bypassing the join that `restart()`
-  exists for, so a new LoRa transport could race the old one for the USB claim.
+`meshtastic-node-kmp`, in order. Every one gated, and every new assertion
+mutation-checked - reverted the fix, watched the test fail, put it back.
+
+- **`77f0e3b`** Three the review caught, two of them mine from the day before: `AGENTS.md` claimed
+  no bearer supplies an RSSI (the advertisement bearer does, on all three platforms; only GATT
+  leaves it null); the monitor's freshness clock stopped advancing as soon as anything was logged;
+  both platform entry points did `stop()` then `start()`, bypassing the join `restart()` exists for.
+- **`d254e27`** Reliable delivery now works on the mesh it exists for. `pumpRetransmits` had one call
+  site, in the receive pipeline, so a node hearing nothing never retried and never reported failure.
+  There is a timer now, parked on a conflated channel while the queue is empty. `RetransmitQueue`
+  claimed single-writer serialisation that does not exist and is mutex-guarded.
+- **`960be7d`**, **`58745b3`** The phone API stops being an open write interface. Binds loopback by
+  default (the monitor opts into every interface explicitly, and says UNAUTHENTICATED when it does);
+  runs under its own SupervisorJob so a bad connection cannot cancel the node's scope; reads with a
+  timeout so a silent client cannot wedge the accept loop; and the config dump backpressures instead
+  of dropping its own head. Delivery receipts reach the phone as ROUTING_APP packets, so a message
+  finally resolves instead of sitting at "Sending...".
+- **`2fbfa48`** Wall time and uptime are not the same clock. `Config.epochSeconds` is separate from
+  the monotonic `clock`, `rx_time` is 0 rather than a relative number when no wall clock is supplied,
+  and a peer's `last_heard` is aged against the node rather than read as an epoch.
+- **`110358b`** A region that cannot carry a preset no longer transmits it anyway. `supportsPreset`
+  existed and was called by nothing; EU_868 with a turbo preset emitted half its channel outside the
+  sub-band.
+- **`6ae7f4c`** The relay policy is a ceiling, not a fallback, so a stock phone can no longer defeat
+  `RelayPolicy.Island`; and a packet addressed to this node - every local AdminMessage from a stock
+  app - is refused rather than sealed with the channel PSK and broadcast to the mesh.
+- **`a170ca2`** A blank channel name is not blank on the air: it resolves to the modem preset name,
+  as `Channels::getName` does, so a channel imported from a shared URL computes the hash every radio
+  computes.
+
+That closes 9 of the 18 high-severity findings. Still open and listed below: peer key pins not
+surviving a restart, `next_hop` never recomputed on relay and never invalidated, the Android
+BLE-advertisement `send()` that returns true without reading the callback, and the LoRa duty-cycle
+ledger destroyed on every tuning change.
 
 ## The big ones
 
