@@ -227,12 +227,18 @@ firmware, not in the archaeology afterwards. Recorded in `AGENTS.md` too.
 2. **Settle the on-air format**, knowing the above. It constrains everything else and
    changing it later breaks every deployed node.
 3. **macOS GATT bridge**, in-process. Best value per line: a quarter of a new backend's
-   cost, reusing code already proven on hardware. Its two preconditions, the TCC spike
-   and the bundle, are both done. First slice is a probe: a `macosArm64` sharedLib whose
-   one JNI export brings up a `CBCentralManager` and reports its state, loaded by the
-   packaged app. That proves dylib, JNI, bundling, signing and the TCC grant together,
-   before a line of transport code is wired. State 5 is `poweredOn`; state 3 is
-   `unauthorized`, which is what a TCC denial looks like.
+   cost, reusing code already proven on hardware.
+   - ~~The probe slice.~~ **Done, `ccf2848`.** `:node-desktop-ble-macos` is a
+     `macosArm64` sharedLib whose one JNI export brings up a `CBCentralManager` and
+     returns its state. The packaged app prompted as MeshMonitor with our own usage
+     string and logged `ble bridge: CBManagerState=5`, which is `poweredOn` (3 would be
+     `unauthorized`, a denial; 0 is `unknown`, which is what the first run logged with
+     the prompt still on screen). So dylib, JNI, bundling, signing and the TCC grant all
+     hold in-process.
+   - **Next: the transport itself.** Export `gattLink()`'s surface rather than a probe,
+     and back `GattMeshTransport` on the JVM with it. Two things the probe deliberately
+     did not touch: passing packets across JNI without copying per fragment, and what a
+     Kotlin/Native exception does to the calling JVM thread.
 4. **Windows**, now wanted outright rather than conditionally: the desktop node is a
    full BLE node, and Windows is the only desktop platform that can also advertise,
    which makes it the only way to grow the advertisement mesh past Android.
