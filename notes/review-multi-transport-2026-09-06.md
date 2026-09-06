@@ -51,10 +51,21 @@ mutation-checked - reverted the fix, watched the test fail, put it back.
   as `Channels::getName` does, so a channel imported from a shared URL computes the hash every radio
   computes.
 
-That closes 9 of the 18 high-severity findings. Still open and listed below: peer key pins not
-surviving a restart, `next_hop` never recomputed on relay and never invalidated, the Android
-BLE-advertisement `send()` that returns true without reading the callback, and the LoRa duty-cycle
-ledger destroyed on every tuning change.
+- **`b6bb03d`** A relayed packet gets this node's route, and a dead route is forgotten.
+  `forForwarding` left the previous hop's `next_hop` on the wire, so a directed packet died one hop
+  past this node; `NextHopTable.forget` existed and was called by nothing, so a neighbour that moved
+  out of range was black-holed for the life of the process. Also the Android BLE-advertisement
+  `send()`, which passed an empty callback and returned a hard-coded true.
+- **`f4dd00a`** A duty cycle you can reset by tapping a chip is not a duty cycle. The rolling-hour
+  ledger was per-transport, and the monitor rebuilds transports on every tuning change; it is
+  injectable now and the monitor holds one for the life of the process, as the firmware does.
+- **`6b1a7cf`** `NodeDirectory`'s key rule is not a pin, and now says so. The scope of "first valid
+  key wins" is one process; `Config.peerPublicKey` is the durable mechanism and is consulted ahead
+  of the directory.
+
+**All 18 high-severity findings are now addressed** - 17 by code, one (`6b1a7cf`) by correcting a
+claim rather than pretending the in-memory rule is a pin. What remains below is medium and low, plus
+the 52 nobody verified.
 
 ## The big ones
 
