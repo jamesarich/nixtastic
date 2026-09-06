@@ -202,115 +202,65 @@ Confirmed, with a sharper mechanism and a corrected threshold.
 - **BLE-adv transport is permanently dead after a BLE deinit/re-enable cycle on ESP32** (`src/mesh/BLEMeshHandler.h`, claimed medium) - The cited code facts are real, but the stated failure scenario is unreachable, so the finding as written is refuted and its severity is wrong.
 - **nRF52 GATT mesh re-arms fast advertising on every connect and every disconnect, including the phone's** (`src/platform/nrf52/NRF52BLEGattMesh.cpp`, claimed medium) - Read src/platform/nrf52/NRF52BLEGattMesh.cpp on spike/ble-mesh-transport plus the Bluefruit sources it depends on (~/.platformio/packages/framework-arduinoadafruitnrf52/.../BLEAdvertising.cpp, Bluefruit.cpp).
 
-## Not covered
 
-Nobody verified these. **Every** firmware-spike and cross-repo-docs finding is in here, so this
-review says nothing reliable about the C++ or about doc drift.
+## The remaining 26 - now verified (2026-09-06)
 
-- **[high]** BLE ingress does not sanitise `priority`, letting a radio-range attacker evict genuine packets from the LoRa TX queue  
-  `src/mesh/BLEMeshHandler.cpp`
-- **[high]** The spike is not inert with the feature disabled: ext-adv and BLE-mesh flags are wired into the shared ESP32-S3/C3 and nRF52 build sections  
-  `variants/esp32s3/esp32s3.ini`
-- **[high]** `clearCorruptBondStoreOnce()` erases the NimBLE bond database on every ESP32 build, feature enabled or not  
-  `src/nimble/NimbleBluetooth.cpp`
-- **[high]** NO_PIN pairing mode silently stops offering bonding on every ESP32 build  
-  `src/nimble/NimbleBluetooth.cpp`
-- **[high]** Unbounded, unauthenticated BLE-adv ingress against a drop-oldest receive queue  
-  `src/mesh/BLEMeshHandler.cpp`
-- **[high]** Handoff says four audit items are unfixed; three were fixed in the last five commits  
-  `/Users/james/nixtastic/notes/handoff-multi-transport.md`
-- **[high]** Plan doc's live status block still calls the GATT notify path broken, which the handoff marks Settled  
-  `/Users/james/nixtastic/notes/multi-transport-mesh.md`
-- **[high]** The diagram's freshness clock stops advancing as soon as anything is logged  
-  `/Users/james/nixtastic/meshtastic-node-kmp/monitor/src/commonMain/kotlin/org/meshtastic/node/monitor/MonitorApp.kt`
-- **[high]** MeshNode's public primary constructor bypasses every Config.validated() invariant  
-  `meshtastic-node-kmp/node-core/src/commonMain/kotlin/org/meshtastic/node/MeshNode.kt`
-- **[medium]** ReliableNodeTest's UDP self-echo test asserts before the node's collector has run  
-  `meshtastic-node-kmp/node-core/src/commonTest/kotlin/org/meshtastic/node/ReliableNodeTest.kt`
-- **[medium]** RelayOnAirTest cannot fail: a relay that forwarded nothing reports green  
-  `meshtastic-node-kmp/node-transport-ble/src/androidDeviceTest/kotlin/org/meshtastic/node/transport/ble/RelayOnAirTest.kt`
-- **[medium]** BLE-adv transport is permanently dead after a BLE deinit/re-enable cycle on ESP32  
-  `src/mesh/BLEMeshHandler.h`
-- **[medium]** nRF52: every mesh advertising burst restarts the phone advertisement in fast mode, pinning it there  
-  `src/platform/nrf52/NRF52BLEMesh.cpp`
-- **[medium]** nRF52 GATT mesh re-arms fast advertising on every connect and every disconnect, including the phone's  
-  `src/platform/nrf52/NRF52BLEGattMesh.cpp`
-- **[medium]** ESP32 phone-API session handle can be stranded on a freed connection when a mesh-peer link drops  
-  `src/nimble/NimbleBluetooth.cpp`
-- **[medium]** nRF52 GATT egress can block the main task for seconds inside one runOnce  
-  `src/mesh/BLEGattMeshHandler.cpp`
-- **[medium]** ESP32 BLE mesh re-enters ble_gap_* from inside a GAP callback, which the spike's own GATT code says crashes  
-  `src/platform/esp32/ESP32BLEMesh.cpp`
-- **[medium]** gatt-probe-ios README declares an open reconnect bug that the repo README says is fixed and verified  
-  `/Users/james/nixtastic/meshtastic-node-kmp/tools/gatt-probe-ios/README.md`
-- **[medium]** AGENTS.md over-corrected: the BLE-advertisement bearer does supply an RSSI, on all three platforms  
-  `/Users/james/nixtastic/meshtastic-node-kmp/AGENTS.md`
-- **[medium]** README still carries the pre-correction RSSI claim that AGENTS.md was amended to remove  
-  `/Users/james/nixtastic/meshtastic-node-kmp/README.md`
-- **[medium]** Plan doc's device x transport matrix says BlueZ is "future" while the same doc says it shipped  
-  `/Users/james/nixtastic/notes/multi-transport-mesh.md`
-- **[medium]** Handoff and plan doc name the wrong pushed head for the firmware spike, skipping the audit-fix commit  
-  `/Users/james/nixtastic/notes/handoff-multi-transport.md`
-- **[medium]** Three build files say Spotless's ktlint reads .editorconfig; the same build file and AGENTS.md say it does not  
-  `/Users/james/nixtastic/meshtastic-node-kmp/build.gradle.kts`
-- **[medium]** monitor/README describes a one-screen UDP-only app that no longer exists  
-  `/Users/james/nixtastic/meshtastic-node-kmp/monitor/README.md`
-- **[medium]** Audit claims the "full AGENTS.md gate" was green on a SHA that predates the gate being fixed  
-  `/Users/james/nixtastic/notes/audit-multi-transport-2026-09-05.md`
-- **[medium]** The `rx` counter counts mesh events, not frames received  
-  `/Users/james/nixtastic/meshtastic-node-kmp/monitor/src/commonMain/kotlin/org/meshtastic/node/monitor/MonitorController.kt`
-- **[medium]** PeerRow.lastHeardMs is the time of the peer's last NodeInfo, not the last time it was heard  
-  `/Users/james/nixtastic/meshtastic-node-kmp/monitor/src/commonMain/kotlin/org/meshtastic/node/monitor/MonitorController.kt`
-- **[medium]** `tx?` in the status strip is a one-shot sample of a value documented as live  
-  `/Users/james/nixtastic/meshtastic-node-kmp/monitor/src/commonMain/kotlin/org/meshtastic/node/monitor/MonitorController.kt`
-- **[medium]** "Send test" with an empty box crashes when the identity has not loaded (or failed to load)  
-  `/Users/james/nixtastic/meshtastic-node-kmp/monitor/src/commonMain/kotlin/org/meshtastic/node/monitor/MonitorController.kt`
-- **[medium]** Both platform entry points do the plain stop-then-start that restart() exists to prevent  
-  `/Users/james/nixtastic/meshtastic-node-kmp/monitor/src/androidMain/kotlin/org/meshtastic/node/monitor/MonitorActivity.kt`
-- **[medium]** Unticking the LoRa bearer makes it permanently un-tickable and blames a stick that is plugged in  
-  `/Users/james/nixtastic/meshtastic-node-kmp/monitor/src/commonMain/kotlin/org/meshtastic/node/monitor/MonitorController.kt`
-- **[medium]** Config.channels/transports are public MutableLists read live, not snapshotted as the KDoc claims  
-  `meshtastic-node-kmp/node-core/src/commonMain/kotlin/org/meshtastic/node/MeshNode.kt`
-- **[medium]** A tracked API dump describes a constructor that no longer exists and apiCheck never validates it  
-  `meshtastic-node-kmp/node-transport-udp/api/node-transport-udp.api`
-- **[medium]** The documented gate links no iOS framework, including the iosArm64 one the build file says is newly exercised  
-  `meshtastic-node-kmp/AGENTS.md`
-- **[medium]** Build-file comment claims withHostTest verifies Android's runtime; it runs on the host JVM  
-  `meshtastic-node-kmp/node-core/build.gradle.kts`
-- **[low]** LoraTransport never overrides MeshTransport.receiveOnly, so a permanently listen-only LoRa bearer is not shown as one  
-  `meshtastic-node-kmp/node-transport-lora/src/commonMain/kotlin/org/meshtastic/node/transport/lora/LoraTransport.kt`
-- **[low]** The phone-API 'firmware dump order' test checks the library against its own lists, never against the firmware  
-  `meshtastic-node-kmp/node-phone-api/src/commonTest/kotlin/org/meshtastic/node/phoneapi/PhoneApiSessionTest.kt`
-- **[low]** An MQTT loop-prevention test that needs no broker is gated behind the broker env var  
-  `meshtastic-node-kmp/node-transport-mqtt/src/jvmTest/kotlin/org/meshtastic/node/transport/mqtt/MqttBrokerInteropTest.kt`
-- **[low]** Raising BLE_GATT_MESH_MAX_LINKS as the header instructs silently gives a third peer that receives nothing  
-  `src/platform/esp32/ESP32BLEGattMesh.h`
-- **[low]** BLEMeshHandler's thread-safety comment asserts the packet pool is safe from other tasks; it is not  
-  `src/mesh/BLEMeshHandler.h`
-- **[low]** node-core's build file says it has no platform source sets; it has three  
-  `/Users/james/nixtastic/meshtastic-node-kmp/node-core/build.gradle.kts`
-- **[low]** Two files call ok_to_mqtt the bitfield's only defined use; firmware defines and uses a second bit  
-  `/Users/james/nixtastic/meshtastic-node-kmp/node-core/src/commonMain/kotlin/org/meshtastic/node/ProtoPacketCodec.kt`
-- **[low]** cross-repo-contracts.md quotes a protobufs pin android moved off  
-  `/Users/james/nixtastic/notes/cross-repo-contracts.md`
-- **[low]** desktop-ble-plan's ordered plan tells you to run a spike it marks done  
-  `/Users/james/nixtastic/notes/desktop-ble-plan.md`
-- **[low]** AGENTS.md's gate claims every module's tests run on every target; two modules have no Android test compilation  
-  `/Users/james/nixtastic/meshtastic-node-kmp/AGENTS.md`
-- **[low]** Ring labels are clipped for peers near 3 and 9 o'clock when the peer has no short name  
-  `/Users/james/nixtastic/meshtastic-node-kmp/monitor/src/commonMain/kotlin/org/meshtastic/node/monitor/MeshDiagram.kt`
-- **[low]** The `BT` metric goes false when a non-Bluetooth permission is denied, and blocks the restart-on-grant  
-  `/Users/james/nixtastic/meshtastic-node-kmp/monitor/src/androidMain/kotlin/org/meshtastic/node/monitor/Platform.android.kt`
-- **[low]** A malformed !hex address silently broadcasts a message the user meant as a DM  
-  `/Users/james/nixtastic/meshtastic-node-kmp/monitor/src/commonMain/kotlin/org/meshtastic/node/monitor/MonitorController.kt`
-- **[low]** The desktop offers a full LoRa tuning panel for a bearer with no JVM backend  
-  `/Users/james/nixtastic/meshtastic-node-kmp/monitor/src/jvmMain/kotlin/org/meshtastic/node/monitor/Platform.jvm.kt`
-- **[low]** node-transport-mqtt's Android target is never compiled by the documented gate  
-  `meshtastic-node-kmp/node-transport-mqtt/build.gradle.kts`
-- **[low]** NodeDirectory hands out its stored public keys by reference, so the never-replace rule is bypassable  
-  `meshtastic-node-kmp/node-core/src/commonMain/kotlin/org/meshtastic/node/NodeDirectory.kt`
-- **[low]** LocalRadio.nodeNum is a public Int, truncating the upper half of the NodeNum space  
-  `meshtastic-node-kmp/node-phone-api/src/commonMain/kotlin/org/meshtastic/node/phoneapi/LocalRadio.kt`
+Read against HEAD, each verifier told to refute by default and to say whether the earlier fix
+batch had already closed it.
+
+**19 still open, 4 already fixed, 3 refuted.** Severities moved again: several mediums came back
+low. With this wave every one of the 131 findings has a verdict.
+
+The 4 it independently confirmed were already fixed: the diagram's freshness clock, both platform
+entry points' stop-then-start, the malformed DM address, and MeshNode's unvalidated primary
+constructor.
+
+### Refuted
+
+- **An MQTT loop-prevention test that needs no broker is gated behind the broker env var** (claimed low) - Read at HEAD (bc7b7e0); the file is untouched since 6d33342 "Drive the MQTT bridge against a real broker", so nothing was fixed in the batch.
+- **NodeDirectory hands out its stored public keys by reference, so the never-replace rule is bypassable** (claimed low) - Read NodeDirectory.kt at HEAD (bc7b7e0). The factual half of the finding is true: `mergeKey` (line ~127) stores `valid` without copying, and `publicKeyOf` (line 72), `get`, `all` and the `peers` State
+- **LocalRadio.nodeNum is a public Int, truncating the upper half of the NodeNum space** (claimed low) - Read at HEAD (bc7b7e0). node-phone-api/src/commonMain/kotlin/org/meshtastic/node/phoneapi/LocalRadio.kt:46 still reads `public val nodeNum: Int get() = node.identity.nodeNum.toInt()`, so nothing was c
+
+### Fixed from this wave
+
+- [medium] ReliableNodeTest's UDP self-echo test asserts before the node's collector has run
+- [medium] RelayOnAirTest cannot fail: a relay that forwarded nothing reports green
+- [medium] PeerRow.lastHeardMs is the time of the peer's last NodeInfo, not the last time it was heard
+- [medium] Send test with an empty box crashes when the identity has not loaded or failed to load
+- [medium] Unticking the LoRa bearer makes it permanently un-tickable and blames a stick that is plugged in
+- [medium] Config.channels/transports are public MutableLists read live, not snapshotted as the KDoc claims
+- [low] LoraTransport never overrides MeshTransport.receiveOnly, so a permanently listen-only LoRa bearer is not shown as one
+- [low] Three build files say Spotless's ktlint reads .editorconfig; the same build file and AGENTS.md say it does not
+- [low] node-core's build file says it has no platform source sets; it has three
+- [low] Two files call ok_to_mqtt the bitfield's only defined use; firmware defines and uses a second bit
+- [low] A tracked API dump describes a constructor that no longer exists and apiCheck never validates it
+- [low] Build-file comment claims withHostTest verifies Android's runtime; it runs on the host JVM
+
+### Still open
+
+All low, all cosmetic or reporting-accuracy rather than behaviour:
+
+- **[low] The phone-API 'firmware dump order' test checks the library against its own lists, never against the firmware**  
+  `node-phone-api/src/commonTest/kotlin/org/meshtastic/node/phoneapi/PhoneApiSessionTest.kt`  
+  Fix: In `LocalRadio.configs()` add `Config(sessionkey = Config.SessionkeyConfig())` and `Config(device_ui = DeviceUIConfig())`, and in `moduleConfigs()` add `ModuleConfig(statusmessage = ...)`, `ModuleConfig(traffic_management = ...)`, `ModuleConfig(tak = ...)`, `ModuleConfig(mesh_beacon = ...)` in tag order; then move the 
+- **[low] The rx counter counts mesh events, not frames received**  
+  `monitor/src/commonMain/kotlin/org/meshtastic/node/monitor/MonitorController.kt`  
+  Fix: In MonitorController.onEvent add `is MeshEvent.Relayed, is MeshEvent.RelaySuppressed, is MeshEvent.DeliveryFailed -> it` before the `else` branch, and reword MonitorState.rxCount's doc from "every event that stems from a frame heard" to "one per frame heard" - that doc sentence is what currently licenses the double cou
+- **[low] tx? in the status strip is a one-shot sample of a value documented as live**  
+  `monitor/src/commonMain/kotlin/org/meshtastic/node/monitor/MonitorController.kt`  
+  Fix: In the `availabilityJob` collector in MonitorController.kt (the `_state.update { it.copy(transportAvailability = ...) }` block around line 250), add `canTransmit = chosen.any { t -> t.canTransmit },` to that `copy` - `chosen` is in scope, and Android's `bluetoothAvailability` re-emits on `BluetoothAdapter.ACTION_STATE_
+- **[low] Ring labels are clipped for peers near 3 and 9 o'clock when the peer has no short name**  
+  `monitor/src/commonMain/kotlin/org/meshtastic/node/monitor/MeshDiagram.kt`  
+  Fix: In MeshDiagram's Canvas, hoist the label text and TextStyle out of drawPeerLabel and size the reserve from the widest measured label instead of the fixed 44.dp: `val style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 11.sp)` then `val reserve = state.peers.maxOf { measurer.measure(labelOf(it), style).size.
+- **[low] The BT metric goes false when a non-Bluetooth permission is denied, and blocks the restart-on-grant**  
+  `monitor/src/androidMain/kotlin/org/meshtastic/node/monitor/Platform.android.kt`  
+  Fix: Split the prompt set from the authorization set, but keep the ALN→restart path the KDoc calls for: add `private val bluetooth = if (SDK_INT >= S) arrayOf(BLUETOOTH_SCAN, BLUETOOTH_CONNECT, BLUETOOTH_ADVERTISE) else arrayOf(ACCESS_FINE_LOCATION)`, keep `required = bluetooth + (SDK_INT >= 37 ? arrayOf(ACCESS_LOCAL_NETWOR
+- **[low] The desktop offers a full LoRa tuning panel for a bearer with no JVM backend**  
+  `monitor/src/jvmMain/kotlin/org/meshtastic/node/monitor/Platform.jvm.kt`  
+  Fix: In `MonitorApp.kt`, gate LoRa on a bearer the platform actually built rather than on the "has a row" list - e.g. carry the absent names in `MonitorState` and use `"lora" in state.availableTransports && "lora" !in state.absentTransports` at both :375 and :432 - and reword the four KDocs (Seams.kt:37-39, MonitorState.kt:
+- **[low] node-transport-mqtt's Android target is never compiled by the documented gate**  
+  `node-transport-mqtt/build.gradle.kts`  
+  Fix: Preferred: add `withHostTest {}` to the `android { }` block in `node-transport-mqtt/build.gradle.kts`, matching the five sibling modules. The gate's existing `testAndroidHostTest` then compiles `androidMain` and runs the module's `commonTest` on the Android host, making AGENTS.md's "every module's tests on every target
 
 ## Confirmed findings
 
