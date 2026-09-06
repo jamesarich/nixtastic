@@ -20,10 +20,23 @@ availability seam that made a dead bearer distinguishable from an idle one. Ever
 slice, what hardware proved, and what is still blocked on something outside the
 code: "Tier-1 parity implemented end to end" at the end of this file.
 
-Left standing from that plan: the commonization pass James asked for
-(per-peer send queues, scan and advertise scheduling, the stats and counter
-shape), the monitor's Material 3 pass and live mesh diagram, and step 0's
-remaining app-side adapters.
+**Then a feature-wide adversarial review, 2026-09-06**, and seventeen commits of
+fixes off it. All 18 high-severity findings are addressed, along with every
+medium and low that a second, properly adversarial verification wave confirmed.
+The load-bearing ones: reliable delivery only retried when an unrelated frame
+arrived, so a silent mesh never retried at all; the phone API was an
+unauthenticated write interface on every interface and never sent a delivery
+receipt, so every message a stock app sent sat at "Sending..."; every
+phone-facing timestamp came from an uptime clock, so an app rendered 1970; a
+region that cannot carry a preset transmitted it anyway, off-band; and a blank
+channel name hashed as "" rather than "LongFast", so an imported default channel
+was silent both ways. Full list, method and the parts that stayed unaudited:
+[`review-multi-transport-2026-09-06.md`](./review-multi-transport-2026-09-06.md).
+
+Left standing from the parity plan: the cross-peer fan-out inside a single GATT
+send (needs three connected peers), step 0's remaining app-side adapters, and
+per-bearer rates over time in the monitor. The commonization pass and the
+Material 3 pass are done.
 
 Caught in the same sitting: the `api/` binary-compatibility dumps had gone stale
 because the gate documented in node-kmp's `AGENTS.md` never named `apiCheck`,

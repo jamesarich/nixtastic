@@ -126,11 +126,17 @@ found to make a bearer *throw* on this device, see the traps) and
 3. **Upstream:** nudge esp-idf#15311 (same assert, same PC 0x40006fcb) with the
    peer-initiated variant, the stock-Meshtastic repro and the 1M workaround; open
    a `meshtastic/firmware` issue so A16-iPad users have somewhere to land.
-4. **Commonize the transports** (James, 2026-09-05). The state and fault half is
-   done (the availability seam). What is left is the rest of it: per-peer send
-   queues and their concurrency, scan and advertise scheduling and refresh (the
-   Android 3-minute scan restart lives in an `actual`, and the rule is not
-   Android-specific), and the stats and counter shape. The GATT chunk and
+4. **Commonize the transports** (James, 2026-09-05). **Mostly done 2026-09-06.**
+   The state and fault half was the availability seam; per-peer send queues landed
+   as `GattLink.broadcastPacket` (`2c87654`), and the stats shape as the
+   distinct-transport-name rule (`54e4a77`). Scan and advertise scheduling was
+   **deliberately not lifted**: the premise that Android's 5-minute downgrade
+   workaround is not Android-specific turned out to be unevidenced - neither
+   `BleMeshRadio.apple.kt` nor `BluezBleMeshRadio` restarts its scan, and
+   CoreBluetooth's throttling is background-only. What is genuinely left is the
+   cross-peer fan-out inside a single send, which needs three connected peers to
+   settle whether Android's one-outstanding-operation bound is per connection or
+   per app. The GATT chunk and
    reassembly state machine is already common (`GattLinkBase`), which is what let
    the HELLO arbitration land without touching a platform file. Target: a new
    backend is an I/O adapter of a few hundred lines, not a fourth copy of the
@@ -145,18 +151,21 @@ found to make a bearer *throw* on this device, see the traps) and
    drops a radio silent for 90 s (18 read timeouts, reset only by received bytes),
    so the session answers heartbeats and sends a `queueStatus` every 30 s; and
    without Routing ACK/NAK its sent messages sit at "Sending..." and end as
-   "Failed to deliver to mesh".
-6. **Monitor: Material 3 and a live mesh diagram.** The honesty half is done. The
-   screen is still a tuning panel plus a text log, which is a debugger's view, not
-   a monitor's. What a node needs shown: identity and bearers up; per-bearer
-   rx/tx/relay/drop **rates over time**, not just totals; peers with last-heard,
-   RSSI/SNR and *which bearer* they are reached on; queue depth and delivery
-   outcome; the phone-API client if one is attached. The centrepiece should be a
-   live diagram - this node in the middle, direct peers around it, edges coloured
-   by transport, weight or animation for traffic, fading as a peer goes stale,
-   relays drawn a hop beyond. Compose Canvas is enough and the data is already in
-   `MeshEvent` (bearer stamped on every rx/tx/relay). Keep the log as a secondary
-   tab.
+   "Failed to deliver to mesh" - **fixed 2026-09-06** (`960be7d`): the session
+   forwards `Delivered` and `DeliveryFailed` as local ROUTING_APP packets.
+6. **Monitor: Material 3 and a live mesh diagram - DONE 2026-09-06** (`bc01e59`).
+   Four destinations under `NavigationSuiteScaffold`, which picks the navigation
+   shape from the window size class: verified by resizing the desktop window, a
+   bottom bar at 460dp and a rail at 720dp and above. The mesh view is the
+   supporting-pane layout, diagram alone on a compact window and diagram beside
+   the log on an expanded one. The diagram is this node at the centre, peers on a
+   ring, edges coloured by the bearer each was last heard on and fading with
+   silence. Deliberately not a graph of the whole mesh: this node knows what it
+   heard, not the topology beyond it. `SupportingPaneScaffold` itself does **not**
+   work here - its supporting pane never expanded at any width - so the split is
+   driven off `currentWindowAdaptiveInfo().windowSizeClass` instead. Still open
+   from the original wish list: per-bearer rates over time rather than totals, and
+   queue depth.
 7. **Desktop BLE for macOS and Windows.** [`desktop-ble-plan.md`](./desktop-ble-plan.md).
    The macOS helper-process bridge is proven viable by the TCC spike; unsettled is
    whether a bundled `.app` gets its own TCC grant (the spike ran from a
@@ -183,12 +192,14 @@ found to make a bearer *throw* on this device, see the traps) and
     (`didDiscoverPeripheral` unreliable; the inbound link is solid, and two of
     three iOS connects to the Pocket dropped after 2 s before one stuck); the
     send-dedup asymmetry (repeated `Send test` shared a packet id on the Pixel).
-13. **Dogfood API gaps:** a `GattMeshTransport` clock default, and a `MeshNode`
-    peer `Flow`.
-14. **Monitor polish:** the tuning panel squeezes the log to nothing on a phone (a
-    sheet, or collapse peers too); the LoRa stale-claim message after the device
-    tests (`SX1262 command 0x80 failed, status 0xf7` retrying) and the post-TX
-    bulk-IN retry.
+13. **Dogfood API gaps - DONE 2026-09-06** (`dba67eb`). `GattMeshTransport.clock`
+    defaults to the monotonic epoch `GattArbitration` already keeps, and
+    `MeshNode.peers` is a `StateFlow` over the directory.
+14. **Monitor polish.** The tuning panel squeezing the log to nothing on a phone is
+    gone by construction - tuning and the log are separate destinations now. Still
+    open: the LoRa stale-claim message after the device tests
+    (`SX1262 command 0x80 failed, status 0xf7` retrying) and the post-TX bulk-IN
+    retry.
 
 ## The bench
 
