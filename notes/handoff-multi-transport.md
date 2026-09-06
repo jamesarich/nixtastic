@@ -142,15 +142,26 @@ found to make a bearer *throw* on this device, see the traps) and
 - **The refusal of a phone's local AdminMessage** is visible on connect as five
   `queueStatus res=-1` in a row - the app pushing its own owner/config at the
   radio, addressed to the radio itself.
+- **The `Delivered` half, on the same message path.** With US armed, `relay` on and
+  `hopLimit` 1, a channel message from the app went out once and was retired 1.9 s
+  later by a real neighbour's rebroadcast:
+
+  ```
+  7:29.370  lora: tx ok len=41 toa=559ms
+  7:29.372  tx[udp,lora] data id=2123155540 to=!ffffffff
+  7:31.231  rx[lora] delivered: !a6e88506 ack req=2123155540
+  ```
+
+  `[ackNak] req=2123155540 routeErr=0 isAck=true` on the phone, green tick,
+  "Delivered to mesh". The receipt carries our own node id, as the firmware's
+  locally generated implicit ack does. No retransmission at all - the whole point
+  of the implicit ack is that it stops the budget early.
+  `loraRelayOnAir` stayed false, so relaying here means LoRa in, UDP out; the node
+  put no extra traffic on the air.
 
 **What the next bench sitting still owes.**
 
-1. **The `Delivered` half of the receipt path.** Needs a relayer, so it needs
-   `relay` on with `hopLimit` 1 and a LoRa bearer that can transmit: the Pocket
-   rebroadcasts at hop_limit 0, we overhear it with `hopsAway = 1`, and the app
-   should read "Delivered to mesh". That puts the node on the live local mesh as a
-   one-hop relayer, so it is James's call.
-2. **The config dump.** It now runs to the firmware's ConfigType and
+1. **The config dump.** It now runs to the firmware's ConfigType and
    ModuleConfigType maxima (10 and 17, up from 8 and 13). Confirm the stock app
    still completes its handshake - more sections is the safer direction, but it is
    untested.
