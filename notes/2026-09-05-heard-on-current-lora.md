@@ -1,6 +1,6 @@
 # Heard-on-current-LoRa node bit - cross-repo umbrella
 
-Status: in progress - protobufs merged (9a78479); android PR #7055 ready for merge; apple shipped an interim
+Status: in progress - protobufs merged (9a78479); android PR #7055 clean at be0a8d7, awaiting enqueue; apple shipped an interim
 Started: 2026-09-05
 
 ## Goal
@@ -28,7 +28,7 @@ preset is changed from the device UI or CLI while the phone is disconnected.
 | protobufs | `NodeInfo.heard_on_current_lora` bool tag 15; `NodeInfoLite.bitfield` doc note | - | `buf lint` | |
 | firmware | bitfield bit 11; set on hear, clear on slot change; mirror in `TypeConversions`; submodule bump | - | `bin/run-tests.sh` (native), bench flash | issue #11745 |
 | device-ui | grey stale rows in the node list; zip pin bumped into firmware | - | native CMake/ctest, on-device TFT | issue #387 |
-| android | `Capabilities` gate, marker, banner + removal offer, hide-unheard filter | `feat/unheard-on-current-lora` | full baseline green; CI 17/17 at 96742ad | **PR #7055** ready, 4 CodeRabbit rounds addressed |
+| android | `Capabilities` gate, marker, banner + removal offer, hide-unheard filter | `feat/unheard-on-current-lora` | full baseline green; CI 17/17 at be0a8d7; CodeRabbit 0 actionable | **PR #7055** ready to enqueue, 6 rounds addressed |
 | apple | parity | - | Garth's own | **PR #2429 MERGED** (interim app-side, not the proto field) |
 | design | cross-platform feature spec; docs as a sub-issue | - | issue only | **#146 (parent)**, docs meshtastic#2649 |
 
@@ -126,7 +126,7 @@ Discovery being slow and buried is a separate usability item.
 
 ## Android review log (PR #7055)
 
-Four CodeRabbit rounds, 14 findings, 13 fixed and 1 declined. The ones worth
+Six CodeRabbit rounds, 18 findings, 17 fixed and 1 declined. The ones worth
 remembering because they were real bugs, not polish:
 
 - Removal could delete the user's own node: `ourNode` and the node list come
@@ -138,6 +138,11 @@ remembering because they were real bugs, not polish:
 - `Capabilities.forceEnableAll = isDebug` defeated the gate in debug builds:
   the absent proto3 field decoded false and was persisted. This capability now
   sits outside the override.
+- `reportsHeardOnCurrentLora` is a StateFlow on `NodeManager` (the
+  `firmwareEdition` shape): atomic reads across coroutines, and the node list
+  presents every node as heard while it is false, so no consumer can act on a
+  stale flag before the async DB normalization lands. The filter additionally
+  waits for `isNodeDbReady`.
 - Declined: moving the 57->58 migration test to `androidHostTest`. Every
   existing (n-1)->n test lives in `jvmTest`; `.coderabbit.yaml:156` is stale.
 
@@ -146,3 +151,17 @@ normalization race.
 
 Ships on the `2.8.0.16-g9a78479-SNAPSHOT` pin; James confirmed snapshots are
 fine to ship on.
+
+## Tooling found wanting on the way
+
+- `pr <repo> <n>` (and `wait --until reviewed`) cannot see a 0-actionable
+  CodeRabbit outcome: it lands as an in-place edit of the pinned summary
+  comment ("No actionable comments were generated in the recent review"),
+  not as a review body. Round six sat "unreviewed" for 30 minutes after it
+  had finished. Also: CodeRabbit auto-pauses *automatic* reviews after N
+  reviewed commits ("Reviews paused"); an explicit `full review` still runs.
+- `just pr <repo> <n> resolve <id> --reply "..."` splits the reply on spaces
+  and argparse rejects the rest; `nix run .#pr -- ...` is fine.
+- The Flatpak aarch64 workflow's "Reclaim the isolated Gradle home" step
+  `rm -rf`s a dir a daemon is still writing and, when it loses, skips the
+  whole offline build. x86_64 unaffected. Separate fix.
