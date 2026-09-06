@@ -103,6 +103,30 @@ the publisher.
 found to make a bearer *throw* on this device, see the traps) and
 `transport[udp] FAILED: …`.
 
+**What the next bench sitting owes.** The 2026-09-06 review fixes are gated and
+unit-tested, several with mutation checks, but these five change behaviour a radio
+or a stock app sees and none has been run against one:
+
+1. **The retransmit timer.** A `want_ack` DM on a silent mesh should now go out
+   five times and end in `DeliveryFailed`. Send one to a powered-off peer over
+   LoRa and watch the log; before the fix it was transmitted once and never
+   reported.
+2. **Routing receipts to the phone.** Connect the stock Android app to the desktop
+   node and send a channel message. It should resolve rather than sit at
+   "Sending..." and end as "Failed to deliver to mesh".
+3. **The config dump.** It now runs to the firmware's ConfigType and
+   ModuleConfigType maxima (10 and 17, up from 8 and 13). Confirm the stock app
+   still completes its handshake - more sections is the safer direction, but it is
+   untested.
+4. **Wall-clock timestamps.** Messages and peers in the app should carry real
+   times, not 1970.
+5. **The phone API bind.** The library binds loopback now and the monitor opts
+   into `ANY_ADDRESS`; confirm the app on the Pixel still reaches the desktop node.
+
+Also unrun: the LoRa preset clamp (EU_868 with a turbo preset should tune inside
+the sub-band) and whether the shared airtime ledger actually survives a tuning
+change on hardware.
+
 ## Next steps, in order
 
 1. **`protobufs` to `master`.** The submodule commits (`6c246f1` BLE-adv enums,
