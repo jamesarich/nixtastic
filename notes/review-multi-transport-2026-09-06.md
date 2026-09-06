@@ -250,6 +250,44 @@ and low from the two re-run waves is either fixed or explicitly declined with a
 reason. What remains untouched is the medium and low tail of the **first** pass -
 the one whose verifiers refuted nothing - listed below.
 
+## The cheap re-verification, and why it did not settle the tail (2026-09-06)
+
+The 61 medium/low findings from the first pass were re-run through one cheap
+low-effort agent each, on the theory that the first pass's 0-of-79 refutation rate
+meant the set was unaudited and a fast adversarial sweep would find the
+overstatement. It did not.
+
+**61 answered: 54 still open, 4 already fixed, 3 refuted.** A 5% refutation rate,
+against 13% (5 of 39) from the mid-tier waves on the same corpus. So the cheap
+pass behaved like the credulous first pass rather than auditing it.
+
+None of the three refutations survives reading:
+
+- **rx_time at 1970** was marked "never a defect" on correct reasoning about
+  current code - it reads `config.epochSeconds` now - but that is because it was
+  fixed the day before, in `2fbfa48`. Right about HEAD, wrong bucket, and its
+  stated reason ("the developer was aware and deliberately avoided it") is a
+  guess about history that happens to be false.
+- **want_ack stripped from broadcasts** was refuted as "working as deliberately
+  designed, not an unintended bug", which does not engage the claim - that the
+  stated rationale misdescribes the protocol and leaves the 3-attempt broadcast
+  budget as dead code.
+- **the phone session bound to a cancelled node** was refuted with the words
+  "Without seeing platform..." in the reasoning. Refuting on admittedly
+  incomplete evidence is the failure mode this whole exercise is meant to catch.
+
+**What it was good for.** Two findings it kept open were ones I had recorded as
+closed and had not fixed: `LoraTransport` still not declaring `receiveOnly`
+(yesterday's commit fixed the neighbouring availability bug and I filed the wrong
+one as done), and the desktop's `loraStatus` still returning a constant null after
+I corrected its KDoc to describe exactly that gap. Both fixed in `27b1f65`.
+Cheap agents re-reading a claim against HEAD are a decent check on *my* bookkeeping
+even when they are a poor check on the claim.
+
+**So the tail is still unaudited.** The 54 remaining have now been confirmed twice
+by graders who confirm nearly everything. Treat them as leads, not as a work list;
+anything acted on should be read first, as the ones fixed so far were.
+
 ## Confirmed findings
 
 79 findings by area, severity-ordered within each.
