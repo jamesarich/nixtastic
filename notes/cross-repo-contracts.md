@@ -110,8 +110,9 @@ for something firmware cannot yet do:
 drafts got wrong.** Only two repos vendor it as a git submodule:
 `firmware/protobufs` and `meshtastic-python/protobufs`. `android` consumes a
 **published Maven artifact** - `org.meshtastic:protobufs`, Wire-generated KMP
-models, pinned in `gradle/libs.versions.toml` (currently a
-`2.7.26.142-gf3c374d-SNAPSHOT` build). There is no proto submodule in `android`
+models, pinned in `gradle/libs.versions.toml` (`2.8.0` as of 2026-09-06; it was a
+`2.7.26.142-gf3c374d-SNAPSHOT` build when this note was written, so check the
+catalog rather than trusting the number here). There is no proto submodule in `android`
 and its `.gitmodules` is empty; a bump there is a version bump, not a
 `git submodule update`.
 

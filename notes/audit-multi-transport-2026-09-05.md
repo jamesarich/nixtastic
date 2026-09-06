@@ -80,8 +80,13 @@ gap for anything beyond one.
 
 ## Gates run
 
-node-kmp: full AGENTS.md gate (four JVM test suites, Android assemble, JVM and
-iOS-simulator compiles) green on `8bf28a2`; installed on the Pixel. Firmware
+node-kmp: the gate **as AGENTS.md documented it at the time** (four JVM test
+suites, Android assemble, JVM and iOS-simulator compiles) green on `8bf28a2`;
+installed on the Pixel. Worth naming precisely, because that gate was the one
+with the hole in it: it ran `jvmTest` and merely *compiled* the native targets.
+It was replaced later the same day with `allTests testAndroidHostTest`, which is
+what caught four Kotlin/Native-illegal test names that had passed here. A green
+tick above `8bf28a2` does not mean the native suites ran. Firmware
 `ca0a39c51`: `rak4631_blemesh` (RAM 41.1%, flash 92.1%) and `heltec-v3` (RAM
 39.8%, flash 68.2%) build; native `test_ble_mesh`, `test_ble_gatt_mesh` and
 `test_transport_registry` pass under Docker; flashed on the WisMesh Pocket,

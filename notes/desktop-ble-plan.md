@@ -144,7 +144,8 @@ firmware, not in the archaeology afterwards. Recorded in `AGENTS.md` too.
 1. **Settle the on-air format**, knowing the above. It constrains everything else and
    changing it later breaks every deployed node.
 2. **macOS GATT bridge.** Best value per line: a quarter of a new backend's cost,
-   reusing code already proven on hardware. Do the TCC spike first.
+   reusing code already proven on hardware. The TCC spike this depended on is
+   step 0 above, and it is done.
 3. **Windows**, if `ble-adv` beyond Android and Linux is wanted. It is the only
    desktop platform that can advertise, which makes it the only way to grow the
    advertisement mesh past Android.
