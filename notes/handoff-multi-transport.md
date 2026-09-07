@@ -211,6 +211,27 @@ the spike firmware, all on this Mac's bench:
 | macOS | the packaged `MeshMonitor.app` | `:monitor:createDistributable`, launched through LaunchServices |
 | WisMesh Pocket (RAK4631) | `rak4631_blemesh` at `2.8.0.46b4fdc` | built in the spike worktree, flashed by serial DFU |
 
+**What the soak found immediately.** Three monitors and a RAK4631 in one room, and the
+mesh view drew exactly **one** direct neighbour - the RAK, running real firmware. The
+monitors could not see each other as adjacent, for two reasons that had to be fixed
+together (`04dcf6b`):
+
+- `RelayPolicy.Island` stamps `hop_start = 0`, so `hopsAway` is **null rather than zero**
+  and distance reads as "did not say". Third appearance of that blind spot; the earlier
+  two are in the review notes.
+- `seal()` never stamped `relay_node`. `Router::send` stamps it on *every* send, not only
+  on a relay, so ours were the only packets on the mesh that did not name their
+  transmitter - which also denied a firmware relay any way to attribute them for
+  suppression. With island's hop_start at 0 this was the *only* remaining route to
+  proving adjacency, and it was closed.
+
+Also `getLastByteOfNodeNum` is not the low byte: `NodeDB.h:395` maps a low byte of 0 to
+`0xFF`, which is what stops one address in every 256 stamping the "nobody" sentinel. The
+stamp and `resolveLastByte`'s lookup now share `PacketHeaderView.lastByteOf`; they miss
+everything silently if they disagree, and the resolver had it wrong.
+
+After the fix the Mac draws a solid `gatt` edge to another monitor, on the inner ring.
+
 **Flashing an nRF52 here: do the 1200bps touch and the transfer in one command.** The
 bootloader auto-exits DFU in about 30 seconds, so touching it and then checking anything
 first means the write starts after the window shut - `[Errno 6] Device not configured`
