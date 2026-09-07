@@ -6,7 +6,19 @@ evidence lives in [`multi-transport-mesh.md`](./multi-transport-mesh.md), which
 is the canonical plan plus a dated section per bench sitting.
 
 Rewritten 2026-09-05 at the end of the day the tier-1 parity plan was
-implemented end to end. Everything below is committed and pushed.
+implemented end to end, and updated through 2026-09-06. Everything below is
+committed and pushed.
+
+**What 2026-09-06 changed**, in one paragraph, because it moved two things the
+plan had listed as open. The review's confirmed findings were fixed and proven
+against the stock Android app, ending with two receipt bugs the app made visible:
+a broadcast carried no `want_ack`, so a channel message resolved only when the
+app's own five-minute timeout gave up on it, and an unreadable `want_ack` packet
+got silence where the firmware sends `PKI_UNKNOWN_PUBKEY` - the NAK that makes a
+peer send the NodeInfo that fixes it. And **desktop BLE stopped being a plan**:
+Linux's GATT roles reached firmware for the first time, after three fixes, and
+macOS got a bearer at all, through our own CoreBluetooth in a Kotlin/Native dylib
+called in-process over JNI. Windows is now the whole of the desktop BLE gap.
 
 ## Read first
 
@@ -37,7 +49,7 @@ implemented end to end. Everything below is committed and pushed.
 
 | Phase | State | Where |
 | --- | --- | --- |
-| 1 - client N-transport node | **done**; four bearers (gatt, ble-adv, udp, lora) in one node, instrumented per bearer, proven live | `meshtastic-node-kmp` `main`, pushed |
+| 1 - client N-transport node | **done**; four bearers (gatt, ble-adv, udp, lora) in one node, instrumented per bearer, proven live. Desktop BLE proven on Linux **and** macOS 2026-09-06; Windows is the one platform left | `meshtastic-node-kmp` `main`, pushed |
 | 2 - firmware transport registry | done, green (native 1392/1392) | `firmware` `spike/ble-mesh-transport` (through `46b4fdc79`, pushed) |
 | 3 - firmware BLE-GATT mesh-peer edge | **proven both ways** on ESP32-S3 (Android; iOS after the 1M-PHY fix) and nRF52 (Android and iOS, two phones at once) | `ESP32BLEGattMesh`, `NRF52BLEGattMesh`; `BLEGattMeshHandler` shared |
 | Tier-1 node parity | **done end to end** 2026-09-05 | `meshtastic-node-kmp` `main`, pushed |
@@ -182,16 +194,25 @@ found to make a bearer *throw* on this device, see the traps) and
   rebroadcast being the only receipt it ever saw. The NAK is what makes a firmware
   sender push its NodeInfo, which is the key we were missing, 2.2 s later.
 
-**What the next bench sitting still owes.**
+**Cleared 2026-09-06**, all three by the stock app simply working against the
+desktop node for a day: the config dump completes its handshake at the firmware's
+ConfigType and ModuleConfigType maxima (10 and 17, up from 8 and 13); messages
+carry real times (`8:42 AM`, not 1970); and the Pixel reached
+`192.168.1.138:4403` from another device, which is the `ANY_ADDRESS` opt-in
+working now that the library binds loopback by default.
 
-1. **The config dump.** It now runs to the firmware's ConfigType and
-   ModuleConfigType maxima (10 and 17, up from 8 and 13). Confirm the stock app
-   still completes its handshake - more sections is the safer direction, but it is
-   untested.
-3. **Wall-clock timestamps.** Messages and peers in the app should carry real
-   times, not 1970.
-4. **The phone API bind.** The library binds loopback now and the monitor opts
-   into `ANY_ADDRESS`; confirm the app on the Pixel still reaches the desktop node.
+**What the next bench sitting owes.**
+
+1. **Two CoreBluetooth peers that never resolved.** Across an eight-hour macOS run
+   two of three centrals sat at `opening,notify=pending,chunk=20` the whole time.
+   That is the shape of the bug `803b594` fixed on BlueZ - a peer reserved and then
+   never retried - and nobody has looked at whether the Apple side ever gives up.
+2. **A LoRa stick that detached and stayed detached.** The Meshtadpole dropped off
+   USB mid-run and the bearer read `detached` for the remaining hours. The JVM path
+   is documented as hot-plug polled, so either the poll does not re-attach or it
+   never ran; replug one and watch.
+3. **The airtime ledger across a tuning change.** Still unrun. The monitor surfaces
+   no airtime figure, so it needs a log line or a test hook first.
 
 The LoRa preset clamp is **deliberately not bench-tested**: verifying it means
 configuring EU_868 on a radio sitting in the US, which is the out-of-band
