@@ -313,6 +313,24 @@ Reproduced on both Linux hosts. A peer answering `le-connection-abort-by-local` 
 `forget`-ten and immediately rediscovered, so `reserve` fires again about twice a
 second with no backoff, indefinitely.
 
+**No-pair agent added 2026-09-07 (`b920940`, on `main`).** `BluezPairingAgent`
+(`org.bluez.Agent1`, `NoInputNoOutput`) refuses every bond and is made the BlueZ
+*default* agent for the life of the link, so a connect to an ANCS-advertising iOS
+peer declines the bond BlueZ would otherwise route to the desktop's passkey-popping
+agent. Verified on james-pc: it takes the default and logs that it did; the journal
+shows zero passkey displays. **Two things unverified, both needing a longer window
+than this harness allows (it kills a GUI run past ~30s) plus the iPad:** (a) whether
+iOS keeps serving the unauthenticated mesh characteristic after its bond is refused
+or drops the link - neither `reject` nor an `accept`-just-works build reached a
+`ready` iPad in a 25s window, which is congestion/window not the agent; (b) that the
+popups actually stop on the iPad, which is James's to eyeball after deploying the
+arm64 jar on the **clockworkpi** (the host that drives them, not james-pc). If a
+refused bond drops the iOS link, flip `RequestConfirmation`/`RequestAuthorization`
+to return `Unit` (accept Just Works silently) - no prompt, at the cost of a silent
+unauthenticated bond. Caveat: as the default agent it governs all of the host's
+BlueZ pairing while the node runs - intended on a dedicated node, a real side effect
+on a workstation.
+
 **Storm fixed 2026-09-07 (`e286e2b`, on `main`).** `BluezRetryBackoff` is a timed
 per-peer gate: an `abort-by-local` refusal holds the peer off for a delay that
 doubles up to a minute, a success or a departure clears it. `reserveIfMesh`
