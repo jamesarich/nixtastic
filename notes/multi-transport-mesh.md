@@ -1555,3 +1555,29 @@ the log. `import -window $(xdotool search --name "Mesh Monitor" | tail -1)` via
 not land. The Pixel is `adb connect 192.168.1.182:36201`; `adb exec-out screencap
 -p` reads it, `adb shell input tap 897 2211` is Send test, and
 `adb shell input swipe 540 1950 540 2150 400` scrolls its log box back.
+
+## The mesh view, and the three things that know about the topology (2026-09-06/07)
+
+A node's picture of the mesh had one fact in it - did we hear this peer - and every
+originator whose traffic reached us was drawn as a spoke off the hub. A chain of relays
+looked like a star: 62 peers around a node whose own log showed it relaying frames that
+had already taken three and five hops.
+
+There are exactly three sources, and they are not equally strong. Keeping them apart is
+the whole design:
+
+| source | what it proves | discipline |
+| --- | --- | --- |
+| `hop_start - hop_limit` | how far away a peer is | null when the sender stamped `hop_start = 0`, which `RelayPolicy.Island` does. Null is not a distance and is never drawn as one |
+| `relay_node` (header byte 15) | **a direct neighbour**: a relayer is a node whose radio we received | one byte, so `NodeDirectory.resolveLastByte` mirrors `NodeDB::resolveLastByte` and returns nothing on two candidates. The wrong link is worse than no link |
+| `NEIGHBORINFO_APP` | links **between other nodes** | another node's claim, not our observation. Drawn dashed. A report replaces that reporter's whole set, because a neighbour list is who it hears *now* |
+
+`relay_node` is the one that matters most and was the one already on the wire and unused
+for this: it is the only thing that can prove `hopsAway = 0` for a peer whose traffic
+never decodes, which on the Mac node was ~600 frames a night from nodes it could not
+read. Firmware's relevance gate requires `hops_away == 0` to resolve a relayer, which is
+circular if you are using the relayer to *learn* who is at zero hops - so here, appearing
+as `relay_node` is itself the evidence.
+
+What is deliberately absent: any edge inferred from a packet merely arriving. Traffic
+from five hops away says nothing about which links carried it.
