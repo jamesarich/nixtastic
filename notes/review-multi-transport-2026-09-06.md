@@ -21,6 +21,46 @@ by default**. 131 findings raised.
   `MeshChannel.hash` XORs the raw name with no modem-preset substitution; the BLE-advertisement
   bearer does supply an RSSI on all three platforms.
 
+## 2026-09-07 re-verification pass (the medium/low tail)
+
+The tail this doc left "untouched" was re-verified against HEAD - several had been
+fixed since it was written (want_ack on broadcast, relay_node stamping), and the
+survivors were fixed or deferred with a reason. Each fix is gated and
+mutation-checked. On `meshtastic-node-kmp` `main`:
+
+- **`136afc0` #3** decrypt loops every hash-matching channel and keeps the one whose
+  plaintext is a real Data (rejecting UNKNOWN_APP); a wrong key is Unreadable and
+  NAKed NO_CHANNEL, not acked. The false-ACK and wrong-channel-decode both fixed.
+- **`849d1b2` #4** an ack/nak retires our retransmit and reports Delivered/Failed only
+  when addressed to us (firmware's isToUs gate); an overheard one is Opaque.
+- **`dae245e` #5** an MQTT downlink attributed to us is never re-injected, any gateway,
+  closing the forged-receipt vector; the "same receipt firmware synthesises" comment
+  was a misattribution (firmware makes a local ack, never re-injects).
+- **`cdf6a25` #9** packet ids use firmware's split - low 10 bits a counter, top 22
+  random per packet - not a bare +1 counter.
+- **`429e6bb` #10** a GPS cold start reports its first fix promptly, not an interval
+  later (the "never sent" null no longer collapses to 0).
+
+**Deferred as design decisions, not bugs** (need James, not a fix):
+- **#2** empty-PSK secondary channel: firmware borrows the primary's key and hashes
+  name-xor-primary-key; node-kmp has no primary/secondary role and treats an empty PSK
+  as cleartext by design. Matching firmware means adding primary-awareness to the
+  channel model - a design change.
+- **#6** hopsAway is null (not 0) for a hop_start==0 sender: node-kmp chose null
+  ("unknown") for the genuinely-ambiguous modern-0-hop vs legacy case, and compensates
+  via the relayedBy path. Firmware reads a modern (has_bitfield) 0 as 0, but that needs
+  the decoded bitfield, which hopsAway (a header property) does not have.
+- **#14** a channel-encrypted TEXT addressed to us: firmware rejects it as a legacy DM
+  to force PKI; node-kmp acks it, and an existing test deliberately exercises that. Is
+  node-kmp meant to support channel-directed DMs as a fallback for peers without
+  exchanged keys? James's call - matching firmware breaks that path.
+
+**Still open, not yet done** (mechanical, lower impact): #7 (a relay drops an
+originator's reliable retransmission firmware re-relays), #12 (a PKI DM heard on LoRa
+is not bridged to MQTT), #11 (a LoRa send reports false yet the frame can air), #13 (a
+timed-out LoRa TX is not charged to airtime), #15 (traceroute reply omits firmware's
+unknown-hop padding).
+
 ## Fixed so far
 
 `meshtastic-node-kmp`, in order. Every one gated, and every new assertion
