@@ -307,6 +307,20 @@ would have to be an explicit opt-in rather than a silent restore.
 
 ## Next steps, in order
 
+**Found on the bench 2026-09-07, ahead of the numbered list: the BlueZ central
+retries a refusing peer forever, and each attempt raises a passkey dialog.**
+Reproduced on both Linux hosts (james-pc and the uConsole). A peer that answers
+`le-connection-abort-by-local` is `forget`-ten and immediately rediscovered, so
+`reserve` fires again about twice a second with no backoff, indefinitely. On the
+uConsole the desktop showed a BlueZ passkey prompt whose code *changed* between
+screenshots (678922, then 207065), which is the mechanism: the peer wants a bond,
+each retry starts a fresh pairing, nobody answers, the connect aborts. Unattended,
+that is a prompt storm and a permanently `notify=pending` peer. `BluezGattLink`
+already special-cases `br-connection*` into `classicBearerRefused`; abort-by-local
+needs the same kind of memory plus a backoff, and pairing needs an explicit
+agent policy rather than the desktop's. Same defect class as the LoRa init spam
+fixed in `0d7b007` - retry forever at full cadence, say so every time.
+
 1. **`protobufs` to `master`.** The submodule commits (`6c246f1` BLE-adv enums,
    `8db5d3e` GATT mesh-peer enums) are on `meshtastic/protobufs`
    `spike/ble-mesh-transport`, so a clone of the firmware spike resolves. Landing
@@ -409,6 +423,23 @@ would have to be an explicit opt-in rather than a silent restore.
 Shared hardware; the USB radios are global mutable state across sessions - see
 [`bench-fleet.md`](./bench-fleet.md).
 
+- **uConsole** (`james@192.168.1.23`, Compute Module 5 Lite, labwc/wlroots -
+  `grim` for screenshots) - node `!bf1e45b0`, arm64 uber jar at
+  `~/MeshMonitor-linux-arm64.jar`, log `/tmp/monitor-uc.log`. Runs udp, gatt and
+  ble-adv; one GATT link reaches `chunk=514`. **No LoRa, and not a wiring job we
+  can guess at**: the HackerGadgets AIO's module answers on neither `spidev1.0`
+  (reads `0x00`) nor `spidev10.0` (`0xff`), unchanged by an NRST pulse or by
+  holding GPIO11 high. `config.txt` hides `spi-gpio35-39` and `gpio=11=op,dh`
+  under **`[cm3+]`**, the CM3+ *product* filter, so a CM5 skips both; that overlay
+  relocates hardware SPI0 anyway and would make `spidev0.x`, never the `spidev1.0`
+  meshtasticd's yaml names. No `spi-gpio` node exists in the device tree, and
+  meshtasticd has never started here at all - it aborts on `gpiochip0`, which this
+  kernel does not have (chips are 11-15). **Its `IRQ 26 / Busy 24 / Reset 25` is
+  intent, never proof - do not build a board profile from it.** Open question for
+  James: which RP1 GPIOs the CM5 routes to the expansion connector's SPI, and
+  whether the AIO's LoRa sits on them. Until then, run the monitor **without**
+  `MESH_LORA_SPIDEV`. GPIO 24/25/26 are free; `gpioget <name>` re-requests a line
+  as input, which undoes a `gpioset` that left one an output.
 - **WisMesh Pocket** (RAK4631, nRF52840) - node `!7263cc65` "956a", running spike
   `ca0a39c51` env `rak4631_blemesh`, `enabled_protocols=6` (BLE broadcast + GATT
   peer), stock config otherwise, default channel. Not USB-attached as of
