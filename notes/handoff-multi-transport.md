@@ -241,6 +241,40 @@ workspace `CLAUDE.md` flags as dangerous (it auto-detects onto whichever board i
 and `mcp__meshtastic__pio_flash` builds from `MESHTASTIC_FIRMWARE_ROOT`, the **primary**
 checkout - so it cannot build a spike-branch env that exists only in a worktree.
 
+**Two hosts added 2026-09-07, and what each needed.**
+
+`james-pc` (Debian, x86_64) is the only node with **LoRa** since the Meshtadpole moved
+there - and its CH341 makes no `/dev/ttyUSB*`, because the transport drives it over
+libusb; `lsusb` for `1a86:5512` is the probe, not `ls /dev/tty*`. Armed with
+`MESH_LORA_REGION=US` and transmitting (`lora: tx ok len=92 toa=927ms`). Its mesh view
+is the best evidence the two-ring work produced: `gatt (1)`, **`lora (3)`**,
+`heard about (3)` - four witnessed neighbours across two bearers.
+
+Screenshotting that host takes one specific route. GNOME 50 denies
+`org.gnome.Shell.Screenshot` outright (`AccessDenied`), and `ffmpeg -f x11grab` of the
+root gives a black frame with a cursor, because under rootless XWayland the client's
+pixels live in the compositor. What works is reading the **window**:
+`xwininfo -root -children | grep "Mesh Monitor"` for the id, then
+`import -window <id>` (ImageMagick). `DISPLAY=:0` plus
+`XAUTHORITY=/run/user/1000/.mutter-Xwaylandauth.*` for both.
+
+`uconsole` (`james@192.168.1.23` - the `uconsole` ssh alias still points at the stale
+`.247`) is aarch64 Debian 13 with `grim` and `scrot` already installed, so capture there
+is easy. Two things had to be built for it:
+
+- **An arm64 desktop jar.** `-PdesktopTarget=linux-arm64` swaps Skiko's native, since the
+  host has no JDK to build with. Verified twice: `libskiko-linux-arm64.so` in the jar, and
+  the jar running on the device as far as Compose composition.
+- **LoRa over spidev**, because the HackerGadgets AIO's module is soldered to SPI rather
+  than behind a USB bridge (`/dev/spidev1.0`, `dtoverlay=spi-gpio35-39`). `Sx1262Driver`
+  needed no change - it takes a `SpiBus` and a `GpioPins` - so the backend is one
+  full-duplex ioctl. Named by `MESH_LORA_SPIDEV`, never probed: the host has two spidev
+  nodes and only one has a radio behind it.
+
+**It still needs `openjdk-21-jre`, not `-headless`.** The headless package ships no
+`libawt_xawt.so`, so the jar reaches composition and dies on `HeadlessException`. That
+was a wrong recommendation, corrected here.
+
 **What the next bench sitting owes.**
 
 1. **Two CoreBluetooth peers that never resolved.** Across an eight-hour macOS run
