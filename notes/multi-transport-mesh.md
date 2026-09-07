@@ -1536,12 +1536,16 @@ yesterday's desktop monitor. No Heltec V3, no iPad, no sudo (so no `btmon`).
 - **`transport[lora] unavailable: no CH341 stick attached` at 1.2 s, then
   `tuned 906.875 MHz` at 1.6 s.** The unavailable line is the poll's first miss,
   before the hot-plug scan finds the stick; harmless but a false alarm on every
-  start.
+  start. **Half-fixed 2026-09-07 (`0d7b007`)**: the *wording* was hardcoded and
+  wrong on any host without a USB bridge, so it now comes from the device source
+  (`LoraDeviceSource.detachedReason`) and the spidev source names its bus instead.
+  The first-miss timing is untouched and still a false alarm.
 - **The gate on a Linux host.** `:node-desktop-ble-macos:klibApiCheck` fails
   because the macOS target cannot dump here; run the gate with
   `-x :node-desktop-ble-macos:klibApiCheck` and without the iOS link tasks.
-- **The uConsole** was offered over ssh but `uconsole` does not resolve from
-  james-pc and 192.168.1.247 is unreachable; its address is James's to give.
+- **The uConsole** is `james@192.168.1.23` (the `uconsole` ssh alias still points
+  at the unreachable `.247`). Reached and running 2026-09-07 - see "The uConsole
+  sitting" below.
 
 ### Bench recipe for this box
 
@@ -1581,3 +1585,55 @@ as `relay_node` is itself the evidence.
 
 What is deliberately absent: any edge inferred from a packet merely arriving. Traffic
 from five hops away says nothing about which links carried it.
+
+## The spidev LoRa backend, and the uConsole sitting (2026-09-07)
+
+`node-transport-lora` had one way to reach an SX1262: a CH341A USB bridge over
+libusb. A single-board host solders the module to a kernel SPI bus instead, so the
+JVM source gained a second backend, chosen by the host naming it:
+
+    MESH_LORA_SPIDEV=/dev/spidev1.0
+
+Named rather than probed, and that is the design point. A machine can carry several
+`spidev` nodes with a radio behind only one of them; clocking SX1262 commands at
+whatever else is on the bus is not a guess worth making automatically. The env var
+wins over libusb when set, because a board with a soldered module has no bridge to
+find and libusb would report an empty bus for ever.
+
+Three things the backend does that the USB one need not:
+
+- **`spidevHolder`** looks for another process already holding the node, because
+  spidev enforces no exclusivity - it will happily let us open a bus meshtasticd is
+  driving and let both of us clock one chip. The bearer row names the holder.
+- **`SpidevSpiBus`** lays `struct spi_ioc_transfer` out by hand, 32 bytes, rather
+  than trusting a JNA mapper's alignment against a fixed kernel ABI. The trailing
+  pad byte is part of the struct and the kernel rejects a short one. (Getting this
+  wrong is silent: a 34-byte struct fails the ioctl with `ERANGE`, which reads as a
+  bus problem.)
+- **`NoGpioPins` errors rather than no-oping**, and `SPIDEV_UNKNOWN_BOARD` leaves
+  every pin null with `dio2AsRfSwitch = false`. Every line is optional in the
+  driver - no NRST skips the reset pulse, no BUSY uses RadioLib's fixed delays, no
+  DIO1 polls `GetIrqStatus` over SPI - which is enough to read the version register
+  and prove the bus. Proving the bus is the step that comes before guessing at a
+  board's wiring, and `dio2AsRfSwitch` asserts nothing until a board is known
+  because false costs transmit range and true is a command the wrong chip ignores.
+
+**What the uConsole then taught: a bus can be proven and still have no chip.** The
+board is a Compute Module 5 Lite, and its HackerGadgets AIO answers on neither
+`spidev1.0` (all `0x00`) nor `spidev10.0` (all `0xff`) - unchanged by an NRST pulse
+or by holding GPIO11 high. **Two different stuck values are the useful signal**:
+they prove both transfers really executed, so the ioctl path is sound and the chip
+is simply absent. `config.txt` hides `spi-gpio35-39` and `gpio=11=op,dh` under
+`[cm3+]`, the CM3+ *product* filter, which a CM5 skips; that overlay relocates
+hardware SPI0 anyway and would create `spidev0.x`, never the `spidev1.0`
+meshtasticd's yaml names. meshtasticd has never started there at all, aborting on a
+`gpiochip0` this kernel does not have. So its `IRQ 26 / Busy 24 / Reset 25` is
+**intent, never proof**, and no board profile or Linux GPIO chardev backend was
+written - that would be untested code against unproven, self-contradicting wiring.
+Details and the open question in
+[`handoff-multi-transport.md`](./handoff-multi-transport.md) → The bench.
+
+The sitting also produced `0d7b007`: a `Detached` bearer now takes its wording from
+the device source, because "no CH341 stick attached" named a bridge a spidev host
+does not have; and an init failure that never changes is logged once rather than
+every retry, which on a bus with no chip was 73 identical lines in five minutes.
