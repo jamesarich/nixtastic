@@ -201,6 +201,25 @@ carry real times (`8:42 AM`, not 1970); and the Pixel reached
 `192.168.1.138:4403` from another device, which is the `ANY_ADDRESS` opt-in
 working now that the library binds loopback by default.
 
+**Four-platform soak, 2026-09-07.** One node-kmp build on every platform it has, plus
+the spike firmware, all on this Mac's bench:
+
+| | what runs | how it was put there |
+| --- | --- | --- |
+| Pixel 6a | `:monitor-android` debug APK | `adb install` over wifi adb |
+| iPad (A16) | `tools/monitor-ios`, bundle `org.meshtastic.node.monitor` | `linkDebugFrameworkIosArm64` then `xcodebuild` + `devicectl install/launch`, Nix env stripped per the README |
+| macOS | the packaged `MeshMonitor.app` | `:monitor:createDistributable`, launched through LaunchServices |
+| WisMesh Pocket (RAK4631) | `rak4631_blemesh` at `2.8.0.46b4fdc` | built in the spike worktree, flashed by serial DFU |
+
+**Flashing an nRF52 here: do the 1200bps touch and the transfer in one command.** The
+bootloader auto-exits DFU in about 30 seconds, so touching it and then checking anything
+first means the write starts after the window shut - `[Errno 6] Device not configured`
+part-way through, and the board drops off the USB bus entirely. `adafruit-nrfutil` has
+`-t 1200` for exactly this. Two traps around it: `pio run -t upload` is the command the
+workspace `CLAUDE.md` flags as dangerous (it auto-detects onto whichever board it finds),
+and `mcp__meshtastic__pio_flash` builds from `MESHTASTIC_FIRMWARE_ROOT`, the **primary**
+checkout - so it cannot build a spike-branch env that exists only in a worktree.
+
 **What the next bench sitting owes.**
 
 1. **Two CoreBluetooth peers that never resolved.** Across an eight-hour macOS run
