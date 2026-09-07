@@ -307,19 +307,31 @@ would have to be an explicit opt-in rather than a silent restore.
 
 ## Next steps, in order
 
-**Found on the bench 2026-09-07, ahead of the numbered list: the BlueZ central
-retries a refusing peer forever, and each attempt raises a passkey dialog.**
-Reproduced on both Linux hosts (james-pc and the uConsole). A peer that answers
-`le-connection-abort-by-local` is `forget`-ten and immediately rediscovered, so
-`reserve` fires again about twice a second with no backoff, indefinitely. On the
-uConsole the desktop showed a BlueZ passkey prompt whose code *changed* between
-screenshots (678922, then 207065), which is the mechanism: the peer wants a bond,
-each retry starts a fresh pairing, nobody answers, the connect aborts. Unattended,
-that is a prompt storm and a permanently `notify=pending` peer. `BluezGattLink`
-already special-cases `br-connection*` into `classicBearerRefused`; abort-by-local
-needs the same kind of memory plus a backoff, and pairing needs an explicit
-agent policy rather than the desktop's. Same defect class as the LoRa init spam
-fixed in `0d7b007` - retry forever at full cadence, say so every time.
+**Found on the bench 2026-09-07, ahead of the numbered list: an unpaired peer
+makes the BlueZ central churn forever, one passkey dialog per attempt.**
+Reproduced on both Linux hosts. A peer answering `le-connection-abort-by-local` is
+`forget`-ten and immediately rediscovered, so `reserve` fires again about twice a
+second with no backoff, indefinitely.
+
+The cause is a **bond demand, not a full peripheral** - worth stating because
+`BluezGattLink`'s own comment attributes abort-by-local to a peer out of slots, and
+both produce that same string. Verified rather than inferred:
+
+- The uConsole's churning peer `76:C7:E0:45:5B:0F` is **the iPad**, `Paired: no
+  Bonded: no`, advertising our mesh UUID *and* `7905f431-b5ce-4e99-a40f-4b1e122d00d0`
+  (Apple's ANCS). Connecting to an iOS peripheral exposing ANCS makes iOS demand
+  pairing, which is why the desktop's passkey code *changed* between screenshots
+  (678922, then 207065) - a fresh pairing per retry, answered by nobody.
+- The peer that refused `StartNotify` with ATT `0x0e` on the uConsole,
+  `E8:48:B8:C8:20:00`, is **james-pc's own adapter**. So that is BlueZ-to-BlueZ
+  insufficient-authentication: the other face of the same bond demand.
+
+Unattended, this is a prompt storm and a permanently `notify=pending` peer.
+`BluezGattLink` already special-cases `br-connection*` into `classicBearerRefused`;
+abort-by-local needs the same kind of memory plus a backoff, and the pairing policy
+has to be ours - a mesh bearer should either bond deliberately or decline, not
+inherit the desktop agent. Same defect class as the LoRa init spam fixed in
+`0d7b007`: retry for ever at full cadence, and say so every time.
 
 1. **`protobufs` to `master`.** The submodule commits (`6c246f1` BLE-adv enums,
    `8db5d3e` GATT mesh-peer enums) are on `meshtastic/protobufs`
@@ -426,8 +438,9 @@ Shared hardware; the USB radios are global mutable state across sessions - see
 - **uConsole** (`james@192.168.1.23`, Compute Module 5 Lite, labwc/wlroots -
   `grim` for screenshots) - node `!bf1e45b0`, arm64 uber jar at
   `~/MeshMonitor-linux-arm64.jar`, log `/tmp/monitor-uc.log`. Runs udp, gatt and
-  ble-adv; one GATT link reaches `chunk=514`. **No LoRa, and not a wiring job we
-  can guess at**: the HackerGadgets AIO's module answers on neither `spidev1.0`
+  ble-adv; one GATT link reaches `chunk=514`. **Run it without
+  `MESH_LORA_SPIDEV`** - there is no LoRa here, and setting it only buys a bearer
+  that can never arrive. Not a wiring job we can guess at either: the HackerGadgets AIO's module answers on neither `spidev1.0`
   (reads `0x00`) nor `spidev10.0` (`0xff`), unchanged by an NRST pulse or by
   holding GPIO11 high. `config.txt` hides `spi-gpio35-39` and `gpio=11=op,dh`
   under **`[cm3+]`**, the CM3+ *product* filter, so a CM5 skips both; that overlay
