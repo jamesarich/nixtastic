@@ -36,6 +36,14 @@ mutation-checked. On `meshtastic-node-kmp` `main`:
 - **`dae245e` #5** an MQTT downlink attributed to us is never re-injected, any gateway,
   closing the forged-receipt vector; the "same receipt firmware synthesises" comment
   was a misattribution (firmware makes a local ack, never re-injects).
+  *Follow-up:* our drop is stricter than firmware for the own-gateway echo -
+  firmware turns `from==us && gateway==ours` into a *local* ack that retires the
+  retransmit, we just drop it. Harmless on a multi-bearer node (another bearer's
+  implicit ack retires the send), but an MQTT-only node now has no path to
+  Delivered on its own uplink and burns its whole retransmit budget to
+  DeliveryFailed. Fixing it needs a hook from the MQTT transport up to the
+  retransmit queue - a small design task, not a one-liner - so it is on the open
+  list as #16.
 - **`cdf6a25` #9** packet ids use firmware's split - low 10 bits a counter, top 22
   random per packet - not a bare +1 counter.
 - **`429e6bb` #10** a GPS cold start reports its first fix promptly, not an interval
@@ -59,7 +67,8 @@ mutation-checked. On `meshtastic-node-kmp` `main`:
 originator's reliable retransmission firmware re-relays), #12 (a PKI DM heard on LoRa
 is not bridged to MQTT), #11 (a LoRa send reports false yet the frame can air), #13 (a
 timed-out LoRa TX is not charged to airtime), #15 (traceroute reply omits firmware's
-unknown-hop padding).
+unknown-hop padding), #16 (an MQTT-only node cannot reach Delivered on its own
+uplink - the own-gateway local-ack path #5 dropped).
 
 ## Fixed so far
 
