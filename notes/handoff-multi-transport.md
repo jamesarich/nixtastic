@@ -313,6 +313,23 @@ Reproduced on both Linux hosts. A peer answering `le-connection-abort-by-local` 
 `forget`-ten and immediately rediscovered, so `reserve` fires again about twice a
 second with no backoff, indefinitely.
 
+**Storm fixed 2026-09-07 (`e286e2b`, on `main`).** `BluezRetryBackoff` is a timed
+per-peer gate: an `abort-by-local` refusal holds the peer off for a delay that
+doubles up to a minute, a success or a departure clears it. `reserveIfMesh`
+consults it, so the out-of-slots peer still gets another chance later, unlike the
+permanent `classicBearerRefused`. Proven on the bench with the iPad and the
+uConsole both present: abort faults fell from ~2/s to 28 in ninety seconds with
+per-peer gaps growing 2s/9s/11s, and **zero passkey prompts**. The iPad still
+reached `ready,notify=enabled` **unpaired** once its connect races settled, which
+also answers the pairing question: **pairing is not necessary** - the mesh
+characteristic is unauthenticated (proven iPad `LE.Paired:no` and Mac yesterday);
+the prompts came from Apple's ANCS on the peer, not from our service. **Still
+owed:** the mesh bearer should decline pairing outright (its own BlueZ agent)
+rather than inherit the desktop's, and the `StartNotify` ATT `0x0e`
+insufficient-authentication case (the uConsole, james-pc's own adapter) is the
+same bond demand on the subscribe path - it leaves a peer `notify=pending` rather
+than storming, so it is lower priority.
+
 The cause is a **bond demand, not a full peripheral** - worth stating because
 `BluezGattLink`'s own comment attributes abort-by-local to a peer out of slots, and
 both produce that same string. Verified rather than inferred:
