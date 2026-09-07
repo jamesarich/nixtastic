@@ -1486,7 +1486,24 @@ yesterday's desktop monitor. No Heltec V3, no iPad, no sudo (so no `btmon`).
 
 ### Open, found here
 
-- **BlueZ routes the Mac over the classic bearer, and the mesh GATT is LE-only.**
+- **SOLVED (2026-09-06 evening): the Linux central holds the Mac's mesh GATT over
+  LE, alongside the Pocket.** `central=[dev_2C_CA...(ready,notify=enabled,
+  chunk=514), dev_EF_E2...(ready,notify=enabled,chunk=244)]` - one BlueZ central,
+  two GATT peers, one a macOS CoreBluetooth peripheral and one nRF52 firmware. The
+  fix was **not** pairing: the LE link forms with `LE.Paired: no`, exactly as the
+  unauthenticated mesh characteristic intends. The fix was forcing the bearer.
+  `bluetoothd` needs `Experimental = true` in `/etc/bluetooth/main.conf` (a
+  persistent edit on james-pc, survives reboot) and a restart; that exposes
+  `Device1.PreferredBearer`, set to `le` with `bluetoothctl bearer <dev> le`. Then
+  `Connect()` opens LE, BlueZ discovers the mesh characteristic, and the node
+  subscribes. Without it BlueZ defaults `PreferredBearer` to `last-used` and opens
+  a dual-mode Mac over BR/EDR (audio profiles, no GATT). A classic bond makes it
+  worse, not better - remove any bond and force the bearer instead. The Mac
+  exposed four copies of the mesh service (stale registrations from the day's node
+  restarts); `meshCharacteristicPath` takes the first, and it worked.
+
+- **The pre-fix history, kept because it is the diagnosis:** BlueZ routes the Mac
+  over the classic bearer, and the mesh GATT is LE-only.
   Chased to a conclusion 2026-09-06 with James at the Mac. Unbonded,
   `Device1.Connect()` failed `br-connection-key-missing`: the call dials every
   profile including BR/EDR, the classic leg of a dual-mode Mac has no bond, and
