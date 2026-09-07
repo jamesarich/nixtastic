@@ -1017,23 +1017,32 @@ is now two platforms, not one, so it gets two columns.
 | UDP multicast | ✓ | ✓ built, **needs entitlement** (`com.apple.developer.networking.multicast`) | ✓ | ✓ | ✓ | ✓ (WiFi/eth) |
 | LoRa (USB SX1262 stick) | ✓ | impossible (no USB serial) | ✓ (libusb, **proven**) | ✓ (libusb) | ✓ (libusb, **proven** on macOS) | native |
 
-So today: Android 4/4; iOS GATT + adv-rx + UDP-pending-entitlement; Linux JVM
-4/4 by construction with adv-tx blocked on one adapter; macOS/Windows JVM UDP +
-LoRa. The remaining desktop gap is BLE on the two JVMs BlueZ cannot serve, and
-that is what [`desktop-ble-plan.md`](./desktop-ble-plan.md) is for. Enablers, in
-cost order:
+So today (2026-09-06): Android 4/4; iOS GATT + adv-rx + UDP-pending-entitlement;
+Linux JVM 4/4 with adv-tx blocked on one adapter and both GATT roles now proven
+against firmware; macOS JVM UDP + LoRa + **GATT**, over the in-process bridge in
+[`desktop-ble-plan.md`](./desktop-ble-plan.md). The remaining desktop gap is
+Windows, plus `ble-adv` on macOS, which is not a gap but a platform refusal.
+Enablers, in cost order:
 
 1. **Desktop LoRa** - done. `UsbBulkPipe` over libusb, JNA rather than usb4java
    (no `darwin-aarch64` native, last release 2018). The SPI/SX1262 layer is shared
    with Android. Proven with the Meshtadpole on the Mac.
-2. **Desktop BLE (Linux)** - done in code. BlueZ over D-Bus gives both GATT roles
-   *and* extended advertising. Scanning is proven on `james-pc`; advertising is
-   refused by that host's controller (`bluetoothctl` fails identically), and the
-   GATT roles have not been exercised on Linux hardware yet. macOS and Windows
-   need a different path entirely, since BlueZ is Linux-only.
-3. **iOS UDP** - written and in `commonMain`; the multicast entitlement is Apple's
+2. **Desktop BLE (Linux)** - done, and proven on hardware 2026-09-06. BlueZ over
+   D-Bus gives both GATT roles *and* extended advertising. Advertising is still
+   refused by `james-pc`'s controller (`bluetoothctl` fails identically). The GATT
+   roles took three fixes to actually work - a signal whose two paths dbus-java
+   names backwards, a peer never retried once BlueZ had cached it, and inbound
+   notifications arriving as `ArrayList<Byte>` and being dropped as "not a
+   ByteArray" - and then reached the WisMesh Pocket's `rak4631_blemesh` firmware
+   with `ready, notify=enabled, chunk=244` and live rx.
+3. **Desktop BLE (macOS)** - done, and proven on hardware 2026-09-06. Our own
+   CoreBluetooth compiled as a Kotlin/Native dylib and called in-process over JNI,
+   because Compose Multiplatform's desktop target is Kotlin/JVM and a JVM class
+   cannot be a `CBCentralManagerDelegate`. Windows still needs its own native
+   code; `ble-adv` on macOS never can.
+4. **iOS UDP** - written and in `commonMain`; the multicast entitlement is Apple's
    gate and this project does not hold it. External, not code.
-4. **iOS background** - `bluetooth-central`/`peripheral` modes are declared; the
+5. **iOS background** - `bluetooth-central`/`peripheral` modes are declared; the
    node has never been exercised backgrounded. Test, then fix what stops.
 
 ### B. Node-logic parity with the firmware
