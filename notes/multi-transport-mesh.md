@@ -1486,14 +1486,23 @@ yesterday's desktop monitor. No Heltec V3, no iPad, no sudo (so no `btmon`).
 
 ### Open, found here
 
-- **BlueZ picks the classic bearer for the Mac.** `Device1.Connect()` on the
-  MacBook fails `br-connection-key-missing` and `ConnectProfile(mesh uuid)` says
-  "No more profiles to connect to". BlueZ 5.85 as shipped exposes no
-  `PreferredBearer` on the device (it is behind the experimental flag), so a
-  dual-mode peer whose classic address was seen more recently is unreachable over
-  LE from this link. The retry loop now hammers it every ten seconds. Options: an
-  LE-only address for the mesh (the Mac advertises with its public address), or
-  `bluetoothd --experimental` and the property.
+- **BlueZ routes the Mac over the classic bearer, and the mesh GATT is LE-only.**
+  Chased to a conclusion 2026-09-06 with James at the Mac. Unbonded,
+  `Device1.Connect()` failed `br-connection-key-missing`: the call dials every
+  profile including BR/EDR, the classic leg of a dual-mode Mac has no bond, and
+  that failed the whole call even though the LE leg came up. Each attempt also
+  raised a pairing prompt on the Mac, so the retry-on-sight was fixed to leave a
+  classic-bearer refusal alone (`classicBearerRefused`, commit on `main`).
+  Bonding then removed the refusal - but BlueZ, now holding a classic bond, opens
+  the Mac over **BR/EDR**: its object shows only AVRCP and A2DP endpoints, no GATT,
+  and the link faults "advertises the mesh service but serves no mesh
+  characteristic" because the mesh characteristic lives on the LE bearer it never
+  opened. `bluetoothctl bearer <dev> le` is `UnknownProperty` on 5.85 (behind
+  `--experimental`, same as `PreferredBearer`). So a bonded dual-mode peer is
+  unreachable over LE from this link without `bluetoothd --experimental`. The
+  Pocket has no classic radio, which is why it works and the Mac does not. Options,
+  none yet taken: `bluetoothd --experimental` plus the bearer property; an LE-only
+  address for the mesh; or removing the classic bond and rediscovering LE-only.
 - **The Pocket has two peripheral slots and stops advertising when both are
   held.** With the Mac and the Pixel connected it vanishes from scans and a
   cached connect aborts. Not a bug anywhere, but the reason the first Linux run
