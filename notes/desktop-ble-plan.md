@@ -260,9 +260,18 @@ firmware, not in the archaeology afterwards. Recorded in `AGENTS.md` too.
      radio, and its tests run on `jvm` and `macosArm64` from one source - including every
      truncation of a valid event, because an exception inside a JNI call has no stack a
      human will see.
-   - **Still open:** `ble-adv` on a Mac stays impossible (see above), the `x64` dylib is
-     not built, and nothing has yet run long enough to say anything about the poll
-     thread's behaviour under a link that churns.
+   - **Every rebuild costs the TCC grant.** `createDistributable` re-signs the app image
+     ad hoc, which gives it a new cdhash and no stable Team ID, so macOS treats it as a
+     different app and prompts again. Expect the Bluetooth dialog on every packaged
+     build, and expect a bench run left unattended to sit at `CBManagerState=0` until
+     somebody answers it. A real signing identity would fix it; ad-hoc cannot.
+   - **Soak, 2026-09-06:** eight hours on one launch, no crash, phone API still attached,
+     `gatt rx=703 tx=12 relayed=7 failed=0`. Two of the three central peers never left
+     `opening,notify=pending,chunk=20` in that whole run - the CoreBluetooth analogue of
+     what `803b594` fixed on BlueZ, and it is not yet known whether the Apple side ever
+     gives up on them.
+   - **Still open:** `ble-adv` on a Mac stays impossible (see above) and the `x64` dylib
+     is not built.
 4. **Windows**, now wanted outright rather than conditionally: the desktop node is a
    full BLE node, and Windows is the only desktop platform that can also advertise,
    which makes it the only way to grow the advertisement mesh past Android.
