@@ -207,12 +207,15 @@ working now that the library binds loopback by default.
    two of three centrals sat at `opening,notify=pending,chunk=20` the whole time.
    That is the shape of the bug `803b594` fixed on BlueZ - a peer reserved and then
    never retried - and nobody has looked at whether the Apple side ever gives up.
-2. **A LoRa stick that detached and stayed detached.** The Meshtadpole dropped off
-   USB mid-run and the bearer read `detached` for the remaining hours. The JVM path
-   is documented as hot-plug polled, so either the poll does not re-attach or it
-   never ran; replug one and watch.
-3. **The airtime ledger across a tuning change.** Still unrun. The monitor surfaces
+2. **The airtime ledger across a tuning change.** Still unrun. The monitor surfaces
    no airtime figure, so it needs a log line or a test hook first.
+
+**Not a finding, recorded so nobody re-chases it:** the Mac node's LoRa bearer read
+`detached` from mid-2026-09-06 onwards and I twice wrote that up as a possible
+hot-plug defect. It was not. The Meshtadpole had been moved to `james-pc`, so
+`detached` was the bearer reporting the truth. There is no evidence either way about
+whether the JVM hot-plug poll re-attaches, because nothing has re-plugged one under a
+running node.
 
 The LoRa preset clamp is **deliberately not bench-tested**: verifying it means
 configuring EU_868 on a radio sitting in the US, which is the out-of-band
