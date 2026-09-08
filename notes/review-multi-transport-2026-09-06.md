@@ -1361,10 +1361,10 @@ Category D (JUSTIFIED - no firmware counterpart, do NOT churn): PacketHistory.wa
 FrameAdapter.toCanonical/fromCanonical, NextHopTable (struct), learnFrom, promote, RelaySuppressed,
 pendingRelays, NeighborGraph/MeshLink - client-side bookkeeping/scheduling with no C++ object.
 
-## Crypto caveat
-CCM equivalence (node-kmp cryptography-kotlin AES.CCM vs firmware aes-ccm.cpp) is structurally
-correct but has NO end-to-end known-answer vector from firmware - only the nonce byte layout is
-pinned. A single captured firmware PKI packet decoded in a test would close it.
+## Crypto caveat - CLOSED 2026-09-08 (see the second-pass section below)
+CCM equivalence (node-kmp cryptography-kotlin AES.CCM vs firmware aes-ccm.cpp) was structurally
+correct but had no end-to-end known-answer vector from firmware. Now closed: firmware's own test_PKC
+vector is ported into a node-kmp test (commit 501fcf6), decrypting to firmware's expected plaintext.
 
 ## 2026-09-08 round 2 - resolution
 
