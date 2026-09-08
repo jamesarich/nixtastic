@@ -33,9 +33,9 @@ called in-process over JNI. Windows is now the whole of the desktop BLE gap.
    corrected in the docs but not implemented - see
    [`review-multi-transport-2026-09-06.md`](./review-multi-transport-2026-09-06.md),
    which supersedes the audit for node-kmp and adds 131 findings of its own. Its
-   medium/low tail (#3-#16) was worked through 2026-09-07: all fixed or deferred,
-   two follow-ups left for James (public-broker PKI policy, #7's upgraded-hop_limit
-   branch) - see that doc's "2026-09-07 re-verification pass".
+   medium/low tail (#3-#16) was fully worked through 2026-09-07 - all fixed to
+   firmware parity, nothing left deferred, per James's "firmware is the sentinel"
+   call - see that doc's "2026-09-07 re-verification pass".
 3. Per the workspace protocol, run `just brief <repo>` before editing under any
    repo, and read that repo's own docs (`meshtastic-node-kmp` → `README.md` then
    `AGENTS.md`; `firmware` → `AGENTS.md`).

@@ -44,19 +44,22 @@ mutation-checked. On `meshtastic-node-kmp` `main`:
 - **`429e6bb` #10** a GPS cold start reports its first fix promptly, not an interval
   later (the "never sent" null no longer collapses to 0).
 
-**Deferred as design decisions, not bugs** (need James, not a fix):
-- **#2** empty-PSK secondary channel: firmware borrows the primary's key and hashes
-  name-xor-primary-key; node-kmp has no primary/secondary role and treats an empty PSK
-  as cleartext by design. Matching firmware means adding primary-awareness to the
-  channel model - a design change.
-- **#6** hopsAway is null (not 0) for a hop_start==0 sender: node-kmp chose null
-  ("unknown") for the genuinely-ambiguous modern-0-hop vs legacy case, and compensates
-  via the relayedBy path. Firmware reads a modern (has_bitfield) 0 as 0, but that needs
-  the decoded bitfield, which hopsAway (a header property) does not have.
-- **#14** a channel-encrypted TEXT addressed to us: firmware rejects it as a legacy DM
-  to force PKI; node-kmp acks it, and an existing test deliberately exercises that. Is
-  node-kmp meant to support channel-directed DMs as a fallback for peers without
-  exchanged keys? James's call - matching firmware breaks that path.
+**Formerly deferred as design decisions - now all fixed to firmware parity** (James,
+2026-09-07: "in all cases, firmware is the sentinel - if in doubt, fall back to parity
+with firmware behaviour". See [[firmware-is-the-sentinel-for-node-kmp]]):
+- **`36102a2` #2** an empty-PSK SECONDARY channel borrows the primary's key. MeshChannel
+  gained a `role` (PRIMARY/SECONDARY/DISABLED, mirroring meshtastic_Channel_Role - James
+  chose the firmware-faithful shape over a set-level primaryIndex); a no-PSK secondary is
+  resolved to the primary's key so its hash and crypto match firmware. Opt-in: a plain
+  List<MeshChannel> (all default PRIMARY) borrows nothing, so existing callers are unchanged.
+- **`25f1318` #6** a modern (has_bitfield) hop_start==0 sender reads as 0 hops, not
+  unknown. hopsAway on the header is pre-decode, so process() applies firmware's getHopsAway
+  where it has both header and decode and passes the effective value to directory.heard and
+  routes.learnFrom (now explicit). The visible effect is next-hop learning: a modern island
+  neighbour is learned as a direct route.
+- **`120c8c0` #14** a channel-encrypted TEXT addressed to us is refused as a legacy DM to
+  force PKI, gated on a new Config.licensed (default false). The test that acked it now
+  asserts the NAK; a real DM is PKI and is unaffected.
 
 **The medium/low tail, now fixed** (each gated and mutation-checked, on `main`):
 - **`5d53fba` #15** a traceroute reply pads the hops no node recorded - route with the
@@ -71,24 +74,29 @@ mutation-checked. On `meshtastic-node-kmp` `main`:
 - **`05ddc19` #12** a PKI DM heard on LoRa is bridged to the MQTT PKI topic: an opaque
   channel-0 packet to a single node that is not us is inferred PKI (firmware
   Router.cpp), so the on-air LoRa header's missing pki bit no longer loses every LoRa
-  PKI DM. Narrower than firmware - only on a private broker, since mayUplink refuses a
-  foreign ciphertext on a public one first (see the public-broker follow-up).
+  PKI DM. Then **`185057d`** extended it to a public broker too, matching firmware
+  (onSend's public gate applies only to decoded packets); an unreadable non-PKI channel
+  packet is still refused, as firmware gates its publish on DECODE_SUCCESS or pki_encrypted.
 - **`d6ca2b1` #13** a timed-out LoRa transmit is charged to airtime, because the PA
   radiated the moment startTransmit was accepted; the duty-cycle ledger stays honest.
 - **`b714ba4` #11** a LoRa send that gives up withdraws its frame rather than letting it
   air later behind the caller's back; a new txWithdrawn counter records the drop.
-- **`3244ca7` #7** a directed reliable retransmission is re-relayed rather than dropped,
-  so a node that is the only path to the destination stops stranding every retry after
-  the first. Scoped to directed traffic; broadcast repeats keep the existing dedup.
+- **`3244ca7` #7** a reliable retransmission (hop_start==hop_limit) is re-relayed rather
+  than dropped, so a node that is the only path to the destination stops stranding every
+  retry after the first. First landed directed-only; **`5baefa5`** then widened it to
+  broadcasts too, matching firmware (the directed-only scoping was a judgment call the
+  sentinel directive overrode). And **`7e47114`** added firmware's other re-relay case,
+  the upgraded hop_limit: PacketHistory now keeps the highest hop_limit per (from,id) and
+  reports Sighting.upgraded, and process() supersedes a queued lower-hop copy with a
+  better one (perhapsHandleUpgradedPacket).
 
-**Follow-ups left, needing James** (policy or a bigger change, not a bug to fix quietly):
-- **#12 public broker.** Firmware publishes a PKI DM it cannot read to the *public*
-  server; node-kmp deliberately does not (mayUplink refuses a foreign ciphertext on a
-  public broker). #12 fixed the private-broker case only. Whether node-kmp should match
-  firmware and put unreadable PKI on a public broker is a policy call, left as-is.
-- **#7 upgraded hop_limit.** Firmware also re-relays a duplicate that arrives with a
-  *higher* hop_limit (perhapsHandleUpgradedPacket). That needs PacketHistory to store
-  the hop_limit it saw, which it does not - reshaping history is its own change.
+**All twelve review-tail items (#3-#16) are now fixed to firmware parity.** Nothing is
+left deferred: the three that were design decisions (#2, #6, #14) and the two follow-ups
+(#12 public broker, #7 upgrade) were all resolved by matching firmware, per James's
+"firmware is the sentinel" directive. The only firmware behaviours deliberately *not*
+reproduced are the two that this layer physically cannot: removePendingTXPacket reaching
+into the LoRa transport's own send queue, and passesRoutingAuthGate (nothing to gate on
+here yet) - both noted in the commits.
 
 ## Fixed so far
 
