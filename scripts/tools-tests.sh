@@ -973,5 +973,30 @@ git -C "$root/kzstd" worktree remove --force "$HOME/parked-elsewhere"; git -C "$
 run "$sync"
 expect 'worktrees [0-9]+ open - nix run .#worktree -- --gc'
 
+echo "--- T37: create bases a NEW branch on origin's default, not the primary checkout's HEAD"
+# The regression this pins: `git worktree add -b` with no start point uses the
+# HOST checkout's HEAD, so a worktree made while the primary sat on a feature
+# branch inherited that branch's commits and looked clean.
+(cd "$root/kzstd" && git checkout -q -b feat/host-side && echo host >> tracked.txt && git commit -aqm "host-only commit")
+host_tip=$(git -C "$root/kzstd" rev-parse HEAD)
+def_tip=$(git -C "$root/kzstd" rev-parse origin/main)
+[ "$host_tip" != "$def_tip" ] || { echo "T37: fixture is not set up - host tip equals origin/main"; exit 1; }
+run "$worktree" kzstd feat/from-default
+expect 'base +origin/main'
+wt_tip=$(git -C "$root/kzstd/.claude/worktrees/feat-from-default" rev-parse HEAD)
+[ "$wt_tip" = "$def_tip" ] || { echo "T37: new branch not based on origin/main"; exit 1; }
+[ "$wt_tip" != "$host_tip" ] || { echo "T37: new branch inherited the host checkout's HEAD"; exit 1; }
+run "$worktree" --remove kzstd feat-from-default
+
+# An EXISTING remote branch still wins over the default - that arm is unchanged.
+git -C "$root/kzstd" push -q origin "feat/host-side:feat/published"
+git -C "$root/kzstd" fetch -q origin
+run "$worktree" kzstd feat/published
+expect 'base +origin/feat/published'
+[ "$(git -C "$root/kzstd/.claude/worktrees/feat-published" rev-parse HEAD)" = "$host_tip" ] \
+  || { echo "T37: existing remote branch not honoured"; exit 1; }
+run "$worktree" --remove kzstd feat-published
+(cd "$root/kzstd" && git checkout -q main && git branch -D -q feat/host-side)
+
 echo "all tests passed"
 touch "$out"

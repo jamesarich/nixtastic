@@ -25,6 +25,19 @@ all_repos() {
   while IFS=$'\t' read -r d _ _; do echo "$d"; done < "$NIXTASTIC_REPOS_TSV"
 }
 
+# The repo's default branch as a ref, e.g. "origin/develop". Empty when the
+# repo has no origin. Default branches here are NOT all `main` (firmware and
+# device-ui track develop/master), so this is never a constant - ask git.
+default_ref() {
+  d=$(git -C "$1" symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null | sed 's|^refs/remotes/||' || true)
+  if [ -z "$d" ]; then
+    for c in origin/main origin/master origin/develop main master develop; do
+      git -C "$1" rev-parse -q --verify "$c" >/dev/null 2>&1 && { d="$c"; break; }
+    done
+  fi
+  echo "$d"
+}
+
 # Explicit if/else rather than `A && B || C`: with the latter,
 # C also runs when A succeeds but B fails.
 targets() {
@@ -115,12 +128,7 @@ case "${1:-}" in
       # `|| true` on both: under pipefail a repo with no origin (or no
       # origin/HEAD) would otherwise abort the whole pass.
       gh_repo=$(git -C "$p" remote get-url origin 2>/dev/null | sed 's|.*github.com[:/]||; s|\.git$||' || true)
-      def=$(git -C "$p" symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null | sed 's|^refs/remotes/||' || true)
-      if [ -z "$def" ]; then
-        for c in origin/main origin/master origin/develop main master develop; do
-          git -C "$p" rev-parse -q --verify "$c" >/dev/null 2>&1 && { def="$c"; break; }
-        done
-      fi
+      def=$(default_ref "$p")
       while read -r wt; do
         [ -d "$wt" ] || continue
         label="$d/${wt##*/}"
@@ -214,12 +222,29 @@ wt="$p/.claude/worktrees/$name"
 ensure_excludes "$p"
 
 git -C "$p" fetch --quiet origin 2>/dev/null || true
+# A NEW branch starts from the repo's default branch, never from whatever the
+# primary checkout happens to have checked out. Without a start point `git
+# worktree add -b` uses the host's HEAD, so a worktree created while the
+# primary sat on a feature branch silently inherited it - a "clean" branch
+# already several commits off main, noticed only later as unrelated files in
+# the diff. The fetch above is what makes the remote ref current.
+base=""
 if git -C "$p" rev-parse --verify --quiet "refs/heads/$branch" >/dev/null; then
   git -C "$p" worktree add --quiet "$wt" "$branch"
+  base="existing local branch"
 elif git -C "$p" rev-parse --verify --quiet "refs/remotes/origin/$branch" >/dev/null; then
   git -C "$p" worktree add --quiet --track -b "$branch" "$wt" "origin/$branch"
+  base="origin/$branch"
 else
-  git -C "$p" worktree add --quiet -b "$branch" "$wt"
+  base=$(default_ref "$p")
+  if [ -n "$base" ]; then
+    git -C "$p" worktree add --quiet -b "$branch" "$wt" "$base"
+  else
+    # No origin at all (a local-only repo): HEAD is the only thing to branch
+    # from. Say so rather than implying a base that was never consulted.
+    git -C "$p" worktree add --quiet -b "$branch" "$wt"
+    base="HEAD (no origin)"
+  fi
 fi
 
 # A worktree is a full checkout, so it carries any .envrc the
@@ -233,6 +258,22 @@ else
   envrc_file="$wt/.envrc"
 fi
 write_worktree_envrc "$envrc_file" "$shell"
+
+# Trust it here, so the worktree is usable without a second manual step.
+# direnv refuses an un-allowed .envrc, and non-interactive callers
+# (`direnv exec <wt> ...`, agent tool calls) get "is blocked" with no shell
+# to run `direnv allow` in - the failure this removes.
+#
+# Only the file THIS tool just generated is trusted. When upstream tracks
+# its own .envrc we wrote the sidecar instead, and allowing upstream's file
+# is a judgement about their content, not ours - left to the human, same
+# rule as never editing a tracked .envrc.
+allowed=""
+if [ "${envrc_file##*/}" = ".envrc" ]; then
+  if command -v direnv >/dev/null 2>&1; then
+    if direnv allow "$envrc_file" >/dev/null 2>&1; then allowed=" (allowed)"; fi
+  fi
+fi
 
 # A worktree is its own cwd, so it is its own Claude Code
 # project: a registration made at the workspace root does
@@ -268,16 +309,17 @@ if [ -d "$(memory_store)/.git" ]; then
 fi
 
 echo "  created  $wt"
-echo "  envrc    ${envrc_file#"$wt"/}"
+echo "  envrc    ${envrc_file#"$wt"/}$allowed"
 [ -n "$mcp" ] && echo "  mcp      .mcp.json $mcp"
 case "$mem" in
   linked) echo "  memory   linked -> $(memory_store)/memory" ;;
   warn*)  echo "  memory   WARN ${mem#*$'\t'}" ;;
 esac
 echo "  branch   $branch"
+echo "  base     $base"
 echo "  shell    .#$shell"
 echo ""
-echo "  cd $wt && direnv allow"
+if [ -n "$allowed" ]; then echo "  cd $wt"; else echo "  cd $wt && direnv allow"; fi
 # Absolute flake ref on purpose: the line above tells you to cd INTO the
 # worktree, and `.#` resolves against cwd without crossing a git-repo
 # boundary - so the short form errors with "is not part of a flake" from

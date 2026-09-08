@@ -462,6 +462,28 @@ else
   else
     ok "memory age" "none older than 90 days ($m_undated undated of $m_count)"
   fi
+
+  # MEMORY.md is loaded into every session's context. Past ~25000 bytes the
+  # harness loads only PART of it and says so in a system-reminder that is
+  # easy to scroll past - so a session silently starts without some of the
+  # index, and a memory that exists is never recalled. Measured 2026-09-08:
+  # 32112 bytes, 132 entries. Each line is a memory's frontmatter
+  # `description:`, so the lever is shortening those, not editing MEMORY.md
+  # (sync regenerates it from them - see scripts/memory.sh).
+  m_index="$mstore/memory/MEMORY.md"
+  if [ -f "$m_index" ]; then
+    m_bytes=$(wc -c < "$m_index" | tr -d ' ')
+    m_long=$(awk 'length > 200' "$m_index" | wc -l | tr -d ' ')
+    if [ "$m_bytes" -gt 25000 ]; then
+      warn "memory index" "MEMORY.md $m_bytes bytes (>25000: sessions load only part of it), $m_long entries over 200 chars"
+      fix "shorten the 'description:' line of the worst offenders, then nix run .#sync -- --memory-only"
+    elif [ "$m_long" -gt 0 ]; then
+      warn "memory index" "MEMORY.md $m_bytes bytes, $m_long entries over 200 chars"
+      fix "shorten those 'description:' lines before the index outgrows its budget"
+    else
+      ok "memory index" "$m_bytes bytes, $m_count entries, none over 200 chars"
+    fi
+  fi
 fi
 
 echo ""

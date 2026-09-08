@@ -134,7 +134,9 @@ hand-edit it.
 ## Worktrees
 
 `nix run .#worktree -- <repo> <branch>` creates one under
-`<repo>/.claude/worktrees/` with the repo's shell wired up and a `.mcp.json`
+`<repo>/.claude/worktrees/` based on **`origin`'s default branch for that
+repo** (not the primary checkout's current HEAD - it prints the `base` line
+so you can check), `direnv allow`ed, with the repo's shell wired up and a `.mcp.json`
 so the `meshtastic-mcp` tools follow you in - except where upstream tracks
 its own `.mcp.json` (`android`, `firmware`): theirs wins, and the
 **user-scope launcher registration** (`doctor` checks it, `sync` prints the

@@ -158,11 +158,14 @@ running several agents:
 
 ```bash
 nix run .#worktree -- android fix/6360-coarse-position
-cd android/.claude/worktrees/fix-6360-coarse-position && direnv allow
+cd android/.claude/worktrees/fix-6360-coarse-position
 ```
 
-The worktree arrives fully outfitted - **that repo's** shell plus its
-generated files. One made any other way (`git worktree add`, an agent) is
+A new branch is based on the repo's **default branch as origin has it**, not
+on whatever the primary checkout is sitting on, and the generated `.envrc` is
+`direnv allow`ed for you - the tool prints the base it used, so check that
+line rather than assuming. The worktree arrives fully outfitted - **that
+repo's** shell plus its generated files. One made any other way (`git worktree add`, an agent) is
 missing pieces, all silently; `nix run .#sync` adopts it and writes what's
 absent, and `doctor` warns about stragglers. The full accounting - what a
 bare worktree lacks, and why upstream's tracked `.mcp.json` wins in `android`
@@ -191,7 +194,7 @@ which is what `git worktree remove` does anyway; the difference is you get the
 ```bash
 nix run .#brief -- android                      # read what it names
 nix run .#worktree -- android fix/6360-thing
-cd android/.claude/worktrees/fix-6360-thing && direnv allow
+cd android/.claude/worktrees/fix-6360-thing
 ./gradlew :androidApp:assembleFdroidDebug
 ./gradlew :androidApp:testFdroidDebugUnitTest
 ```
@@ -322,7 +325,7 @@ repo builds.
 | `nix run .#pins` | cross-repo pin state: protobufs, TAKPacket-SDK, design, api seeds; `current` / `behind` / `ahead` per consumer |
 | `nix run .#pr -- <repo> <n> [status\|threads\|reviewed\|resolve\|wait\|rereview]` | PR status for the **head SHA**: checks, unresolved threads, queue, conflicts, whether CodeRabbit reviewed *this* head. `resolve <thread> [--reply]` closes a thread; `wait --until checks\|queue\|merged\|reviewed` exits 75 on timeout |
 | `just review` | local CodeRabbit pass on the change you stand in, before opening the PR (free tier 3/hour) |
-| `nix run .#worktree -- <repo> <branch>` | worktree with the correct shell |
+| `nix run .#worktree -- <repo> <branch>` | worktree with the correct shell, based on `origin`'s default branch and `direnv allow`ed |
 | `nix run .#worktree -- --list \| --remove \| --prune \| --path` | manage worktrees across all repos; `--path` prints one's directory |
 | `nix run .#worktree -- --gc [--apply]` | reap worktrees whose branch merged (GitHub says so, at this exact HEAD) or that never got a commit; report only unless `--apply` |
 | `just wt <repo> <name> <cmd>` / `just in <repo> <cmd>` | run a command inside a worktree or a primary checkout with its env, from any cwd |
