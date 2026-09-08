@@ -36,14 +36,9 @@ mutation-checked. On `meshtastic-node-kmp` `main`:
 - **`dae245e` #5** an MQTT downlink attributed to us is never re-injected, any gateway,
   closing the forged-receipt vector; the "same receipt firmware synthesises" comment
   was a misattribution (firmware makes a local ack, never re-injects).
-  *Follow-up:* our drop is stricter than firmware for the own-gateway echo -
-  firmware turns `from==us && gateway==ours` into a *local* ack that retires the
-  retransmit, we just drop it. Harmless on a multi-bearer node (another bearer's
-  implicit ack retires the send), but an MQTT-only node now has no path to
-  Delivered on its own uplink and burns its whole retransmit budget to
-  DeliveryFailed. Fixing it needs a hook from the MQTT transport up to the
-  retransmit queue - a small design task, not a one-liner - so it is on the open
-  list as #16.
+  *Follow-up (now fixed, #16 / `d86b5df`):* the drop was stricter than firmware for
+  the own-gateway echo, so an MQTT-only node could not reach Delivered on its own
+  uplink. Fixed below.
 - **`cdf6a25` #9** packet ids use firmware's split - low 10 bits a counter, top 22
   random per packet - not a bare +1 counter.
 - **`429e6bb` #10** a GPS cold start reports its first fix promptly, not an interval
@@ -63,12 +58,37 @@ mutation-checked. On `meshtastic-node-kmp` `main`:
   node-kmp meant to support channel-directed DMs as a fallback for peers without
   exchanged keys? James's call - matching firmware breaks that path.
 
-**Still open, not yet done** (mechanical, lower impact): #7 (a relay drops an
-originator's reliable retransmission firmware re-relays), #12 (a PKI DM heard on LoRa
-is not bridged to MQTT), #11 (a LoRa send reports false yet the frame can air), #13 (a
-timed-out LoRa TX is not charged to airtime), #15 (traceroute reply omits firmware's
-unknown-hop padding), #16 (an MQTT-only node cannot reach Delivered on its own
-uplink - the own-gateway local-ack path #5 dropped).
+**The medium/low tail, now fixed** (each gated and mutation-checked, on `main`):
+- **`5d53fba` #15** a traceroute reply pads the hops no node recorded - route with the
+  broadcast sentinel to the hop count, snr_towards with the unknown sentinel to the
+  route length - so a client no longer reads per-hop SNR against the wrong hops.
+  Firmware's insertUnknownHops. Bounded by TRACEROUTE_MAX_HOPS.
+- **`d86b5df` #16** an MQTT-only node reaches Delivered on its own uplink: the
+  own-gateway echo (from==us, gateway==ours) is admitted, stamped via_mqtt, and read as
+  a local ack, never re-injected; the foreign-gateway forgery drop (#5) stays. Parity
+  trade-off as in firmware: a broker peer that has seen our packet and its id can
+  trigger it, which #9's 22 random id bits make the accepted trust model.
+- **`05ddc19` #12** a PKI DM heard on LoRa is bridged to the MQTT PKI topic: an opaque
+  channel-0 packet to a single node that is not us is inferred PKI (firmware
+  Router.cpp), so the on-air LoRa header's missing pki bit no longer loses every LoRa
+  PKI DM. Narrower than firmware - only on a private broker, since mayUplink refuses a
+  foreign ciphertext on a public one first (see the public-broker follow-up).
+- **`d6ca2b1` #13** a timed-out LoRa transmit is charged to airtime, because the PA
+  radiated the moment startTransmit was accepted; the duty-cycle ledger stays honest.
+- **`b714ba4` #11** a LoRa send that gives up withdraws its frame rather than letting it
+  air later behind the caller's back; a new txWithdrawn counter records the drop.
+- **`3244ca7` #7** a directed reliable retransmission is re-relayed rather than dropped,
+  so a node that is the only path to the destination stops stranding every retry after
+  the first. Scoped to directed traffic; broadcast repeats keep the existing dedup.
+
+**Follow-ups left, needing James** (policy or a bigger change, not a bug to fix quietly):
+- **#12 public broker.** Firmware publishes a PKI DM it cannot read to the *public*
+  server; node-kmp deliberately does not (mayUplink refuses a foreign ciphertext on a
+  public broker). #12 fixed the private-broker case only. Whether node-kmp should match
+  firmware and put unreadable PKI on a public broker is a policy call, left as-is.
+- **#7 upgraded hop_limit.** Firmware also re-relays a duplicate that arrives with a
+  *higher* hop_limit (perhapsHandleUpgradedPacket). That needs PacketHistory to store
+  the hop_limit it saw, which it does not - reshaping history is its own change.
 
 ## Fixed so far
 
