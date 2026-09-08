@@ -423,9 +423,110 @@ inherit the desktop agent. Same defect class as the LoRa init spam fixed in
    (`aadec77`): `node-phone-api` plus a desktop TCP listener on 4403, and the
    stock Android app connects to the desktop node over TCP, completes both
    handshake stages, holds the link, and a message it sends leaves as a multicast
-   frame. Still owed: the Android `IRadioInterface` adapter, the Apple
-   `Transport`/`Connection` pair, the SDK `RadioTransport` module, and
-   `AdminMessage` handling. Two facts the stock app taught: its TCP transport
+   frame.
+
+   **`AdminMessage` handling is done, 2026-09-08** (`79f04d7`, `04495d6`). The
+   node answers a phone's local admin instead of refusing it, which is what the
+   five `queueStatus res=-1` on connect were. `AdminService` in `node-phone-api`
+   is firmware's `AdminModule` for the one sender that can reach it: a
+   `PhoneApiSession` *is* the local client, which is firmware's `mp.from == 0`
+   branch, so there is no session key or PKI gate below it - and that is why it
+   must never be handed a packet off a transport. Getters answered:
+   owner, config, module config, channel, device metadata, UI config,
+   connection status. Writes applied: owner, `lora.hop_limit`,
+   `device.rebroadcast_mode`, the channel set - those four reach `MeshNode`
+   itself, so a setting cannot read back as changed while the node ignores it,
+   which is what made them stop being construction-time constants. Everything
+   else lands in `NodeSettings` and is read back from there rather than as the
+   default it replaced. Deliberately not handled, each with a reason in the
+   KDoc: reboot/shutdown/DFU/OTA/factory-reset, the file and backup verbs, and
+   the node-DB verbs (favourite/ignore/mute/remove), which firmware backs with
+   `NodeInfoLite` bitfields `NodeDb` does not carry.
+
+   Three orderings are firmware's and each matters to a real app: the admin
+   **reply precedes the queue status** (`Router::sendLocal` is synchronous
+   inside `sendToMesh`, and Android's config screens register their request id
+   before the send *because* of that); the **request echo follows** it
+   (`ccToPhone`); and a `want_ack` write gets a ROUTING ack **only when no reply
+   was produced** (`ReliableRouter`'s "no need for 2nd ack").
+
+   Proven on the wire, not only in tests: a hand-driven phone-API session sending
+   the two admin messages Meshtastic-Android sends unprompted - `set_time_only`
+   on `my_info`, then `get_owner_request` once Connected, which are the *only*
+   two - got `queueStatus res [0, 0]`, zero `res=-1`, and a `get_owner_response`
+   carrying the matching `request_id` and an 8-byte session passkey (the app
+   seeds its per-node session from exactly that response). Through the python CLI
+   on tcp/4403: `--set-owner` renamed the node, the name survived a fresh
+   connection with the address unchanged, the node re-announced its NodeInfo on
+   the mesh, and `--set lora.hop_limit 4` read back as 4.
+
+   **Known limitation, named rather than papered over:** a rename survives in the
+   running process but not a monitor restart. `MonitorController` derives its
+   identity with the literal `"node-kmp monitor"`/`"MON"` every launch, and
+   `NodeIdentityRecord` stores only the seed and keypair, so nothing persists the
+   owner or the `NodeSettings` snapshot. The library side is deliberate -
+   `NodeSettings.state` is a `StateFlow` a host collects and hands back, the same
+   boundary `NodeIdentityStore` draws - so this is one host-side persistence seam
+   to add, not two ad-hoc files, and the shape is James's call.
+
+   **The app-side adapters, 2026-09-08: the shared half is built, the rest is
+   one decision.** `EmbeddedPhoneApi` (`16b63b7`) serves the phone API in
+   process - framed `ToRadio` bytes in, framed `FromRadio` bytes out, a
+   resyncing parser that carries a partial frame between calls the way a socket
+   makes it. That was the only thing standing between the protocol the apps
+   already drive over TCP and driving it in-process; without it every host
+   re-derives the framer.
+
+   **Which shape each seam wants, read off the real interfaces rather than
+   guessed:**
+
+   - **meshtastic-sdk** - `RadioTransport` (`core/.../Transport.kt:173`):
+     `connect`/`disconnect`/`send(Frame)`/`frames(): Flow<Frame>`/`state`. Frames
+     are **framed** - the KDoc calls `Frame.bytes` the wire data "including all
+     framing overhead" and `TcpTransport` writes them straight to the socket -
+     so it wraps `EmbeddedPhoneApi`. **Built and proven**, as
+     `spike/node-kmp-embedded-transport` in the `meshtastic-sdk` worktree
+     (`bc56948`, committed locally, deliberately **not pushed**): a
+     `:transport-embedded` module whose whole body is a state flow and five
+     forwarding methods, compiling against the real interface, with a jvmTest
+     driving the two-stage `want_config` handshake through it to
+     `config_complete_id`. One ordering subtlety it pins: the SDK collects
+     `frames()` once at engine startup, which can precede `connect()`, so the
+     session cannot be created by `connect()` and must not be created twice -
+     the first draft had that bug and the test caught it.
+   - **android** - the seam is `RadioTransport` (`core/repository/.../
+     RadioTransport.kt:23`); `IRadioInterface` is gone, its own KDoc says so.
+     Four members, callback-based inbound (`RadioTransportCallback.onConnect` /
+     `onDisconnect` / `handleFromRadio`), and bytes are **unframed** both ways -
+     only `StreamTransport` subclasses frame, and an in-process transport is not
+     one. So android wraps `PhoneApiSession` directly, not `EmbeddedPhoneApi`.
+     Model it on `MockRadioTransport` (`core/network/.../MockRadioTransport.kt:88`),
+     which is already an in-process simulated radio and whose KDoc lists the three
+     handshake invariants; copy its `TransportLifecycleGate` close idiom. Register
+     by adding a constant to `InterfaceId` (`core/model/.../InterfaceId.kt:20`),
+     which makes the compiler walk you through `AndroidRadioTransportFactory`
+     (`:91`, `:114`) and `DeviceType.fromAddress` (`:28`); then edit by hand the
+     two non-exhaustive sites, `BaseRadioTransportFactory.isAddressValid:41` and
+     `DesktopRadioTransportFactory.kt:56`. No Koin binding and no CI registry
+     changes if it lives in `core/network` - transports are constructed by the
+     factory, not injected.
+   - **apple** - `Transport`/`Connection`. Not started and not attempted:
+     this bench is Linux, and writing Swift that cannot be compiled here is
+     exactly the kind of unverified claim to avoid.
+
+   **The blocker is one decision, not more code.** `meshtastic-node-kmp` is a
+   **private** repo that applies **no `maven-publish` at all** - it publishes
+   nothing, anywhere - so nothing in `android`, `apple` or `meshtastic-sdk` can
+   depend on it and merge. The SDK spike only resolves because
+   `settings.gradle.kts` substitutes the local checkout through a relative-path
+   composite build, which works on a machine holding both repos and on no CI.
+   Options, for James: publish node-kmp (public, or a private/GitHub Packages
+   repo), or keep every adapter as a composite-build spike. Note this also
+   reopens **R2-13** - adding publication forces the target-set question
+   (`node-core/build.gradle.kts:13`'s "match meshtastic-sdk target set" invariant
+   and whether a linuxX64 artifact ships), so the two decisions are one.
+
+   Two facts the stock app taught: its TCP transport
    drops a radio silent for 90 s (18 read timeouts, reset only by received bytes),
    so the session answers heartbeats and sends a `queueStatus` every 30 s; and
    without Routing ACK/NAK its sent messages sit at "Sending..." and end as
