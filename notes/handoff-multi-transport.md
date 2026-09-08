@@ -35,7 +35,12 @@ called in-process over JNI. Windows is now the whole of the desktop BLE gap.
    which supersedes the audit for node-kmp and adds 131 findings of its own. Its
    medium/low tail (#3-#16) was fully worked through 2026-09-07 - all fixed to
    firmware parity, nothing left deferred, per James's "firmware is the sentinel"
-   call - see that doc's "2026-09-07 re-verification pass".
+   call - see that doc's "2026-09-07 re-verification pass". A second full-feature
+   re-audit (9 reviewers) ran 2026-09-08 and is also worked through: every code
+   finding fixed to firmware parity and the nomenclature lane renamed to firmware
+   names (NodeDb/NodeInfoLite, hopLimit + RebroadcastMode split, sendOurNodeInfo,
+   getNextHop, start/stopRetransmission, startSend, cancelSending), a few arch
+   lows documented with reasons - see that doc's "2026-09-08 round 2 resolution".
 3. Per the workspace protocol, run `just brief <repo>` before editing under any
    repo, and read that repo's own docs (`meshtastic-node-kmp` → `README.md` then
    `AGENTS.md`; `firmware` → `AGENTS.md`).
