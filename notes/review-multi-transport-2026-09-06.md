@@ -1195,3 +1195,173 @@ Every environment guard in the JVM test trees is a bare `return`, never `@Ignore
 *Verifier correction:* The LoRa-egress interop test cannot fail on its armed path. `FirmwareInteropTest.kt:221` declares `a packet this node sends is relayed onto LoRa` as `withRadio(RelayPolicy.Meshed(2)) { f -> ... }`, and past the `MESH_INTEROP_LORA_EGRESS` gate its only assertion is `f.node.relayPolicy.hopLimit shouldBe 2` (:229) - a read-back of the policy the test's own fixture argument set, since `withRadio` (:100) passes it to `Fixture` (:83) which passes it to `MeshNode { relayPolicy = policy }` (:92), surfaced unchanged by `MeshNode.kt:69`. The 20 `announce()` calls at :233-236 assert nothing and discard t
 
 
+
+---
+
+# 2026-09-08 round 2 - full-feature re-audit at HEAD (20c8ce0)
+
+James: "full audit - architecture, code quality, platform best practices, firmware
+parity, etc - entire feature" plus a dedicated nomenclature lane ("follow their naming
+and semantics... don't introduce new terminology for the same mechanics"). Nine
+read-only reviewers, one per dimension, each told to distrust commit messages and KDoc,
+read firmware as the sentinel, and report only findings NOT already in this doc's 131.
+The two advisor-seeded hypotheses that were refuted are recorded as such.
+
+The structural core came back clean: no sideways transport deps, node-core depends on no
+transport, explicitApi + binary-compat everywhere, no platform-type leaks into commonMain,
+crypto is byte-exact vs firmware (AES-CTR nonce, PKI X25519->CCM incl. firmware's offset-4
+extraNonce quirk, default-key expansion, channel hash). Concurrency judged "exceptionally
+well-guarded" (CAS-over-immutable, atomics, actor confinement).
+
+## Refuted / not-a-bug (recorded so they are not re-raised)
+- **Self-relay of own MQTT echo (advisor seed):** NOT REAL. A from-us packet short-circuits
+  to implicitAck at MeshNode.kt:605 before the dedup `when`, so the missing `from != us` term
+  in repeatedReliableTx is unreachable and harmless. Matches firmware's isFromUs-first order.
+- **#11 withdrawal timeout path:** correct. The head is bounded by txMaxDeferMs; the timeout
+  branch stores withdrawn then awaits the true fate, nothing airs behind the caller's back.
+- **airtime-on-TIMED_OUT (#13):** correct. The TX clock starts after startTransmit() keys the
+  PA (LoraTransport.kt:583-584), so charging airtime unconditionally matches completeSending.
+- **re-ack of a to-us direct duplicate on any bearer:** firmware parity (ReliableRouter.cpp:107
+  re-acks without a wasSeenRecently check).
+
+## HIGH
+- **R2-1 [bug+test-gap] phone-API delivery receipt reports a failed DM as delivered.**
+  PhoneApiSession.kt:80-84: `event.routingError?.let { Routing.Error.fromValue(it) } ?: when(reason){REJECTED->NONE}`.
+  fromValue returns null for an error int this proto pin doesn't know, so a NAK carrying a
+  newer-firmware error code falls through to NONE = the phone reads it as SUCCESS. The KDoc
+  two lines up claims this cannot happen, but the local reason for REJECTED *is* NONE, so the
+  comment is self-contradictory. The whole receipts Job (Delivered->ack, DeliveryFailed->NAK,
+  request_id tie) also has zero tests. Fix: map an unknown/absent code to a real failure
+  (NONE is success on the wire), and add the missing tests.
+
+## MEDIUM - correctness / firmware parity (fix)
+- **R2-2 [parity] #14 (120c8c0) has the wrong on-air behaviour - it should silent-drop, not NAK.**
+  Firmware's "Rejecting legacy DM" return false (Router.cpp:1057) is a DECODE_FAILURE: dropped
+  before sniffReceived, never the NO_CHANNEL NAK path (the only NAK emit sites are
+  ReliableRouter.cpp:146,150, reachable only for decoded packets). node-kmp instead NAKs an
+  undecodable to-us want_ack packet (open()->null->Unreadable, then receiptFor->NO_CHANNEL,
+  MeshNode.kt:944-960), answering a packet it could not read - the want_ack decrypt/tamper
+  oracle firmware withholds ("one-byte hash collisions are indistinguishable from tampering").
+  This corrects a fix made in round 1: the #14 test asserting the NAK encodes wrong behaviour.
+  Fix: a hash-matched-but-undecodable to-us packet (incl. legacy-DM) is dropped silently, not
+  acked. (Post-#11544 firmware also drops the DECODE_OPAQUE genuinely-absent-channel case via
+  passesRoutingAuthGate; node-kmp has no auth gate to reproduce - the collision/legacy case is
+  the actionable one.)
+- **R2-3 [bug] cancelPendingRelay has no bearer gate.** MeshNode.kt:644/902. Firmware's
+  perhapsCancelDupe (FloodingRouter.cpp:137-141) cancels a pending rebroadcast only for a
+  TRANSPORT_LORA dupe; node-kmp cancels on a dupe heard on ANY bearer (UDP/BLE/MQTT), and since
+  scheduleRelay is one job covering every medium, overhearing the packet on a wire path drops
+  the LoRa rebroadcast too. PacketHeaderView carries no transport_mechanism, so the gate must
+  hang off `via`. The suppression tests (RelayAndDirectoryTest.kt:186,341) bake in the
+  bearer-agnostic behaviour and need updating with the fix.
+- **R2-4 [bug+parity] fix #2's key-resolution never reaches the MQTT module.** withResolvedSecondaryKeys()
+  is only called in MeshNode.channelList (MeshNode.kt:81); the MQTT module has no resolveKey/role
+  reference. MqttFraming.uplinkChannelId (MqttFraming.kt:173) hash-matches an unresolved channel
+  list, so an empty-PSK SECONDARY hashes with no key, never matches the wire byte, and that
+  channel's uplink is silently dropped while its downlink still works (matched by name). Fix:
+  resolve keys on the MQTT channel list too (a library helper that produces MQTT-ready channels
+  = name resolution + key resolution together).
+- **R2-5 [parity] LoRa contention window never scales with channel util.** LoraTransport.kt:649.
+  Firmware sizes CWsize = map(channelUtil,0,100,3,8) and delays random(0..2^CWsize) slots
+  (RadioInterface.cpp:815-823); node-kmp hardcodes random(0..7) (CWmin only) always, and defer()
+  uses a fixed 1..8 on a CAD-busy channel. airtime.channelUtilPct is already computed. On a
+  congested channel node-kmp collides where firmware peers back off wide.
+- **R2-6 [parity] the 40% channel-util ceiling gates ALL traffic.** LoraTransport.kt:566 ->
+  LoraAirtime.kt:48. Firmware gates only periodic modules (NodeInfo/telemetry/position) on
+  channel util (isTxAllowedChannelUtil, MeshService.cpp:104); user text, acks and routing are
+  gated on DUTY CYCLE only (Router.cpp:479). node-kmp refuses every send at >=40% util, and
+  channelUtilPct counts RECEIVED airtime too, so merely hearing a busy mesh silences the radio
+  where a firmware peer sends fine. The refusal is terminal (result=false, no retry). The
+  "airtime budget" log string is shared with the duty-cycle refusal, so an operator can't tell
+  which ceiling fired.
+- **R2-7 [bug] cancelling send() does not withdraw the frame - it still radiates.**
+  LoraTransport.kt:255-278. withdrawn is set only on the withTimeoutOrNull branch. If the caller
+  coroutine is cancelled during result.await() (a host bounding sendText with withTimeout, or a
+  structured-concurrency parent), CancellationException unwinds and the already-queued request is
+  never withdrawn: as head it transmits when the channel clears, as backlog promote() re-arms it.
+  The frame airs after the caller is gone and duplicates if the caller retransmits - the #11
+  failure through the cancellation door. Originations (broadcast(), MeshNode.kt:1201) have no
+  `claimed` CAS guard (the relay path does). Fix: invokeOnCancellation { withdrawn.store(true) }.
+
+## MEDIUM - platform / lifecycle (fix)
+- **R2-8 [platform/security] BlueZ no-pair agent auto-authorizes every service host-wide.**
+  BluezPairingAgent.kt:69,89. RequestDefaultAgent makes this the host default for all adapters;
+  AuthorizeService returns Unit (=authorized) for any device and any UUID. For the lifetime of a
+  GATT link, any device on the host requesting any profile (HFP/HID/MAP) is silently authorized.
+  Scope to the mesh peer path + mesh service UUID.
+- **R2-9 [bug/platform, native crash] MacGattLink use-after-free after teardown.**
+  MacGattLink.kt:48-140 + Exports.kt. `started` = handle != NO_HANDLE is a val, permanently true;
+  stop() sets a separate `stopped` and calls nativeStop -> ref.dispose(). canTransmit/maxChunkSize/
+  broadcastPacket gate only on `started`, so a send or status refresh after teardown calls
+  asStableRef().get() on a disposed pointer - UB/segfault, not a catchable Kotlin exception. Gate
+  these on `stopped` too.
+- **R2-10 [bug/parity] PhoneApiSession.configured is never reset on a want_config_id re-request.**
+  PhoneApiSession.kt:45,181. sendConfig sets configured=true but never false at its start;
+  firmware restarts its state machine out of STATE_SEND_PACKETS on every want_config_id
+  (PhoneAPI.cpp:305) so live traffic stops during a re-dump. Here the live/receipts/keepalive/
+  telemetry coroutines keep emitting into outbound during a re-dump -> a live MeshPacket splices
+  into the my_info->channels->config handshake and config_complete_id races it. Reset the state
+  on re-request.
+- **R2-11 [concurrency] PhoneApiSession.configured is a plain var across threads (two reviewers).**
+  PhoneApiSession.kt:45. Written on the IO reader thread (toRadio runs in withContext(Dispatchers.IO)),
+  read from the live/receipts/keepalive/telemetry coroutines on the EDT/Main scope. No happens-before
+  edge; on Native a hard data race. The codebase uses @Volatile in 20 places for exactly this. Mark
+  it @Volatile or drive it through the session coroutine. (Related to R2-10.)
+
+## MEDIUM - test gaps (fix alongside the code)
+- **R2-12 [test-gap] forget-dead-route (b6bb03d) + next_hop-on-origination stamping have no node test.**
+  MeshNode.kt:520 (routes.forget on MAX_RETRANSMIT) and :430/:470 (nextHop = routes.nextHopFor).
+  Reverting either - re-introducing the black-hole b6bb03d fixed - passes every test today.
+- **R2-13 [test-gap] no linuxX64 target: commonMain crypto/wire/relay Native execution is Apple-only.**
+  node-core/node-transport-mqtt declare jvm+android+Apple only. On the Linux bench allTests runs
+  commonTest on the JVM host; the Native bodies (buildNonce LE packing, Long/Int masking,
+  AtomicBoolean) run only in macos/ios test, so a Native-specific divergence passes the Linux gate
+  silently. Adding linuxX64 (test-only) would close it.
+
+## LOW (log; batch or defer)
+- R2-L1 [arch] MqttBridgeTransport is the only transport taking node identity in its ctor
+  (nodeNum), bending the identity-agnostic abstraction; a re-key invalidates a long-lived instance.
+- R2-L2 [arch] MeshTransport.send()'s "medium must be open" precondition is undocumented and
+  diverges: MQTT/LoRa no-op (return false) unless incoming() is being collected, UDP does not.
+- R2-L3 [arch] BLE code (BleMeshAdvert, bluetoothAvailability) lives in transport-agnostic
+  node-core and is frozen into its ABI for non-BLE consumers (AGENTS.md records it as debt).
+- R2-L4 [parity] MQTT/UDP ingress leaks the wire packet's rx_snr (and rx_rssi presence) to the
+  host; firmware clears rx_snr/rx_rssi/has_rx_rssi at ingress (UdpMulticastHandler.h:101).
+- R2-L5 [parity] UDP relays wire pki_encrypted/public_key onward; firmware clears them at ingress
+  (host emission is safe via withoutSenderClaims; the rebroadcast frame is not). MQTT clears them.
+- R2-L6 [quality] PhoneApiTcpServer writer catches only IOException; StreamFrame.encode throws
+  IllegalArgumentException on a >512 FromRadio, half-killing the session (latent: bounded <=512).
+- R2-L7 [leak] GattLinkBase.notifyRetries grows unbounded per peer - a second instance beside the
+  already-logged peerLocks leak.
+- R2-L8 [quality] MonitorController's ~12 session fields rely on undocumented single-thread
+  confinement; the `starting` guard is a check-then-set spanning identityReady.await().
+- R2-L9 [quality] Two LoraTransport.send() drop paths (oversize frame; detached stick) bump no
+  counter, contradicting the "every drop is counted" LoraStats contract.
+- R2-L10 [test-vacuous] MqttUplinkTest range-test/detection-sensor public-broker tests feed a
+  decoded-set packet the real uplink path never produces (only toMeshPacket sets decoded), so they
+  give false green over the live gap already logged at :1158.
+
+## NOMENCLATURE (James's lane) - align node-kmp names to firmware
+Category B (name on a different mechanic - highest):
+- **N1 RelayPolicy** is stamped on our own ORIGINATIONS (hop_limit) but is named for RELAYING and
+  fuses two orthogonal firmware axes: config.device.rebroadcast_mode (forward others': ALL/
+  LOCAL_ONLY/KNOWN_ONLY/NONE/CORE_PORTNUMS_ONLY) and config.lora.hop_limit (own TTL). Island/Meshed
+  are invented members. A firmware node with rebroadcast_mode=NONE still originates at hop_limit 3;
+  node-kmp cannot express that. Split into rebroadcastMode + hopLimit, reusing firmware's names.
+Category C (gratuitous rename of a settled firmware noun - weigh heavily):
+- **N3 NodeDirectory/directory/Peer -> NodeDB/nodeDB/NodeInfoLite** (most-traversed noun in the code).
+- N4 NextHopTable.nextHopFor -> getNextHop (the TABLE struct is justified, only the method differs).
+- N5 RetransmitQueue.track/acknowledge/Pending -> startRetransmission/stopRetransmission/PendingPacket.
+- N6 LoraTransport.attemptTx -> startSend (+ name the completion path completeSending).
+- N7 TxRequest.withdrawn / cancelPendingRelay -> cancelSending / cancelled.
+- N2 BeaconPolicy/announce/PositionBeacon -> sendOurNodeInfo / node_info_broadcast_secs vocabulary.
+- N8 uplinkChannelId -> note it is getGlobalId in KDoc (minor). N9 open/seal -> perhapsDecode (minor).
+Category D (JUSTIFIED - no firmware counterpart, do NOT churn): PacketHistory.wasSeenRecently
+(exact parity), Sighting, MeshEvent.Opaque, implicitAck, ContentionWindow, KeyRing,
+FrameAdapter.toCanonical/fromCanonical, NextHopTable (struct), learnFrom, promote, RelaySuppressed,
+pendingRelays, NeighborGraph/MeshLink - client-side bookkeeping/scheduling with no C++ object.
+
+## Crypto caveat
+CCM equivalence (node-kmp cryptography-kotlin AES.CCM vs firmware aes-ccm.cpp) is structurally
+correct but has NO end-to-end known-answer vector from firmware - only the nonce byte layout is
+pinned. A single captured firmware PKI packet decoded in a test would close it.
