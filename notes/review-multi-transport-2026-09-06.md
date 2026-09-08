@@ -1409,14 +1409,57 @@ FIXED (nomenclature, James: "rename to align, don't just document" / "clean and 
 - **N8/N9** - already carry firmware KDoc pointers (getGlobalId at MqttChannel.id/MqttTopic;
   perhapsDecode at open/seal) and are private helpers, not cross-codebase surface; left pointed.
 
-DOCUMENTED / NOT DONE, with reason:
-- **R2-L1** (MqttBridgeTransport takes node identity in its ctor), **R2-L3** (BLE constants frozen
-  into node-core's ABI) - both are architecture restructures, not defects; R2-L3 is already recorded
-  as accepted debt in AGENTS.md. Deferred, not fixed.
-- **R2-L7 / CC2** (notifyRetries grows per peer) - the author documents this and peerLocks as
-  intentionally not reaped; reaping on "no longer refusing" would break the retry bound, and reaping
-  only truly-departed peers needs a peer-table accessor not worth adding for a bounded low. Left as is.
-- **R2-L10** (the MqttUplinkTest range-test cases feed a decoded packet the uplink path never
-  produces) is entangled with the already-logged code defect at :1158; not reopened here.
-- **Crypto CCM caveat** stands: nonce layout is pinned, but there is still no end-to-end firmware
-  known-answer vector for the PKI CCM path. A single captured firmware PKI packet in a test closes it.
+## 2026-09-08 round 2, second pass - clearing the deferred tail ("do better")
+
+The items round 2 left as documented-not-done were re-examined. Four were fixed, two are
+confirmed not-a-defect (with evidence, not a hand-wave), one is a coordinated change left for
+James. On `meshtastic-node-kmp` `main`, each gated and mutation-checked unless noted:
+
+FIXED:
+- **RebroadcastMode filters** `2534971` - the headline. KNOWN_ONLY / LOCAL_ONLY /
+  CORE_PORTNUMS_ONLY were placeholders that relayed everything, so a user selecting KNOWN_ONLY got
+  ALL. The relay gate now applies each mode's firmware predicate (perhapsDecode's known-sender drop,
+  RoutingModule's from||to, Router.cpp's core-portnum allowlist). ALL_SKIP_DECODING still == ALL for
+  a client (it relays opaque from the header already). NodeDb.hasUser mirrors nodeInfoLiteHasUser.
+- **R2-12** `7882a01` - the forget-on-exhaust (routes.forget on MAX_RETRANSMIT) and origination
+  next_hop stamping had no node test; reverting either passed the whole suite. Now both covered.
+- **R2-L7** `501fcf6` - GattLinkBase.notifyRetries is capped at MAX_TRACKED_PEERS with eldest-first
+  eviction. It cannot be reaped on disconnect (that hands a refusing peer an unlimited retry budget
+  across reconnects, the classic-bearer mistake), so a size bound is the only safe reap. The cap is
+  never reached in practice (a central talks to a handful of peers); the retry logic itself is
+  covered by the existing `a_peer_that_keeps_refusing` test, and the cap has no separate test - a
+  65-peer harness or private-state access is disproportionate for a defensive bound.
+- **Crypto CCM caveat closed** `501fcf6` - ported firmware's own test_PKC vector
+  (test/test_crypto/test_main.cpp): our private key, the sender's public key, the on-air id/sender,
+  and the 22-byte sealed blob decrypt to firmware's expected plaintext. A firmware-produced KAT, so
+  it proves the whole path (X25519 KDF, nonce layout, AES-CCM) is byte-identical, not merely
+  spec-compliant on our side. No captured-packet caveat remains.
+- **R2-L10 / :1158** `3275c98` - the range-test/detection-sensor public-broker exclusion sat in
+  MqttFraming.mayUplink keyed on packet.decoded, but canonical packets are always sealed (decoded
+  null), so it never ran on real traffic and our own range-test uplinked to a public broker anyway.
+  The vacuous framing tests fed a decoded packet the live path never produces. Moved the decision to
+  origination (MeshTransport.acceptsPublicFlood, MeshNode.sendPacket) where the plaintext portnum is
+  known - firmware's own layer (onSend, pre-encryption). Node-level test with two bearers; the
+  framing branch stays as a documented guard.
+
+NOT A DEFECT - decided, with evidence:
+- **R2-L1** (MqttBridgeTransport takes nodeNum in its ctor) is not a live bug here. MeshNode.identity
+  is a `val`, transports are rebuilt whenever config changes (monitor rebuilds the node), and no
+  production code even constructs MqttBridgeTransport (consumer-wired). A re-key is a new node + new
+  transport, so the stale-nodeNum path firmware has (persistent NodeDB across a renumber) cannot
+  arise. It stays an architecture nit (a transport bending the identity-agnostic abstraction), the
+  notes' own [arch] classification, not a correctness fix.
+- **R2-L3** (BleMeshAdvert / bluetoothAvailability live in node-core) is a documented, deliberate
+  placement, not an omission. Both BLE transport modules are independent of each other but both
+  depend on node-core, so it is their only shared home; the author weighed a dedicated module for
+  ~30 lines and recorded in AGENTS.md that it would cost more than the imperfect placement. node-core
+  itself does not use them. Left as decided.
+
+REAL CHANGE, LEFT FOR JAMES:
+- **R2-13** (no linuxX64 target, so commonMain crypto/wire/relay Native bodies run only on Apple, not
+  the Linux bench). Dependency blocker checked and clear: protobufs 2.8.0 publishes linuxX64
+  (linuxX64ApiElements-published + protobufs-linuxx64-2.8.0.module). The real blocker is that
+  node-core/build.gradle.kts:13 deliberately matches meshtastic-sdk's target set so an app can depend
+  on both without a mismatch, and maven-publish would ship a linuxx64 artifact unless configured
+  test-only. Adding it means either aligning sdk too or excluding the target from publish - a
+  coordinated decision, ~1 hr once made. Not bolted on unasked.
