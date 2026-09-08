@@ -1365,3 +1365,58 @@ pendingRelays, NeighborGraph/MeshLink - client-side bookkeeping/scheduling with 
 CCM equivalence (node-kmp cryptography-kotlin AES.CCM vs firmware aes-ccm.cpp) is structurally
 correct but has NO end-to-end known-answer vector from firmware - only the nonce byte layout is
 pinned. A single captured firmware PKI packet decoded in a test would close it.
+
+## 2026-09-08 round 2 - resolution
+
+All of round 2 is landed on `meshtastic-node-kmp` `main`. Every code finding is fixed to firmware
+parity and mutation-checked; James chose full firmware alignment for the nomenclature lane (the
+library is unreleased, so no compatibility held it back). Gate green each batch: `spotlessCheck
+detekt apiCheck allTests testAndroidHostTest` (JVM + Android host on the Linux bench; the macOS
+klib and native test execution still close only on a Mac).
+
+FIXED (code):
+- **R2-1** `7e7a84a` - a NAK carrying a post-2.8.0 error code decoded as an ACK (Wire drops the
+  unknown enum to null), so the phone read a rejected DM as delivered. The raw value is recovered
+  from unknownFields and carried as a RoutingError; the phone maps an unmappable rejection to
+  GOT_NAK. The whole receipt path is now tested. (Deeper cause than the reviewer's phone-side locus.)
+- **R2-2** `fcc6f61` - corrects round-1 #14: a want_ack packet whose channel hash matched but did
+  not open (legacy DM, wrong-key collision, garbage decrypt) is dropped silently, as firmware's
+  DECODE_FAILURE does, not NAKed. Verified against firmware develop by a refute-by-default reader.
+  The genuinely-no-channel (NO_CHANNEL) and PKI-no-pubkey (PKI_UNKNOWN_PUBKEY) NAKs are kept - the
+  post-#11544 auth-gate drop of those has no counterpart here to reproduce.
+- **R2-3** `10d1e2b` - only a duplicate on the flood medium (LoRa) stands a pending rebroadcast
+  down; MeshTransport gained a `floods` flag, matching perhapsCancelDupe's TRANSPORT_LORA gate.
+- **R2-4** `4e9b299` - fix #2's secondary-key resolution now reaches the MQTT module, so an
+  empty-PSK SECONDARY uplinks. **R2-L4** same commit: inbound rx_snr is cleared, never a peer's claim.
+- **R2-5/6/7** + **R2-L9** `6153bcd` - LoRa contention window scales with channel util; a user
+  frame is gated on duty cycle alone, not the channel-util politeness ceiling; a cancelled send
+  withdraws its frame (head checked too); the oversize/detached drop paths count.
+- **R2-8/R2-9** `c583bdb` - the BlueZ no-pair agent authorises only the mesh service (was a host-wide
+  auto-yes); MacGattLink gates its native calls on a live flag, no use-after-free after teardown.
+- **R2-10/R2-11** + **R2-L6** `7e7a84a` - configured is reset on a config re-dump and marked
+  @Volatile; the TCP writer survives an over-cap frame.
+- **R2-L5** + **R2-L2** + **R2-L8** `e31245b` - UDP strips a peer-set pki_encrypted/public_key at
+  ingress; MeshTransport.send()'s open-medium precondition and MonitorController's single-thread
+  confinement are documented.
+
+FIXED (nomenclature, James: "rename to align, don't just document" / "clean and aligned as possible"):
+- **N1** `5ab7473` - RelayPolicy split into `hopLimit` + a `RebroadcastMode` enum mirroring firmware's
+  six values in order; only ALL/NONE differ in behaviour today, the other four are reserved (forward
+  as ALL). **N3** `645bc5f` - NodeDirectory->NodeDb, Peer->NodeInfoLite. **N2/N7** `a0c2ca6` -
+  BeaconPolicy->BroadcastPolicy, announce->sendOurNodeInfo, cancelPendingRelay->cancelSending.
+  **N4/N5/N6** `06f3b5f` - nextHopFor->getNextHop, RetransmitQueue track/acknowledge/Pending->
+  startRetransmission/stopRetransmission/PendingPacket, attemptTx->startSend.
+- **N8/N9** - already carry firmware KDoc pointers (getGlobalId at MqttChannel.id/MqttTopic;
+  perhapsDecode at open/seal) and are private helpers, not cross-codebase surface; left pointed.
+
+DOCUMENTED / NOT DONE, with reason:
+- **R2-L1** (MqttBridgeTransport takes node identity in its ctor), **R2-L3** (BLE constants frozen
+  into node-core's ABI) - both are architecture restructures, not defects; R2-L3 is already recorded
+  as accepted debt in AGENTS.md. Deferred, not fixed.
+- **R2-L7 / CC2** (notifyRetries grows per peer) - the author documents this and peerLocks as
+  intentionally not reaped; reaping on "no longer refusing" would break the retry bound, and reaping
+  only truly-departed peers needs a peer-table accessor not worth adding for a bounded low. Left as is.
+- **R2-L10** (the MqttUplinkTest range-test cases feed a decoded packet the uplink path never
+  produces) is entangled with the already-logged code defect at :1158; not reopened here.
+- **Crypto CCM caveat** stands: nonce layout is pinned, but there is still no end-to-end firmware
+  known-answer vector for the PKI CCM path. A single captured firmware PKI packet in a test closes it.
