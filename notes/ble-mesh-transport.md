@@ -519,8 +519,8 @@ tests green.
 | `MeshIdentity` | NodeNum + names, derived stably from a per-install seed |
 | `MeshChannel` | name + PSK, and the channel hash the wire carries |
 | `PacketHistory` | `(from, id)` dedup, bounded and expiring |
-| `RelayPolicy` | `Island` by default |
-| `MeshNode` | identity, keys, dedup, policy; drives the transports |
+| `hopLimit` + `RebroadcastMode` | 0 hops and `NONE` (no rebroadcast) by default |
+| `MeshNode` | identity, keys, dedup, hop limit and rebroadcast mode; drives the transports |
 | `ProtoPacketCodec` | encoded-`MeshPacket` framing, as UDP and BLE adverts use |
 
 Three transports, one interface. `node-transport-udp` speaks `239.0.0.69:4403`,
@@ -548,10 +548,10 @@ the one structural choice that would be expensive to undo.
 
 Both of those have since been built. PKI for DMs is `PkiCrypto` (X25519 →
 SHA-256 → AES-256-CCM, 8-byte MAC, 13-byte nonce), proven by a direct message a
-bench radio acked with `ROUTING_APP`. And `MeshNode` is now a proper relay under
-`RelayPolicy.Meshed` - a contention window inverted against signal strength,
+bench radio acked with `ROUTING_APP`. And `MeshNode` is now a proper relay when
+`rebroadcastMode` is not `NONE` - a contention window inverted against signal strength,
 cancel-on-overhear keyed on the relayer, and `next_hop` honoured and set - while
-the default `Island` policy still relays nothing, so a node never amplifies what
+the default `RebroadcastMode.NONE` still relays nothing, so a node never amplifies what
 it hears unless asked to.
 
 It lives outside `meshtastic-sdk` deliberately, for the reasons under

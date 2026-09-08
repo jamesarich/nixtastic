@@ -41,6 +41,12 @@ called in-process over JNI. Windows is now the whole of the desktop BLE gap.
    names (NodeDb/NodeInfoLite, hopLimit + RebroadcastMode split, sendOurNodeInfo,
    getNextHop, start/stopRetransmission, startSend, cancelSending), a few arch
    lows documented with reasons - see that doc's "2026-09-08 round 2 resolution".
+   A second 2026-09-08 pass then cleared that deferred tail: the RebroadcastMode
+   modes now filter (were placeholders forwarding as ALL), the forget/next-hop
+   fixes and the PKI-CCM path got tests, the GATT retry map is bounded, and the
+   range-test public-broker exclusion moved to origination - only R2-L1 and R2-L3
+   remain as confirmed not-a-defect, and R2-13 (linuxX64) as James's call. See
+   that doc's "2026-09-08 round 2, second pass".
 3. Per the workspace protocol, run `just brief <repo>` before editing under any
    repo, and read that repo's own docs (`meshtastic-node-kmp` → `README.md` then
    `AGENTS.md`; `firmware` → `AGENTS.md`).

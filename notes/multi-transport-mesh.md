@@ -14,7 +14,7 @@ Wi-Fi, MQTT - extend the mesh via as many transports as possible."*
 
 **The "Parity and coverage plan" below is implemented end to end**, on
 `meshtastic-node-kmp` `main`, pushed. Identity and keypair persistence, reliable
-delivery, the NodeInfo/Position/telemetry beacons, PKI DMs, traceroute answering,
+delivery, the NodeInfo/Position/telemetry broadcasts, PKI DMs, traceroute answering,
 desktop LoRa, desktop BLE over BlueZ, iOS UDP, the MQTT bridge, and the
 availability seam that made a dead bearer distinguishable from an idle one. Every
 slice, what hardware proved, and what is still blocked on something outside the
@@ -1572,8 +1572,8 @@ the whole design:
 
 | source | what it proves | discipline |
 | --- | --- | --- |
-| `hop_start - hop_limit` | how far away a peer is | null when the sender stamped `hop_start = 0`, which `RelayPolicy.Island` does. Null is not a distance and is never drawn as one |
-| `relay_node` (header byte 15) | **a direct neighbour**: a relayer is a node whose radio we received | one byte, so `NodeDirectory.resolveLastByte` mirrors `NodeDB::resolveLastByte` and returns nothing on two candidates. The wrong link is worse than no link |
+| `hop_start - hop_limit` | how far away a peer is | null when the sender stamped `hop_start = 0`, which a `hopLimit` of 0 does. Null is not a distance and is never drawn as one |
+| `relay_node` (header byte 15) | **a direct neighbour**: a relayer is a node whose radio we received | one byte, so `NodeDb.resolveLastByte` mirrors `NodeDB::resolveLastByte` and returns nothing on two candidates. The wrong link is worse than no link |
 | `NEIGHBORINFO_APP` | links **between other nodes** | another node's claim, not our observation. Drawn dashed. A report replaces that reporter's whole set, because a neighbour list is who it hears *now* |
 
 `relay_node` is the one that matters most and was the one already on the wire and unused

@@ -1401,8 +1401,10 @@ FIXED (code):
 
 FIXED (nomenclature, James: "rename to align, don't just document" / "clean and aligned as possible"):
 - **N1** `5ab7473` - RelayPolicy split into `hopLimit` + a `RebroadcastMode` enum mirroring firmware's
-  six values in order; only ALL/NONE differ in behaviour today, the other four are reserved (forward
-  as ALL). **N3** `645bc5f` - NodeDirectory->NodeDb, Peer->NodeInfoLite. **N2/N7** `a0c2ca6` -
+  six values in order. (At this commit only ALL/NONE differed in behaviour and the other four
+  forwarded as ALL; the second pass below, `2534971`, made KNOWN_ONLY / LOCAL_ONLY /
+  CORE_PORTNUMS_ONLY filter to firmware parity - ALL_SKIP_DECODING stays == ALL for a client.)
+  **N3** `645bc5f` - NodeDirectory->NodeDb, Peer->NodeInfoLite. **N2/N7** `a0c2ca6` -
   BeaconPolicy->BroadcastPolicy, announce->sendOurNodeInfo, cancelPendingRelay->cancelSending.
   **N4/N5/N6** `06f3b5f` - nextHopFor->getNextHop, RetransmitQueue track/acknowledge/Pending->
   startRetransmission/stopRetransmission/PendingPacket, attemptTx->startSend.
