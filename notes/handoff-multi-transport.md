@@ -460,14 +460,47 @@ inherit the desktop agent. Same defect class as the LoRa init spam fixed in
    connection with the address unchanged, the node re-announced its NodeInfo on
    the mesh, and `--set lora.hop_limit 4` read back as 4.
 
-   **Known limitation, named rather than papered over:** a rename survives in the
-   running process but not a monitor restart. `MonitorController` derives its
-   identity with the literal `"node-kmp monitor"`/`"MON"` every launch, and
-   `NodeIdentityRecord` stores only the seed and keypair, so nothing persists the
-   owner or the `NodeSettings` snapshot. The library side is deliberate -
-   `NodeSettings.state` is a `StateFlow` a host collects and hands back, the same
-   boundary `NodeIdentityStore` draws - so this is one host-side persistence seam
-   to add, not two ad-hoc files, and the shape is James's call.
+   **Persistence closed the same day** (`602eb63`), and without inventing a format,
+   because the org already has one. **`BackupPreferences`** (`deviceonly.proto`)
+   holds exactly what this node must remember - owner, `LocalConfig`,
+   `LocalModuleConfig`, the channel set - and is what firmware's
+   `NodeDB::backupPreferences` fills for the `backup_preferences` admin verb.
+   `LocalConfig`/`LocalModuleConfig` come from `localonly.proto`, which says of
+   itself *"this is never sent over the wire, only for local use"* - they are the
+   save-file schema, not the wire one.
+
+   **The convention is consistent across the org, and now checked rather than
+   assumed:** Meshtastic-Android persists those same two messages as Wire-encoded
+   DataStore `.pb` files (`core/datastore/.../LocalConfigSerializer.kt`) and
+   unpacks the `Config` oneof into them exactly as node-kmp now does;
+   `meshtastic-sdk`'s **ADR-001** makes the generated protos the domain model
+   outright (*"there is no curated domain mirror"*) and its **ADR-003** rejects
+   `kotlinx.serialization` for protobuf specifically so the `protobufs` repo stays
+   the source of truth. Wire-encoded bytes of an upstream proto is the practice in
+   all three. Worth knowing what is *not* documented: neither android nor the SDK
+   states a rule about versioning a persisted blob - android resets to empty on
+   corruption, the SDK silently drops - so node-kmp takes **firmware's** rule
+   instead, discarding a save file below `MIN_SETTINGS_VERSION` rather than
+   migrating, as `NodeDB` does below `DEVICESTATE_MIN_VER`.
+
+   Two consequences worth carrying forward. **The settings file is key material** -
+   `BackupPreferences` carries the channel set and a channel carries its PSK - so
+   the monitor writes it 0600 in a 0700 directory beside the identity; nothing is
+   encrypted at rest, which is the org's stated position (`meshtastic-sdk`'s
+   `docs/security.md`), and the filesystem is the protection. And **the LoRa region
+   deliberately does not come back**, per AGENTS.md's rule that a node must never
+   transmit on LoRa from a remembered setting; it is structural rather than a
+   filter, since `applyConfig` only ever moves the hop limit and rebroadcast mode
+   into the node.
+
+   Wiring the store in also made `backup_preferences`, `restore_preferences` and
+   `remove_backup_preferences` real, so they leave the not-handled list. Proven on
+   the bench: first launch logged `settings: none stored`, `--set-owner` over
+   tcp/4403 wrote a 234-byte `rw-------` file, a full restart logged
+   `restored owner persisted node` / `restored from v25`, and `--info` read the new
+   name back with the address unchanged. The file decodes cleanly under the python
+   meshtastic library's own `deviceonly_pb2.BackupPreferences` - an independent
+   implementation - so the interop claim is tested, not asserted.
 
    **The app-side adapters, 2026-09-08: the shared half is built, the rest is
    one decision.** `EmbeddedPhoneApi` (`16b63b7`) serves the phone API in
