@@ -90,9 +90,10 @@ with firmware behaviour". See [[firmware-is-the-sentinel-for-node-kmp]]):
   reports Sighting.upgraded, and process() supersedes a queued lower-hop copy with a
   better one (perhapsHandleUpgradedPacket).
 
-**All twelve review-tail items (#3-#16) are now fixed to firmware parity.** Nothing is
-left deferred: the three that were design decisions (#2, #6, #14) and the two follow-ups
-(#12 public broker, #7 upgrade) were all resolved by matching firmware, per James's
+**Every open review-tail item (#2, #3, #4, #5, #6, #7, #9, #10, #11, #12, #13, #14, #15,
+#16) is now fixed to firmware parity.** Nothing is left deferred: the three that were
+design decisions (#2, #6, #14) and the two follow-ups (#12 public broker, #7 upgrade)
+were all resolved by matching firmware, per James's
 "firmware is the sentinel" directive. The only firmware behaviours deliberately *not*
 reproduced are the two that this layer physically cannot: removePendingTXPacket reaching
 into the LoRa transport's own send queue, and passesRoutingAuthGate (nothing to gate on
