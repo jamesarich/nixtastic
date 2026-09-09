@@ -1806,20 +1806,79 @@ small infrequent messages, not for carrying `MeshPacket`s.
 ### Lever 1 - L2CAP CoC, for the phone-node link
 
 The direct answer to saturation. A credit-based **L2CAP Connection-Oriented Channel**
-is a flow-controlled byte stream that skips ATT and GATT entirely, instead of chunking
-through characteristic writes at MTU-3 with a round trip per chunk. Available on every
+is a flow-controlled byte stream that skips ATT and GATT entirely.
+
+**What is actually slow is a pull model, not the MTU.** An earlier draft of this section
+said "chunking at MTU-3"; the real shape, read out of firmware's `NimbleBluetooth.cpp`,
+is one ATT round trip *per packet*: `fromNum` notifies that something is waiting, the
+phone then issues a read on `FromRadio`, and firmware serves exactly one queued message
+per read. The cost is gated by connection interval, not by payload size, which is why a
+bigger MTU alone would not fix it. Available on every
 platform that matters: Android `createL2capChannel` (API 29+), iOS `CBL2CAPChannel`,
 BlueZ L2CAP sockets. Firmware would need to publish a PSM. This is a **firmware +
 client** change, not a node-kmp-only one.
 
-### Lever 2 - extended advertising, for the mesh bearer
+### Lever 2 - extended advertising: already done, and this note was wrong
 
-`node-transport-ble` is on legacy 31-byte manufacturer data, which bounds what the
-connectionless bearer can ever carry. BLE 5 extended advertising carries far more per
-PDU. The firmware side has been poked already (the NimBLE `EXT_ADV` spike, and the
-sdkconfig trap that goes with it - see the ESP32 gotchas). This matters more for
-*meshing* than the phone link does, and it interacts with the still-open decision on
-the on-air advertisement format (company ID `0xFFFF` vs service data).
+**Corrected within hours of writing it.** The first version of this section said
+`node-transport-ble` is on legacy 31-byte manufacturer data. That is false, and it
+contradicted this file's own earlier sections. The bearer has used BLE 5 **extended**
+advertising since the first commit that added it: `BleMeshAdvert` is sized
+`ADV_TOTAL_MAX = 251`, `ADV_OVERHEAD = 8`, so **243 bytes of encoded `MeshPacket`**,
+and Android's radio calls `setLegacyMode(false)`. Firmware's `BLEMeshHandler` carries
+byte-identical constants, and the pairing is proven on hardware both Android-to-Android
+and ESP32-S3-to-nRF52840.
+
+So there is no ceiling to raise here. What is actually left:
+
+- **Apple can never transmit on this bearer, at any BLE version.** `startAdvertising`
+  accepts a local name and service UUIDs only; a `MeshPacket` cannot be expressed as an
+  Apple advertisement. That is OS policy, not a legacy-versus-extended gap, and extended
+  advertising cannot lift it.
+- **BlueZ TX is built but never proven.** `BluezAdvertisement` sets `SecondaryChannel`
+  to request an extended instance, but no advertisement has ever succeeded on `james-pc`
+  - the same Realtek adapter that fails everything else. RX over BlueZ *is* proven.
+- **The on-air format decision is the real open item**, and it is *orthogonal* to
+  extended-vs-legacy: that axis is about how many bytes fit, this one is about what iOS
+  can filter on in the background. Overhead is near-identical either way (3 bytes for
+  manufacturer data, 3 for service data under a 16-bit UUID, +14 for a 128-bit one), so
+  the packet budget barely moves.
+- **A new doubt worth resolving before that switch**, surfaced by the spike and not
+  settled anywhere: a backgrounded iPhone may suppress *all non-connectable*
+  advertisements, and our mesh frames are deliberately non-connectable. If so,
+  service-data under an assigned UUID is **necessary but not sufficient** - the advert
+  might also have to become connectable, which on firmware means a second connectable
+  ext-adv GAP instance (the phone API already owns instance 0). UNVERIFIED.
+- Also unknown: whether the org holds or wants a SIG-assigned 16-bit UUID (a paid
+  membership process) versus a free 128-bit custom one at +14 bytes.
+
+Two traps a future implementer should not re-learn, both already paid for on the
+firmware side: enabling `CONFIG_BT_NIMBLE_EXT_ADV` compiles out NimBLE's legacy
+`ble_gap_adv_start` host-globally, which the phone-API advertisement was using; and
+gating code on `MYNEWT_VAL(BLE_EXT_ADV)` silently reads 0 because it resolves from the
+prebuilt header rather than `custom_sdkconfig`, so the transport quietly falls back to a
+branch that cannot carry a packet, with nothing in the log.
+
+### What the L2CAP spike found that changes the estimate
+
+- **NimBLE already has CoC** (`ble_l2cap_coc.c`, credit-based, with a ready throughput
+  example) but it is **compiled out**: `CONFIG_BT_NIMBLE_L2CAP_COC_MAX_NUM=0` in the
+  prebuilt shared sdkconfig. So ESP32 is a `custom_sdkconfig` bump - landing squarely in
+  the shared-framework-sdkconfig trap the root `CLAUDE.md` documents, the same one the
+  EXT_ADV spike paid for.
+- **nRF52 is the expensive half.** The SoftDevice exposes the full CoC API, but
+  Bluefruit's `begin()` never calls `sd_ble_cfg_set(BLE_CONN_CFG_L2CAP, ...)`, and that
+  call must happen *before* `sd_ble_enable` and changes the RAM-base arithmetic every
+  later config call depends on. That is a fork or patch of Bluefruit's init plus a
+  re-derived RAM budget, not an addition alongside it.
+- **CoC rides an existing ACL**, so it consumes no extra connection slot. The
+  one-connection production ceiling (`CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1`) is untouched
+  either way - CoC helps throughput, not fan-out.
+- **Android needs API 29**, and both node-kmp and the app are minSdk 26. GATT therefore
+  stays as a **permanent** fallback path, not a transitional one.
+- **Linux is different plumbing entirely**: a raw `AF_BLUETOOTH` / `BTPROTO_L2CAP`
+  socket, not the org.bluez D-Bus interfaces `BluezGattLink` uses throughout. A CoC
+  bearer there is new I/O, not an extension of the existing code path.
 
 ### The shape to keep
 
@@ -1847,6 +1906,41 @@ region, say at startup which bearers were resumed and on what band, and rewrite 
 arming rule rather than leaving `AGENTS.md` asserting the opposite of what the code
 does. The per-launch env vars stay useful as an override for a bench node, which is the
 job they were actually good at.
+
+### What the toggle spike found
+
+The mechanics mostly exist; the work is **removing deliberate clamps in about ten
+places**, not building persistence.
+
+- The monitor already persists both a per-bearer enabled set and a LoRa region string
+  (`TuningCodec`, keys `transports.enabled` and `lora.region`) - and `decode()`
+  deliberately refuses to restore the region into an armed state, handing it back as
+  `rememberedRegion` purely so it can be logged.
+- The radio-shaped save file already carries the region too:
+  `BackupPreferences.config.lora.region`. `AdminService.restore()` skips applying it on
+  purpose, and `LocalRadio.configs()` overwrites it with whatever this launch armed. So
+  the region is persisted **twice** today and read back into nothing.
+- **`node-headless` has no store at all** - it is purely env-driven, and
+  `TuningStore`/`TuningCodec` live inside `:monitor` and are not reusable without a
+  module move.
+- The rule is asserted in more places than `AGENTS.md`: **`SECURITY.md` names it as an
+  in-scope security invariant**, `monitor/README.md` documents the user-facing behaviour,
+  and it is encoded in tests that must be rewritten rather than deleted
+  (`restoring_never_arms_the_lora_region`, `a_stored_region_never_arms_the_bearer`, and
+  the `TuningCodec` round-trip assertions). Rewrite the docs first - other tests cite
+  them by name.
+- Two defaults currently disagree and a unified design has to pick: the monitor enables
+  all bearers and stays quiet via `region = UNSET`, while `node-headless` defaults to a
+  transport list that **excludes** LoRa outright.
+- Small bug found in passing: `MESH_LORA_REGION=UNSET` currently passes the
+  `LORA_REGIONS` check and logs "UNSET armed for this run ... this node will transmit",
+  which is false. Under the new rule that spelling becomes the natural "stay quiet this
+  run despite a stored region" escape hatch, so it needs a real case.
+
+**The open question the decision does not settle:** a node resuming *its own* last state
+is one thing; a **phone-written** region arming the node is a materially larger security
+change, and `SECURITY.md` currently forbids both in one sentence. That needs an explicit
+answer before the clamps come out.
 
 ## The uConsole LoRa fix (2026-09-09) - it was the reset line
 
