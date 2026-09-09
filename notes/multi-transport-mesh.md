@@ -224,7 +224,7 @@ whole plan is drawn on.
 | **BLE-adv** (connectionless, ext-adv) | spike ✓ | spike ✓ (rak4631 RX) | ✓ | **RX only** (no TX) | ✓ BlueZ (Linux only; scan proven. Advertising works on a CM5 - `james-pc`'s adapter alone refuses it) |
 | **BLE-GATT** (connection, dual-role) | spike ✓ mesh-peer service | spike ✓ mesh-peer service (rak4631_blemesh) | ✓ | ✓ | ✓ BlueZ (Linux only; central proven, **peripheral proven 2026-09-08** - but a central's subscribe to it is refused ATT `0x0E`) |
 | **UDP multicast** (LAN) | ✓ (wifi/eth) | ~ (eth) | ✓ | ~ (entitlement) | ✓ |
-| **Wi-Fi Aware** (Android↔Android) | - | - | ✓ (future) | - | - |
+| **Wi-Fi Aware** (Android↔Android) | - | - | ✓ proven 2026-09-09 | - | - |
 | **MQTT** (internet, infra-backed) | ✓ (wifi/eth) | ~ | ✓ | ✓ | ✓ |
 
 ¹ Firmware today runs a GATT *server* for the phone control app only
@@ -456,6 +456,21 @@ Once Phases 1–2 exist, these are "implement one interface":
 
 - **Wi-Fi Aware** as a client transport (`node-transport-wifi-aware`), Android↔
   Android - far more bandwidth than BLE, on the existing seam (Knit ships this).
+  **Built and proven on hardware 2026-09-09** (Pixel 6a ↔ Pixel 9 Pro, both
+  directions).
+- **Apple Wi-Fi Aware - shelved 2026-09-09, noted deliberately.** NAN is a Wi-Fi
+  Alliance standard and iOS 26 / macOS 26 ship a `WiFiAware` framework, so the
+  "Android only" line this workspace and node-kmp both carried was wrong. Apple's
+  model is the obstacle, not the absence of one: paired devices only, paired
+  through a user-driven `DevicePairingView`, carrying TCP over an NDP data path via
+  `NWListener`/`NWConnection`, behind the `com.apple.developer.wifi-aware`
+  entitlement. A mesh bearer cannot prompt to pair each neighbour, so this is a
+  **separate transport, not an `actual`** - the call GATT already made. Apple also
+  requires a Wi-Fi Aware **4.0** peer (Pixel 9 reportedly is not one), and
+  Android↔Apple data paths currently fail at NDP setup with radars open. So:
+  Apple↔Apple is the plausible first step, cross-platform Aware is not dependable
+  yet, and none of it is buildable without the Mac. Detail in
+  `meshtastic-node-kmp/AGENTS.md` and the transport's KDoc.
 - **Content-digest anti-entropy sync** (Knit / IPFS Bitswap / range-based set
   reconciliation): an idle mesh does zero data-path work; a new message triggers a
   *targeted* sync only with peers that need it. Directly answers the "N writes per
