@@ -1785,6 +1785,114 @@ as `relay_node` is itself the evidence.
 What is deliberately absent: any edge inferred from a packet merely arriving. Traffic
 from five hops away says nothing about which links carried it.
 
+## BLE meshing: what is saturating, and which standards actually help (2026-09-09)
+
+Raised by James from Garth's observation: **current clients can already saturate the
+GATT link through the phone API, over the one BLE phone-node connection production
+supports** - and the phone and desktop platforms have their own ceilings on how many
+mesh links they can hold. Open design question, nothing built.
+
+### Bluetooth Mesh (the SIG standard) is the wrong tool, and should be ruled out loudly
+
+It is what everyone reaches for, so the reasoning belongs on the record. It is managed
+flooding over the advertising bearer with a GATT proxy, which sounds exactly right, and
+then: it segments to roughly 11-byte chunks, carries its own addressing, its own
+network/app key hierarchy, IV index and sequence-number state, and needs a provisioning
+ceremony per node. Adopting it means running two mesh protocols that disagree about
+identity and encryption while adding a pairing-style UX - the opposite of the seamless
+requirement that motivated the question. It is built for lighting and sensors sending
+small infrequent messages, not for carrying `MeshPacket`s.
+
+### Lever 1 - L2CAP CoC, for the phone-node link
+
+The direct answer to saturation. A credit-based **L2CAP Connection-Oriented Channel**
+is a flow-controlled byte stream that skips ATT and GATT entirely, instead of chunking
+through characteristic writes at MTU-3 with a round trip per chunk. Available on every
+platform that matters: Android `createL2capChannel` (API 29+), iOS `CBL2CAPChannel`,
+BlueZ L2CAP sockets. Firmware would need to publish a PSM. This is a **firmware +
+client** change, not a node-kmp-only one.
+
+### Lever 2 - extended advertising, for the mesh bearer
+
+`node-transport-ble` is on legacy 31-byte manufacturer data, which bounds what the
+connectionless bearer can ever carry. BLE 5 extended advertising carries far more per
+PDU. The firmware side has been poked already (the NimBLE `EXT_ADV` spike, and the
+sdkconfig trap that goes with it - see the ESP32 gotchas). This matters more for
+*meshing* than the phone link does, and it interacts with the still-open decision on
+the on-air advertisement format (company ID `0xFFFF` vs service data).
+
+### The shape to keep
+
+Connection count is the reason not to scale by adding links: centrals hold only a
+handful of concurrent GATT connections and the peripheral role is tighter. The current
+architecture - **GATT for point-to-point, advertising for breadth** - is the right
+shape and should stay. Exact per-platform ceilings are chipset- and stack-dependent
+and are worth measuring rather than quoting.
+
+## Transport toggles: opt-in, persisted, including LoRa (decided 2026-09-09)
+
+Every bearer gets a user-visible toggle, persisted, **and that includes LoRa's armed
+state**. James's call, made against the objection below, which is recorded because the
+rule it overrides is written down elsewhere.
+
+`AGENTS.md` has said a node must never transmit on LoRa from a remembered setting -
+arming is a per-launch host act (`MESH_LORA_REGION`, the region chip). Persisting the
+region means a restart puts a radio on the air with nobody present. The counter-argument
+is that this is exactly what every real Meshtastic node does, and node-kmp is a node
+rather than a dev tool; the old rule suited a library being brought up on a bench.
+
+**So the doc must move with the code.** Leaving `AGENTS.md` asserting the opposite of
+what the code does is worse than either choice. When this is built: persist the toggle
+and the region, say loudly at startup that the radio was armed from stored state, and
+rewrite the arming rule rather than leaving it contradicted.
+
+## The uConsole LoRa fix (2026-09-09) - it was the reset line
+
+LoRa worked on this uConsole before the CM4 to CM5 swap, which is the fact that
+overturned the 2026-09-07 verdict below. A chip that is absent and a chip held in
+reset both answer `0x00` to every transfer, and nothing had driven reset.
+
+**Root cause: one missing line of `config.txt`.** ClockworkPi's
+`clockworkpi-uconsole-cm5.dtbo` configures no GPIO for the module; the CM4 path did.
+On CM5 GPIO25 came up `none` - floating - so the SX126x sat in reset with its
+outputs high-Z. The fix is the CM5 equivalent of the `gpio=11=op,dh` the `[cm3+]`
+section already carries:
+
+    [cm5]
+    dtoverlay=clockworkpi-uconsole-cm5
+    gpio=25=op,dh
+
+**Three things the old note got wrong.** `spidev1.0` was always the right bus - RP1
+puts SPI1 on the same GPIOs as BCM2711 (18 CE0 / 19 MISO / 20 MOSI / 21 SCLK) and
+`spi1-1cs` sits in `[all]`, so it applied on both. `spi-gpio35-39` is a pin
+*relocation*, not bit-banged SPI, and it lives under `[cm3+]` which **CM4 skips
+too**, so it was never what made CM4 work. And meshtasticd's `IRQ 26 / Busy 24 /
+Reset 25` is now **proven, not intent**: pulling 24 and 26 up read high before a
+reset pulse on 25 and driven low after, which is a powered chip taking hold of them.
+
+**The diagnostic worth reusing.** A pull-up on a suspected status line separates
+"floating" from "driven low by something": a chip holds it down, an unconnected pin
+follows the pull. That is what turned a guess into a measurement.
+
+**Then the TCXO.** With the bus alive the bearer still failed until DIO3 was told to
+power the TCXO - meshtasticd's config says `DIO3_TCXO_VOLTAGE: true` and
+`DIO2_AS_RF_SWITCH: true`, and both are SPI commands rather than host pins, so they
+work with no GPIO backend. `MESH_LORA_TCXO_VOLTS` and `MESH_LORA_DIO2_RF_SWITCH`
+now expose them (`4eade0c`). Also in that commit: `node-headless` never built a LoRa
+transport at all - its KDoc described an arming variable whose positive branch did
+not exist.
+
+**Proven:** `SX1261 V2D 2D02 tuned 906.875 MHz LongFast US slot 19/104 power 10 dBm`,
+bearer `Active`, and `tx ok len=85 toa=886ms` - this library's first transmit over a
+kernel SPI bus.
+
+**Not stable.** About a minute later commands fail with status `0xaa` (STBY_RC with
+the command-failure bits set) and the bearer drops to `Ready`. BUSY is not wired, so
+the driver waits RadioLib's fixed delays - enough to initialise and transmit, not
+enough to keep running. The pins are known now, so **a Linux GPIO chardev backend is
+the next step**; `NoGpioPins` errors rather than no-ops, so busy/reset/dio1 cannot be
+named until it exists.
+
 ## The spidev LoRa backend, and the uConsole sitting (2026-09-07)
 
 `node-transport-lora` had one way to reach an SX1262: a CH341A USB bridge over
@@ -1816,6 +1924,11 @@ Three things the backend does that the USB one need not:
   and prove the bus. Proving the bus is the step that comes before guessing at a
   board's wiring, and `dio2AsRfSwitch` asserts nothing until a board is known
   because false costs transmit range and true is a command the wrong chip ignores.
+
+**Corrected 2026-09-09: the chip was there all along, held in reset.** Everything
+below this paragraph was written from real readings and the wrong conclusion; the
+resolution is in "The uConsole LoRa fix" further down. Keep it for the reasoning,
+not the verdict.
 
 **What the uConsole then taught: a bus can be proven and still have no chip.** The
 board is a Compute Module 5 Lite, and its HackerGadgets AIO answers on neither
