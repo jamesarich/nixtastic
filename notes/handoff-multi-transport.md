@@ -664,19 +664,29 @@ inherit the desktop agent. Same defect class as the LoRa init spam fixed in
    `ANY_ADDRESS` on purpose. `SECURITY.md` says so; the settings file is key
    material (channel PSKs), 0600 in a 0700 directory, nothing encrypted at rest.
 
-   **Four decisions for James, ranked by what they unblock:**
+   **The four decisions were taken 2026-09-08 and all four landed** (`b1b1b46`,
+   `68ed890`, `5d5e1c7`, `6788680`, `e5aa92e`):
 
-   1. **A LICENSE.** Every sibling repo is GPL-3.0; node-kmp has none. Publishing is
-      gated on it and publishing gates every adapter. A legal act, so not taken here.
-   2. **BCV -> the KGP built-in ABI validation** (`checkKotlinAbi`/`updateKotlinAbi`).
-      `meshtastic-sdk` already migrated on the same Kotlin, BCV is upstream-declared
-      maintenance mode, and `keepUnsupportedTargets` is exactly the fix for the
-      `klibApiCheck`-on-Linux exclusion the gate carries today. Recommended.
-   3. **Kotlin 2.4.10 -> 2.4.20.** The toolchain is outside KGP 2.4.10's tested
-      matrix (Gradle <=9.5.0, AGP <=9.1.0 against 9.7.1/9.4.0 here); 2.4.20 narrows
-      it and improves Swift export, which the unwritten Apple adapter will want.
-   4. **Kover** (and then Dokka). node-kmp is the only one of the four Kotlin repos
-      with neither; there is no coverage signal at all today.
+   1. **GPL-3.0-or-later**, the same LICENSE text meshtastic-sdk and kzstd carry.
+      The SPDX header is on every Kotlin source, applied by Spotless from
+      `config/spotless/license-header.txt`, so a new file is stamped by
+      `spotlessApply`. That unblocks publishing, which unblocks every adapter -
+      publication itself is still not applied, and is the next decision.
+   2. **BCV -> KGP's `abiValidation`.** `checkKotlinAbi` replaces `apiCheck`,
+      `updateKotlinAbi` replaces `apiDump`. `keepLocallyUnsupportedTargets` keeps
+      the committed declarations for a target the host cannot build, so **the gate
+      has no exclusions on any host** and a Linux dump no longer empties
+      `node-desktop-ble-macos`'s macosArm64 klib. That half is *kept*, not checked -
+      only a Mac verifies it. Two dump changes fell out: the Android variant now has
+      a committed surface (`api/android/`), and a 0-byte lora klib dump BCV wrote
+      for a module with no native targets is gone.
+   3. **Kotlin 2.4.20.** 2.4.10's matrix stops at Gradle 9.5.0 / AGP 9.1.0 against
+      9.7.1 / 9.4.0 here. The whole ABI diff was two additions - a real no-arg
+      constructor for `BroadcastPolicy` and `PositionBroadcast`, both all-defaults
+      data classes - so it is binary compatible.
+   4. **Kover and Dokka**, aggregating at the root over the eight library modules.
+      Deliberately not in the gate and no coverage floor: the baseline the day it
+      landed was 73.6% line, 76.1% instruction, 60.9% branch.
 
 6. **Monitor: Material 3 and a live mesh diagram - DONE 2026-09-06** (`bc01e59`).
    Four destinations under `NavigationSuiteScaffold`, which picks the navigation
@@ -887,7 +897,7 @@ Shared hardware; the USB radios are global mutable state across sessions - see
   `-Dorg.gradle.java.home=$HOME/.gradle/jdks/eclipse_adoptium-21-aarch64-os_x.2/jdk-21.0.10+7/Contents/Home`.
   **Never run two node-kmp builds at once** in one checkout, or one agent's build
   compiles another's half-written edits.
-- **The gate is `spotlessCheck detekt apiCheck allTests testAndroidHostTest`.**
+- **The gate is `spotlessCheck detekt checkKotlinAbi allTests testAndroidHostTest`**, with no per-host exclusions since the KGP ABI migration.
   Compiling the native targets without *running* them hid four comma-bearing test
   names that Kotlin/Native rejects, and `gradle build` was broken on `main` for
   four commits while everything read green.
