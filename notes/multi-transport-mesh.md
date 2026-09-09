@@ -1469,11 +1469,48 @@ subscribe, or `bluetoothd -d`. Everything short of a privileged tracer has been
 tried - the D-Bus policy denies a non-root caller reaching our own exported object,
 so the proxy cannot be exercised from outside the process.
 
+### The second defect: a connect storm nobody's guard caught
+
+Driving the uConsole as a **central** against the MacBook to test the pairing
+agent turned up a hot retry loop instead: **411 refused connects in 35 seconds**,
+never reaching `ready`.
+
+Both existing guards missed it. The permanent skip keys off `br-connection`, the
+timed backoff off `abort-by-local`, and BlueZ was answering **`In Progress`** -
+which falls through both and re-dials at whatever rate the peer is reported.
+`No reply within specified time` and `br-connection-busy` fall through the same
+hole.
+
+Fixed in `f54dc50` by inverting the classification: only
+`br-connection-key-missing` is permanent (a classic leg with no bond never becomes
+an LE mesh route); every other refusal goes to the timed backoff, which a success
+or the device leaving clears. The gates also moved into `reserve()`, because the
+cached-object sweep and `InterfacesAdded` both reach a connect without passing
+`reserveIfMesh`.
+
+Re-run on the same pair: **8 refusals in 75 seconds, and the peer reaches
+`:ready`.** `Paired: no`, `Bonded: no` throughout.
+
+### The pairing agent is still unproven, and now says so
+
+The same central run **declined nothing** - the MacBook demanded no bond at any
+point. So the macOS half of the question is answered (an Apple peripheral serves
+the mesh characteristic unbonded, and asks a Linux central for nothing), and the
+half the agent was actually written for is not: `BluezPairingAgent` exists for an
+**ANCS-advertising iOS** peer, and nothing in range advertised ANCS.
+
+That run would previously have been unreadable either way - a silent refusal and a
+peer that never asked look identical from outside. `f54dc50` gives the agent an
+`onDeclined` callback wired to the link's fault channel, so each decline names its
+request and the peer. The next run with an iPad present distinguishes the two.
+
 ### Not testable this sitting
 
 The iPad was not in range - nothing within reach of the uConsole advertised ANCS
 or the mesh UUID except the MacBook - so whether the passkey popups actually stop
-on it is still unverified, and still James's to eyeball.
+on it is still unverified, and still James's to eyeball. Wi-Fi Aware is in the
+same position for a different reason: it needs two Aware-capable Android radios in
+one room, and no Android device was attached this sitting.
 
 ## The Linux bench sitting (2026-09-06, `james-pc`)
 
