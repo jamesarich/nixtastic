@@ -617,6 +617,67 @@ inherit the desktop agent. Same defect class as the LoRa init spam fixed in
    without Routing ACK/NAK its sent messages sit at "Sending..." and end as
    "Failed to deliver to mesh" - **fixed 2026-09-06** (`960be7d`): the session
    forwards `Delivered` and `DeliveryFailed` as local ROUTING_APP packets.
+   **Parity has a written scope now, 2026-09-08** (`7faf9ae`, `70edca4`), because
+   "keep up with the firmware" is unbounded and is the wrong target. AGENTS.md ->
+   *Parity: what we track, and what we deliberately do not*. Three tiers: the wire
+   (diverge and the mesh drops us), the phone API (where drift actually happens,
+   because an app edits what we report and writes it back), and device behaviour we
+   have no business imitating (modules, power, display, GPS, OTA - `AdminService`
+   declines these by name). Measured rather than assumed: 1531 commits to
+   `firmware/src` over twelve months against **269** to `protobufs/meshtastic`, so
+   the contract moves about six times slower, and upstream CI runs `buf breaking`
+   with `use: [FILE]`, which makes it additive-only. **Nothing upstream can break
+   us; additions are the only drift that matters.** So the review checkpoint is the
+   `org.meshtastic:protobufs` pin bump, not a firmware tag - a bounded, deliberate
+   act, and there is no CI or Renovate here to do it.
+
+   **The finding a future session must not rediscover: `meshtastic/config.proto`
+   has zero `optional` fields (0 of ~63).** Every field is `OMIT_IDENTITY`, so a
+   field at its default is not encoded at all, and "we never considered this field"
+   and "this field is genuinely at its default" are the same bytes and the same
+   Kotlin value. That makes golden-bytes tests, wire diffs and differential runs
+   against real firmware or the `meshtasticd` sim rig **structurally blind** to the
+   one defect class this repo keeps producing - a reported field not derived from
+   live node state. Do not propose them as the fix. Only a value-level check on what
+   `derivedConfigs()` returns can see it, which is why the rule is architectural:
+   *every field of a reported section is either derived from live node state, or a
+   constant for behaviour this node genuinely does not have.* Six instances so far:
+   `rebroadcast_mode`, `tx_power`, `sx126x_rx_boosted_gain`,
+   `node_info_broadcast_secs`, `network.enabled_protocols` (0 while the UDP bearer
+   ran), and the whole `position` section. Two known gaps stay listed rather than
+   papered over: `position_broadcast_secs` cannot say "never" on the wire, and
+   `bluetooth.enabled = false` is **correct** - that field is the BLE phone-API
+   interface, not the radio, so do not "fix" it.
+
+   What the other clients do, all verified: **meshtastic-python is structurally
+   immune** on the config plane because it is descriptor-driven
+   (`config.DESCRIPTOR.fields_by_name`), and it runs the org's only automated
+   firmware-behaviour check - a nightly cron installing `meshtasticd` from
+   `ppa:meshtastic/daily`. **android** has no field-surface detector at all and
+   leans on else-less `when`s. **meshtastic-sdk** made "do not track it" an explicit
+   ADR: new fields flow through to consumers unchanged, *"This is the contract, not
+   a problem."*
+
+   **Security framing worth carrying:** the phone API was always an unauthenticated
+   write interface, but until persistence landed a write died with the process.
+   It is now **durable unauthenticated reconfiguration**, and the desktop node binds
+   `ANY_ADDRESS` on purpose. `SECURITY.md` says so; the settings file is key
+   material (channel PSKs), 0600 in a 0700 directory, nothing encrypted at rest.
+
+   **Four decisions for James, ranked by what they unblock:**
+
+   1. **A LICENSE.** Every sibling repo is GPL-3.0; node-kmp has none. Publishing is
+      gated on it and publishing gates every adapter. A legal act, so not taken here.
+   2. **BCV -> the KGP built-in ABI validation** (`checkKotlinAbi`/`updateKotlinAbi`).
+      `meshtastic-sdk` already migrated on the same Kotlin, BCV is upstream-declared
+      maintenance mode, and `keepUnsupportedTargets` is exactly the fix for the
+      `klibApiCheck`-on-Linux exclusion the gate carries today. Recommended.
+   3. **Kotlin 2.4.10 -> 2.4.20.** The toolchain is outside KGP 2.4.10's tested
+      matrix (Gradle <=9.5.0, AGP <=9.1.0 against 9.7.1/9.4.0 here); 2.4.20 narrows
+      it and improves Swift export, which the unwritten Apple adapter will want.
+   4. **Kover** (and then Dokka). node-kmp is the only one of the four Kotlin repos
+      with neither; there is no coverage signal at all today.
+
 6. **Monitor: Material 3 and a live mesh diagram - DONE 2026-09-06** (`bc01e59`).
    Four destinations under `NavigationSuiteScaffold`, which picks the navigation
    shape from the window size class: verified by resizing the desktop window, a
