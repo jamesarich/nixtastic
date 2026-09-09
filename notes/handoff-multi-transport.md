@@ -312,12 +312,14 @@ that is the right place for it. Whether the shared airtime ledger survives a
 tuning change is still unrun - the monitor surfaces no airtime figure, so it
 needs either a log line or a test hook first.
 
-**A monitor restart silences LoRa.** `TransportTuning.loraRegion` defaults to
-`UNSET` and the tuning is not persisted, so a relaunched dashboard comes back
-`LoRa: 906.875 MHz rx-only` however the previous session was armed. Nothing warns
-about it; the bearer row and the header line are the only tell, and a send then
-goes out over UDP alone. Arming is a transmit decision, so a remembered region
-would have to be an explicit opt-in rather than a silent restore.
+**A monitor restart leaves LoRa unarmed, and that is now the design rather than
+a gap.** The region defaults to `UNSET` and is never restored - not from the
+dashboard's own tuning and not from the node's stored config either - so a
+relaunched dashboard comes back `rx-only` however the previous session was armed
+and a send goes out over UDP alone. Arming is a per-launch act: `MESH_LORA_REGION`
+on desktop, the region chip on Android and iOS, which have no environment to set.
+The log line says which happened. Everything *else* about the bearer does come
+back now, from the node's own configuration rather than from a second copy of it.
 
 ## Next steps, in order
 
@@ -482,6 +484,56 @@ inherit the desktop agent. Same defect class as the LoRa init spam fixed in
    corruption, the SDK silently drops - so node-kmp takes **firmware's** rule
    instead, discarding a save file below `MIN_SETTINGS_VERSION` rather than
    migrating, as `NodeDB` does below `DEVICESTATE_MIN_VER`.
+
+   **`TransportTuning` was resolved on 2026-09-08** (`6aec192`, `ff8c01e`,
+   `22a7c90`, `1d0c807`, `bbc996f`) - it had outlived its usefulness for
+   everything a radio also has a field for. It held the relay axis, the hop limit
+   and every modem setting, all of which the node holds too, and the two could
+   disagree without either being wrong: the node builder read the dashboard's
+   `hopLimit` and `restore()` overwrote it with the node's a moment later, so
+   whichever ran last won. `set_config(lora)` meanwhile applied only `hop_limit` -
+   region, preset and tx power were stored and ignored, so a phone editing them
+   changed nothing.
+
+   What settled it: **the settings are loaded before anything is built from them.**
+   A bearer takes its modem configuration at construction, so the stored `lora`
+   section has to be in hand before `defaultTransports` runs, or a phone's write
+   could only take effect on the launch *after* the one that made it.
+   `LoraConfig.applying(section)` in `node-transport-lora` is the conversion, and
+   `asSection()` its inverse - the two are a fixed point under test, which is what
+   makes the read-modify-write every client performs lossless. That mattered:
+   reporting a default-filled section instead of the bearer's own turned rx boost
+   off and would have written `tx_power = 0`, which is not "leave it" but "the
+   region's limit", on a bus-powered stick that browns out above ten dBm.
+
+   **What stayed host-side** is what no radio could store: which bearers to build,
+   the GATT role and PHY, the contention slot, the UDP group and port,
+   relay-on-air, the airtime limit - and the region, which stays because arming is
+   deliberately per-launch and because Android and iOS have no `MESH_LORA_REGION`,
+   making that chip their only arming act. Every other chip writes through
+   `AdminService`, so a chip tap and a `meshtastic --set` are one edit, persisted
+   once. **The monitor was not made purely monitoring**, which was the other option
+   on the table: stripping those chips too would have left the bench unable to set
+   relay or preset without attaching a phone. It is now one deletion away if that
+   is wanted - the `configure`/`setRelay` chips are the whole of it.
+
+   Two reporting bugs of one class fell out, both found by driving the node with
+   the python CLI rather than by reading: the device section reported
+   `rebroadcast_mode` at the proto's default, which is **ALL**, while the node
+   relayed nothing - so a read-modify-write returned the ALL it had been told and
+   restoring it turned an island into a relay nobody asked for. And a written
+   region was reported back verbatim, so a phone told EU_868 was told EU_868 while
+   the bearer stayed on whatever the host armed; a written section is now reported
+   with the armed region and the node's own hop limit substituted, which also means
+   the stored file carries the band the node is actually on.
+
+   Bench-proven on one run, desktop against the python CLI: a virgin node reports
+   `tx_power 10` and rx boost on; `--set lora.hop_limit 4` stores both unchanged
+   and does *not* rebuild, because the hop limit reaches the live node through
+   `setRelay`; `--set lora.region EU_868` reads back and stores US, the armed band;
+   `--set lora.modem_preset SHORT_TURBO` does rebuild, which is firmware's own
+   behaviour (`handleSetConfig` on that section sets `requiresReboot`). **Not
+   proven on the air** - no CH341 stick was attached, so no modem was retuned.
 
    Two consequences worth carrying forward. **The settings file is key material** -
    `BackupPreferences` carries the channel set and a channel carries its PSK - so
