@@ -69,6 +69,14 @@ SDK).
   **simultaneously**. `android` is not a submodule consumer - it takes the
   published `org.meshtastic:protobufs` artifact pinned in
   `gradle/libs.versions.toml`, so a bump there is a version bump.
+- **Wire's generated Kotlin is binary compatible only at an exact `protobufs`
+  version match**, in either direction - one added field moves the all-args
+  constructor signature, so two independently *published* artifacts on
+  different pins fail at runtime with `NoSuchMethodError`, with the wire format
+  perfectly compatible and `buf breaking` silent. Inside one build it cannot
+  happen. It blocks shipping `meshtastic-node-kmp` as a product, and the fix
+  (Wire's `buildersOnly`) plus the interim `-PprotobufsVersion` workaround are
+  in [`notes/wire-builders-only-migration.md`](./notes/wire-builders-only-migration.md).
 - `meshtastic-sdk` is consumed by **neither `android` nor `apple`** (checked
   2026-09-05: no `org.meshtastic.sdk` import in either; both talk to radios
   through their own phone-API transports) - but it **does** have a downstream
