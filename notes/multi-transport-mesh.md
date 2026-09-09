@@ -221,8 +221,8 @@ whole plan is drawn on.
 | Bearer | FW ESP32-S3/C3 | FW nRF52840 | Android | iOS / macOS | JVM / Linux |
 | --- | --- | --- | --- | --- | --- |
 | **LoRa** (RF backbone, km) | ✓ backbone | ✓ backbone | - | - | - |
-| **BLE-adv** (connectionless, ext-adv) | spike ✓ | spike ✓ (rak4631 RX) | ✓ | **RX only** (no TX) | ✓ BlueZ (Linux only; scan proven, advertise refused by the bench adapter) |
-| **BLE-GATT** (connection, dual-role) | spike ✓ mesh-peer service | spike ✓ mesh-peer service (rak4631_blemesh) | ✓ | ✓ | ✓ BlueZ (Linux only; built, not yet run on Linux hardware) |
+| **BLE-adv** (connectionless, ext-adv) | spike ✓ | spike ✓ (rak4631 RX) | ✓ | **RX only** (no TX) | ✓ BlueZ (Linux only; scan proven. Advertising works on a CM5 - `james-pc`'s adapter alone refuses it) |
+| **BLE-GATT** (connection, dual-role) | spike ✓ mesh-peer service | spike ✓ mesh-peer service (rak4631_blemesh) | ✓ | ✓ | ✓ BlueZ (Linux only; central proven, **peripheral proven 2026-09-08** - but a central's subscribe to it is refused ATT `0x0E`) |
 | **UDP multicast** (LAN) | ✓ (wifi/eth) | ~ (eth) | ✓ | ~ (entitlement) | ✓ |
 | **Wi-Fi Aware** (Android↔Android) | - | - | ✓ (future) | - | - |
 | **MQTT** (internet, infra-backed) | ✓ (wifi/eth) | ~ | ✓ | ✓ | ✓ |
@@ -1405,7 +1405,10 @@ and a bundled `.app` needs its own `Info.plist` key. Plan:
   `RegisterAdvertisement` with `Invalid Parameters (0x0d)` at any payload size and
   with `SecondaryChannel` removed, and `bluetoothctl` fails identically on the
   same host, so it is the controller or its driver rather than this code. Scanning
-  is proven on that machine.
+  is proven on that machine. **Settled 2026-09-08: it is that adapter and nothing
+  else.** The uConsole's CM5 controller takes the same call - `bluetoothctl
+  advertise on` answers `Advertising object registered`, `SupportedInstances 4` -
+  where `james-pc` answers `org.bluez.Error.Failed`. Do not chase this in the code.
 - **iOS UDP without the multicast entitlement.** Apple grants it by application.
   The socket itself is proven on macOS native (11 tests, including a real
   multicast round trip); what is unread is what the iPad's `udp` row says, because
@@ -1418,6 +1421,59 @@ frames, the desktop receives none of the Pixel's (`udp tx 6 rx 0` while the Pixe
 reads them fine). Classic wired-to-wireless AP behaviour. It worked on 2026-09-04,
 so it is the network and not the transport. Do not diagnose a dead UDP bearer from
 it.
+
+## The two-Linux sitting (2026-09-08, `james-pc` + the uConsole)
+
+The first time the BlueZ **peripheral** role has run anywhere, and the first mesh
+link with a Linux box at both ends. What made it possible: `:node-headless`, a
+node with no UI whose jar carries no Skiko, so it runs on the uConsole's arm64.
+Two commands, `MESH_GATT_ROLE=PERIPHERAL_ONLY` on one host and `CENTRAL_ONLY` on
+the other.
+
+### Proven
+
+- **Linux advertising is an adapter problem, not a code problem.** The uConsole's
+  CM5 controller accepts `RegisterAdvertisement`; `james-pc`'s refuses it. Both
+  run BlueZ 5.82. Everything the peripheral role and the BLE-adv bearer could not
+  do on this bench was that one adapter.
+- **The BlueZ peripheral role works.** The uConsole registers its GATT
+  application, advertises `4d657368-4e6f-6465-4741-545400000001`, and
+  `bluetoothctl info` from `james-pc` lists the service. Its ATT database serves
+  the mesh characteristic at `.…0002` with flags `write-without-response, write,
+  notify`. A central connects and the link reaches `ready`.
+
+### The one defect, and it is not what the note said it was
+
+**A central's `StartNotify` against the Linux peripheral fails with ATT `0x0E`.**
+Reproduced every time, both ends Linux, `LE.Paired: no` throughout.
+
+Two corrections to what was written before:
+
+- **`0x0E` is "Unlikely Error", not insufficient authentication.** Insufficient
+  authentication is `0x05`. The earlier note filed this under the iOS bond-demand
+  story on the strength of that mislabel, which is the wrong tree.
+- **It is not a bond demand.** The MacBook on the same bench serves the same mesh
+  characteristic over an equally unbonded link, and a `StartNotify` against *it*
+  succeeds with `Paired: no`. So an Apple peripheral keeps serving unauthenticated
+  after no bond is taken - which also answers the "does iOS keep serving after a
+  refused bond" question for macOS - while ours refuses.
+
+Where it fails: **inside the peripheral's `bluetoothd`, before our application is
+called.** The peripheral's link reports no subscriber, no fault, and neither
+`StartNotify` nor `AcquireNotify` reaches the exported object - the refusal
+instrumentation added in `fd94267` says so. BlueZ returns `0x0E` on a CCC write
+when it cannot dispatch `StartNotify` to the application's proxy at all.
+
+**Next step needs root, so it is James's:** `sudo btmon` on the uConsole across one
+subscribe, or `bluetoothd -d`. Everything short of a privileged tracer has been
+tried - the D-Bus policy denies a non-root caller reaching our own exported object,
+so the proxy cannot be exercised from outside the process.
+
+### Not testable this sitting
+
+The iPad was not in range - nothing within reach of the uConsole advertised ANCS
+or the mesh UUID except the MacBook - so whether the passkey popups actually stop
+on it is still unverified, and still James's to eyeball.
 
 ## The Linux bench sitting (2026-09-06, `james-pc`)
 
