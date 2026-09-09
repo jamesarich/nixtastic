@@ -1978,16 +1978,79 @@ now expose them (`4eade0c`). Also in that commit: `node-headless` never built a 
 transport at all - its KDoc described an arming variable whose positive branch did
 not exist.
 
-**Proven:** `SX1261 V2D 2D02 tuned 906.875 MHz LongFast US slot 19/104 power 10 dBm`,
-bearer `Active`, and `tx ok len=85 toa=886ms` - this library's first transmit over a
-kernel SPI bus.
+**Then two more bugs, both the same missing line.** The reset line got the chip
+talking; it took two further fixes to make it work, and neither was on the board.
 
-**Not stable.** About a minute later commands fail with status `0xaa` (STBY_RC with
-the command-failure bits set) and the bearer drops to `Ready`. BUSY is not wired, so
-the driver waits RadioLib's fixed delays - enough to initialise and transmit, not
-enough to keep running. The pins are known now, so **a Linux GPIO chardev backend is
-the next step**; `NoGpioPins` errors rather than no-ops, so busy/reset/dio1 cannot be
-named until it exists.
+**One: the AGC reset slept a chip it could not safely wake** (`b1c4403`).
+`agcResetIntervalMs` is 60 seconds and `resetAgc` opens `sleepWarm()` then `standby()`.
+Waking is the one place `waitBusyLow`'s no-BUSY fallback does not hold, so `SetStandby`
+landed on a busy chip and every command after it failed `0xaa` - which is exactly the
+minute-later collapse observed. The periodic reset is now skipped when no BUSY line is
+wired, trading the sensitivity drift it corrects against a bearer that stops. Found by
+reading, not by watching: the interval and the fallback are eighty lines apart in
+different files and neither reads wrong alone.
+
+**Two: the no-BUSY settle was one millisecond** (`aa06750`). Copied from RadioLib's
+`RADIOLIB_NC` default. `Calibrate` holds BUSY for milliseconds, so the commands after it
+were *accepted and silently did nothing* - the chip answered status queries, reported a
+good transmit, and never received a frame. **Ten milliseconds and the same node hears
+the mesh.** This is the worst shape a failure can take: every indicator says working.
+
+**Do not repeat the pin-poking.** The vendor documents the board, and the spec matches
+what we configure pin for pin: SPI1, CS = **GPIO18** (SPI1-CE0), IRQ **26**, Busy **24**,
+Reset **25**, **DIO2** drives the antenna switch and **DIO3** powers the TCXO. So
+**there are no RXEN/TXEN lines to find** - an afternoon was spent sweeping GPIOs for
+pins that do not exist. (AIO **V2** additionally gates LoRa behind GPIO16 pulled high;
+tried here with no effect, so this board is a V1. The launcher sets it anyway, harmless.)
+Guide: <https://hackergadgets.com/pages/hackergadgets-uconsole-rtl-sdr-lora-gps-rtc-usb-hub-all-in-one-extension-board-setup-guide>
+
+### Proven on air, both directions (2026-09-09)
+
+**The first node-kmp to node-kmp link over real LoRa.** uConsole on the kernel spidev
+backend, `james-pc` on the CH341 USB bridge, so the transport is proven across both JVM
+device sources against the same air:
+
+    james-pc:  peer[lora] !54efe673 uconsole
+    uconsole:  peer[lora] !71f22814 jamespc
+
+Each side decoded the other's NodeInfo and resolved it to a named peer - frame, decrypt,
+decode, node DB, not just bytes arriving. Both also hear the live mesh (`Solar`,
+`T-1000e`, `wismesh pocket v3`, `Meshtastic 956a`). Left soaking.
+
+**Still the right next step: wire BUSY.** Ten milliseconds is empirical rather than
+derived and costs on every command, and the AGC reset stays disabled until a BUSY line
+exists. `NoGpioPins` errors rather than no-ops, so busy/reset/dio1 cannot be named until
+a Linux GPIO chardev backend exists - spiked, see below.
+
+### The GPIO chardev backend, spiked 2026-09-09
+
+Not written, but mapped - and it already paid for itself by diagnosing the AGC failure
+above from a read rather than a bench run.
+
+- **`Ch341Pins` cannot carry RP1 offsets.** Its `init` validates outputs to `0..5` and
+  inputs to `0..23`, so `busy=24` and `reset=25` both fail `require`. That is the
+  central design decision, and it suggests two steps rather than one: a local logical
+  numbering to unblock the bench, then a `LoraPins` interface once GPIO is proven - so
+  "does this work" and "is the type right" are not answered by the same commit.
+- **`loraDevices()` silently discards the caller's pin profile** on the spidev path: it
+  always passes `SPIDEV_UNKNOWN_BOARD`, ignoring its own `pins` parameter.
+- **Do not hardcode `/dev/gpiochip15`.** The RP1 chardev index has moved across kernel
+  releases (chip4, chip0, chip15 here). What is stable is the *line offset* - GPIO24 is
+  offset 24 whatever the chip enumerates as - so resolve the chip by **label**
+  (`pinctrl-rp1`) and keep offsets named, in the same family as `MESH_LORA_SPIDEV`.
+- **DIO1 needs no edge interrupts.** The IRQ status latches until `ClearIrq`, so a level
+  read is lossless, and the transport is already level-polled. Edge events would mean
+  bridging a blocking fd into the coroutine world against the single-parallelism
+  dispatcher that owns the radio - a later optimisation, not a blocker.
+- **The chardev enforces exclusivity itself** (`EBUSY`), so no `/proc`-scanning
+  `spidevHolder` twin is needed; `GET_LINEINFO` names the current consumer.
+- **Testable with no radio** via the kernel's `gpio-sim` module - real chardev ioctls
+  against a simulated chip. UNVERIFIED whether CI can load kernel modules.
+- Hand-lay the v2 structs as `SpidevSpiBus` already hand-lays `spi_ioc_transfer`; the
+  spike derived the sizes and ioctl numbers (`GPIO_V2_GET_LINE_IOCTL = 0xC250B407`).
+  One trap: a mixed input/output request needs a per-line flags attr **and** an
+  output-values attr giving RESET high at request time, or the fd holds the chip in
+  reset from the moment it opens.
 
 ## The spidev LoRa backend, and the uConsole sitting (2026-09-07)
 
