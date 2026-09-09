@@ -1522,7 +1522,26 @@ cached-object sweep and `InterfacesAdded` both reach a connect without passing
 Re-run on the same pair: **8 refusals in 75 seconds, and the peer reaches
 `:ready`.** `Paired: no`, `Bonded: no` throughout.
 
-### The pairing agent is still unproven, and now says so
+### The pairing agent: settled 2026-09-09, and it does not work
+
+Tested against the iPad with `BluezPairingAgent` registered as the uConsole's default
+agent. The pairing dialog appeared on the iPad, James tapped Pair, and BlueZ reported
+`Pairing successful` with `Paired: yes, Bonded: yes` - **having called no agent method
+at all.** Zero calls, both directions, every attempt.
+
+`NoInputNoOutput` selects Just Works and BlueZ consults no agent for it. The dialog is
+iOS's own, raised the moment an SMP exchange starts. So the agent neither suppresses
+the dialog nor prevents the bond, and the KDoc claiming both was wrong. Corrected in
+`2be0852`; the agent stays only for `AuthorizeService` scoping.
+
+What actually kept the connect storm down is the retry backoff fixed earlier today.
+
+Two side findings. An iPad keeps a half-bond after a failed pair and then offers only
+"Forget This Device" while the Linux side has no record at all - that asymmetry, not
+our code, is what produces "iPad can no longer connect to <mac>". And an outbound pair
+from Linux fails `AuthenticationFailed` while that stale record stands.
+
+### The old note, kept for the record
 
 The same central run **declined nothing** - the MacBook demanded no bond at any
 point. So the macOS half of the question is answered (an Apple peripheral serves
@@ -1535,11 +1554,11 @@ peer that never asked look identical from outside. `f54dc50` gives the agent an
 `onDeclined` callback wired to the link's fault channel, so each decline names its
 request and the peer. The next run with an iPad present distinguishes the two.
 
-### Not testable this sitting
+### Not testable that sitting (closed the next morning)
 
-The iPad was not in range - nothing within reach of the uConsole advertised ANCS
-or the mesh UUID except the MacBook - so whether the passkey popups actually stop
-on it is still unverified, and still James's to eyeball.
+The iPad was out of range on 2026-09-08. It came into range on 2026-09-09 and the
+question is now answered above: the popups do not stop, because the agent is never
+consulted.
 
 ### Wi-Fi Aware, on a radio at last (Pixel 6a, Android 17)
 
@@ -1563,7 +1582,16 @@ created, `NAN_STATUS_SUCCESS`. So attach plus both discovery sessions are proven
 hardware. `maxFrameBytes` reads **255** - exactly the spec floor the transport falls
 back to, so that constant was a correct guess.
 
-Still bench work: discovery and send need a **second** Aware device in the room.
+**Discovery and send are proven too, 2026-09-09.** Pixel 6a and Pixel 9 Pro, both on
+USB: `WifiAwarePairDeviceTest` runs on every attached device in parallel, so each side
+publishes, subscribes, discovers the other and sends. Discovery took about twelve
+seconds; each phone then heard around forty frames from the other, both directions.
+Every frame carries the sender's `Build.MODEL`, so what proves the crossing is a frame
+naming the *other* phone rather than bytes that could be our own.
+
+That run also settled the exit-code question: `connectedAndroidTest` exited non-zero
+with `failures="0"` on every earlier run, and the difference was **wireless adb**. Over
+a cable the same task exits 0.
 
 `connectedAndroidTest` exits non-zero with `failures="0"`. The last step it logs is
 the additional-test-output collector, and `/sdcard/Android/media/<pkg>` does not
