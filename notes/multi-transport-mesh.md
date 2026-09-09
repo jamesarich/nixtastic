@@ -1508,9 +1508,41 @@ request and the peer. The next run with an iPad present distinguishes the two.
 
 The iPad was not in range - nothing within reach of the uConsole advertised ANCS
 or the mesh UUID except the MacBook - so whether the passkey popups actually stop
-on it is still unverified, and still James's to eyeball. Wi-Fi Aware is in the
-same position for a different reason: it needs two Aware-capable Android radios in
-one room, and no Android device was attached this sitting.
+on it is still unverified, and still James's to eyeball.
+
+### Wi-Fi Aware, on a radio at last (Pixel 6a, Android 17)
+
+The bearer had only ever run against mocks. One Aware radio turns out to prove
+most of it, and it failed twice before it worked - both times a `SecurityException`
+thrown out of a flow rather than a refusal reported through `availability`:
+
+- `WifiAwareManager.isAvailable` and `getCharacteristics` need **`ACCESS_WIFI_STATE`**
+- `attach` needs **`CHANGE_WIFI_STATE`**
+
+Neither is the runtime permission the transport names in `REQUIRED_PERMISSION`.
+Both are normal permissions - no prompt, no scoping decision an app could make
+differently - so the module declares them in its own manifest and a consumer picks
+them up from the merge. Verified in `monitor-android`'s merged manifest. The three
+Manager calls are guarded as well, so a host short a permission gets an
+`Unavailable` naming the refusal instead of losing its collector.
+
+**What the radio answered:** `aware_nmi0` activated, `enableAndConfigure` with a
+real `ConfigRequest`, `onClusterChange clusterId=3685B53BC866`, `aware_data0`
+created, `NAN_STATUS_SUCCESS`. So attach plus both discovery sessions are proven on
+hardware. `maxFrameBytes` reads **255** - exactly the spec floor the transport falls
+back to, so that constant was a correct guess.
+
+Still bench work: discovery and send need a **second** Aware device in the room.
+
+`connectedAndroidTest` exits non-zero with `failures="0"`. The last step it logs is
+the additional-test-output collector, and `/sdcard/Android/media/<pkg>` does not
+exist after the run's own uninstall. Read the XML, not the exit code.
+
+Unrelated, found in passing: `node-transport-ble-gatt`'s
+`reassemblesAWholePacketFromAPeer` fails on this bench with `expected 659918 but
+was 811708462` - the test's synthetic `0xA11CE` sender lost to a **real** mesh node
+in range delivering a frame into the link under test. Environmental, not a
+regression.
 
 ## The Linux bench sitting (2026-09-06, `james-pc`)
 
