@@ -198,7 +198,9 @@ finds - run it before diagnosing by hand.
   and installs ships one forwarder per repo skill, `nixtastic:<repo>-<skill>`,
   whose body points at the real `SKILL.md`; it also carries the three bundled
   meshtastic-mcp skills, `meshtastic-cross-repo`, the worktree and Gradle
-  guards, the memory hooks and the GitHub MCP. `bin/claude-ws <repo>` (`--add-dir`,
+  guards, the memory hooks, the GitHub MCP and the klibs.io MCP (KMP target
+  matrix and coordinates; it lags Maven Central and calls every 0.x a
+  prerelease, so never take a version from it). `bin/claude-ws <repo>` (`--add-dir`,
   loads that repo's `CLAUDE.md` too) remains for skills that must run in place.
 - **The direnv hook fires only in interactive shells** - scripts and agent
   subshells get no repo environment, so Gradle silently runs unpinned. From

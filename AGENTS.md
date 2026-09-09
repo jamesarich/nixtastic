@@ -472,6 +472,30 @@ Dependency automation is **Renovate**, not Dependabot, in every Kotlin repo.
 Tags are `v`-prefixed semver, and immutable - see
 [`notes/cross-repo-contracts.md`](./notes/cross-repo-contracts.md).
 
+### klibs.io answers targets, never versions
+
+Before adding a **new** KMP dependency, query the klibs.io MCP (carried by the
+`nixtastic` plugin, so it is registered in every session) to verify the target
+matrix and the maven coordinate. "Does this publish `iosX64` / `wasmJs` /
+`linuxArm64`" is the question it exists to answer and the one Maven Central
+cannot.
+
+Take no version from it. Measured 2026-09-09: it reported
+`co.touchlab:kermit 2.1.0` while Central had 2.2.0, published the evening
+before and already merged into `android` by Renovate. It also treats every
+`0.x` as a prerelease - `latestStableVersion` is null for
+`org.meshtastic:kzstd 0.2.0`, `org.meshtastic:mqtt-client-core 0.8.1` and
+`org.maplibre.compose:maplibre-compose 0.15.0`, so anything following a
+"recommend the newest stable" rule declines to name a version of the org's own
+libraries. Versions come from `gradle/libs.versions.toml` and Renovate, per
+the closing rule of this section.
+
+It carries no license and no maintenance signal. `searchProjects` returns
+project name, author, platforms, targets, and package coordinates with
+descriptions - nothing else. JetBrains also publish a `kmp-libraries-expert`
+skill; it is deliberately not installed, because its rules make klibs.io the
+source of truth for versions.
+
 ### Three ways KMP CI reports green over an unguarded surface
 
 - **A JVM-only ABI dump.** The klib (common/native) ABI changes freely
