@@ -1832,19 +1832,21 @@ and are worth measuring rather than quoting.
 ## Transport toggles: opt-in, persisted, including LoRa (decided 2026-09-09)
 
 Every bearer gets a user-visible toggle, persisted, **and that includes LoRa's armed
-state**. James's call, made against the objection below, which is recorded because the
-rule it overrides is written down elsewhere.
+state**. This is the sentinel principle, not an exception to it: **a hardware radio
+resumes its previous state on restart, so node-kmp does too.**
 
 `AGENTS.md` has said a node must never transmit on LoRa from a remembered setting -
-arming is a per-launch host act (`MESH_LORA_REGION`, the region chip). Persisting the
-region means a restart puts a radio on the air with nobody present. The counter-argument
-is that this is exactly what every real Meshtastic node does, and node-kmp is a node
-rather than a dev tool; the old rule suited a library being brought up on a bench.
+arming is a per-launch host act (`MESH_LORA_REGION`, the region chip). That rule was
+node-kmp's own invention, and it suited a library being brought up on a bench where an
+unattended transmit was a surprise. It is not what the firmware does, and
+`firmware-is-the-sentinel-for-node-kmp` says to match the firmware rather than invent
+node-kmp semantics. A node that forgets its region on restart is the anomaly.
 
-**So the doc must move with the code.** Leaving `AGENTS.md` asserting the opposite of
-what the code does is worse than either choice. When this is built: persist the toggle
-and the region, say loudly at startup that the radio was armed from stored state, and
-rewrite the arming rule rather than leaving it contradicted.
+**So the doc moves with the code.** When this is built: persist the toggle and the
+region, say at startup which bearers were resumed and on what band, and rewrite the
+arming rule rather than leaving `AGENTS.md` asserting the opposite of what the code
+does. The per-launch env vars stay useful as an override for a bench node, which is the
+job they were actually good at.
 
 ## The uConsole LoRa fix (2026-09-09) - it was the reset line
 
