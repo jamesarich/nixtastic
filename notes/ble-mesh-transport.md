@@ -198,9 +198,14 @@ the *efficiency and reach* side, and three are worth taking.
   `MeshTransport` + `FrameAdapter` - with jittered, overhear-suppressed flooding,
   the same shape as our contention window and cancel-on-overhear. Take:
   1. **Wi-Fi Aware as a fourth transport** (`node-transport-wifi-aware`). Vastly
-     more bandwidth than BLE for Android↔Android, on the existing seam. Android
-     only - iOS does not expose NAN to apps - so it rides the same bridge model,
-     but it is a large throughput win wherever two Android nodes meet.
+     more bandwidth than BLE for Android↔Android, on the existing seam. **Built and
+     proven on two radios, 2026-09-09.** The "iOS does not expose NAN" clause that
+     stood here is wrong and was corrected the same day: NAN is a Wi-Fi Alliance
+     standard and iOS 26 / macOS 26 ship a `WiFiAware` framework. What differs is
+     the model - Apple serves *paired* devices carrying TCP over an NDP data path -
+     so an Apple version is a separate transport rather than an `actual`, and
+     cross-platform Aware is not dependable yet. See
+     `multi-transport-mesh.md` → "Apple Wi-Fi Aware".
   2. **Content-digest anti-entropy sync**, so "an idle mesh does zero data-path
      work; a new message triggers a targeted sync only with the peers that need
      it." This is the direct answer to the cost problem this note already flags

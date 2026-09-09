@@ -312,14 +312,16 @@ that is the right place for it. Whether the shared airtime ledger survives a
 tuning change is still unrun - the monitor surfaces no airtime figure, so it
 needs either a log line or a test hook first.
 
-**A monitor restart leaves LoRa unarmed, and that is now the design rather than
-a gap.** The region defaults to `UNSET` and is never restored - not from the
-dashboard's own tuning and not from the node's stored config either - so a
-relaunched dashboard comes back `rx-only` however the previous session was armed
-and a send goes out over UDP alone. Arming is a per-launch act: `MESH_LORA_REGION`
-on desktop, the region chip on Android and iOS, which have no environment to set.
-The log line says which happened. Everything *else* about the bearer does come
-back now, from the node's own configuration rather than from a second copy of it.
+**Reversed 2026-09-09: a restart now resumes the band.** This paragraph used to say
+the opposite - that the region defaults to `UNSET`, is never restored, and that
+arming is a per-launch act. That rule was node-kmp's own invention, not the
+firmware's: `AdminModule::handleSetConfig` takes a phone-written region, sets
+`tx_enabled = true` when coming from `UNSET`, and persists it, so a radio comes up
+on that band every boot after. Both hosts follow it now (`3c98fd6`, `01e0f6f`) -
+the monitor restores its stored region and `node-headless` resumes bearers and band
+from its store. `UNSET` is how a node is kept quiet. The environment variable
+survives as a one-run override **on the monitor only**; on headless, naming one
+persists it. See `meshtastic-node-kmp/AGENTS.md` → Safety.
 
 ## Next steps, in order
 
@@ -508,9 +510,10 @@ inherit the desktop agent. Same defect class as the LoRa init spam fixed in
 
    **What stayed host-side** is what no radio could store: which bearers to build,
    the GATT role and PHY, the contention slot, the UDP group and port,
-   relay-on-air, the airtime limit - and the region, which stays because arming is
-   deliberately per-launch and because Android and iOS have no `MESH_LORA_REGION`,
-   making that chip their only arming act. Every other chip writes through
+   relay-on-air, the airtime limit - and the region. (That last clause read "the
+   region, which stays because arming is deliberately per-launch"; reversed
+   2026-09-09, see above. The chip is now one way to arm among several, since a
+   stored region resumes on its own.) Every other chip writes through
    `AdminService`, so a chip tap and a `meshtastic --set` are one edit, persisted
    once. **The monitor was not made purely monitoring**, which was the other option
    on the table: stripping those chips too would have left the bench unable to set
@@ -639,7 +642,11 @@ inherit the desktop agent. Same defect class as the LoRa init spam fixed in
    against real firmware or the `meshtasticd` sim rig **structurally blind** to the
    one defect class this repo keeps producing - a reported field not derived from
    live node state. Do not propose them as the fix. Only a value-level check on what
-   `derivedConfigs()` returns can see it, which is why the rule is architectural:
+   `derivedConfigs()` returns can see it - and **that check now exists** (`f0b52ca`,
+   `e05b2a1`, `e9ef6fb`): `ConfigFieldParityTest`, `ModuleConfigFieldParityTest` and
+   `AdminVerbSurfaceTest` classify every reported field and admin verb, so an
+   unclassified addition fails a test instead of waiting for a seventh instance. The
+   rule it enforces is still the architectural one:
    *every field of a reported section is either derived from live node state, or a
    constant for behaviour this node genuinely does not have.* Six instances so far:
    `rebroadcast_mode`, `tx_power`, `sx126x_rx_boosted_gain`,

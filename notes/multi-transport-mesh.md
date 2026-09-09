@@ -1942,11 +1942,18 @@ unattended transmit was a surprise. It is not what the firmware does, and
 `firmware-is-the-sentinel-for-node-kmp` says to match the firmware rather than invent
 node-kmp semantics. A node that forgets its region on restart is the anomaly.
 
-**So the doc moves with the code.** When this is built: persist the toggle and the
-region, say at startup which bearers were resumed and on what band, and rewrite the
-arming rule rather than leaving `AGENTS.md` asserting the opposite of what the code
-does. The per-launch env vars stay useful as an override for a bench node, which is the
-job they were actually good at.
+**Built the same afternoon; this section is the decision, not an outstanding plan.**
+`d39bf53` moved the assertions and took the clamps out, `3c98fd6` gave `node-headless`
+a store and made it resume bearers and band, `01e0f6f` did the dashboard's half. A node
+now logs which bearers it resumed and on what band.
+
+Two things the plan did not anticipate. **The env vars ended up meaning different things
+on the two hosts** and that is deliberate: the monitor has a chip, so a variable is a
+one-run override there and is never written back; `node-headless` has no chip, so naming
+one *is* the act of setting it and it persists. A headless node therefore has no one-run
+override, which would need a second variable rather than a change of meaning. And the
+open question about a phone-written region turned out not to be a question: firmware
+arms on a phone write, so there was never a narrow reading to take.
 
 ### What the toggle spike found
 
@@ -2058,15 +2065,27 @@ Each side decoded the other's NodeInfo and resolved it to a named peer - frame, 
 decode, node DB, not just bytes arriving. Both also hear the live mesh (`Solar`,
 `T-1000e`, `wismesh pocket v3`, `Meshtastic 956a`). Left soaking.
 
-**Still the right next step: wire BUSY.** Ten milliseconds is empirical rather than
-derived and costs on every command, and the AGC reset stays disabled until a BUSY line
-exists. `NoGpioPins` errors rather than no-ops, so busy/reset/dio1 cannot be named until
-a Linux GPIO chardev backend exists - spiked, see below.
+**Done, later the same day.** The GPIO chardev backend below was built (`b110377`), so
+the uConsole wires BUSY and gets neither the 10 ms settle nor the disabled AGC reset.
+Both remain in place for a board that names no lines, which is the correct default and
+is what `NO_BUSY_SETTLE_MS` is for.
 
 ### The GPIO chardev backend, spiked 2026-09-09
 
-Not written, but mapped - and it already paid for itself by diagnosing the AGC failure
-above from a read rather than a bench run.
+**Built the same day (`b110377`), so read this as the design record rather than a plan.**
+`LinuxGpioChip` and `GpioV2` now serve BUSY/NRST/DIO1 through `GPIO_V2_GET_LINE_IOCTL`,
+named by `MESH_LORA_GPIOCHIP` and `MESH_LORA_GPIO_{BUSY,RESET,DIO1}`. With them wired on
+the uConsole the 10 ms settle and the AGC-reset skip no longer apply: it soaked 1 h 37 m
+with 390 frames received, zero command failures and the AGC reset running every minute.
+The spike also paid for itself before any of that, by diagnosing the AGC failure from a
+read rather than a bench run.
+
+Three of its predictions were corrected by hardware, all now covered by tests: the chip
+index is **not contiguous** (a CM5 starts at 11, so counting up from zero and stopping at
+the first gap finds nothing - list the directory), a logical pin is **not** its slot in
+the line request, and an output line comes up low unless the request says otherwise.
+
+What it mapped:
 
 - **`Ch341Pins` cannot carry RP1 offsets.** Its `init` validates outputs to `0..5` and
   inputs to `0..23`, so `busy=24` and `reset=25` both fail `require`. That is the
