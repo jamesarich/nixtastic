@@ -1880,6 +1880,47 @@ branch that cannot carry a packet, with nothing in the log.
   socket, not the org.bluez D-Bus interfaces `BluezGattLink` uses throughout. A CoC
   bearer there is new I/O, not an extension of the existing code path.
 
+### Measured 2026-09-09: what the mesh build actually costs on an S3
+
+Two clean builds of the same tree (`spike/ble-mesh-transport`), stock built **first** so
+the shared framework sdkconfig had not yet been rewritten:
+
+| | stock `heltec-v3` | `heltec-v3_blemesh` | delta |
+| --- | --- | --- | --- |
+| RAM | 127,288 (38.8%) | 130,472 (39.8%) | **+3,184 B** |
+| Flash | 2,286,371 (68.4%) | 2,301,755 (68.9%) | **+15,384 B** |
+
+On the bench V3, running the mesh build - ext-adv, observer, GATT mesh-peer,
+`MAX_ACT=6`, `MAX_CONNECTIONS=2`: total heap 267,948, **48,964 bytes free in steady
+state** with BLE up, both advertising instances configured, scanning, and relaying LoRa.
+No OOM, no failed allocation.
+
+**So a runtime toggle is feasible, but not for the reason it was proposed.** From the
+ESP-IDF source: `ROLE_OBSERVER`, `EXT_ADV`, `EXT_ADV_MAX_SIZE`,
+`MAX_EXT_ADV_INSTANCES` and `MAX_CONNECTIONS` are Kconfig, **compile-time only**, sizing
+a `ble_gap_vars_t` that `ble_gap_init()` callocs on *every* BLE bring-up whenever
+Bluetooth is enabled at all. A runtime toggle inside a mesh-capable image cannot avoid
+that. Only a separate build can. What a runtime toggle does free is scan duty cycle,
+radio airtime and the power that goes with continuous scanning - which is real, and is
+probably the point.
+
+Two corrections to what this file said before:
+
+- **`EXT_ADV_MAX_SIZE` sizes one buffer, not one per instance.** It is a member of
+  `ble_gap_vars_t`, allocated once. The "3.3 KB across two instances" written here and
+  in the spike's own sdkconfig comment overstates it; at 257 it is ~257 bytes.
+- **`MAX_CONNECTIONS` above 1 is only needed for the GATT mesh-peer variant.** The
+  adv-only spike commits never touched it; Phase 3 raised it to 2 and said so. A
+  connectionless adv-only bearer needs no extra connection slot, so it is cheaper than
+  the table above, which measures the expensive variant.
+
+Not measured: stock **on-device** heap. The board kept booting its existing image through
+both a flash and an otadata erase, so the heap delta is bounded by inference while the
+static delta is measured. Also note the shared
+`framework-arduinoespressif32-libs/esp32s3/sdkconfig` now carries the mesh settings - any
+later stock S3 build needs the lib package moved out and reinstalled first, or it
+silently links the rebuilt NimBLE.
+
 ### The shape to keep
 
 Connection count is the reason not to scale by adding links: centrals hold only a
