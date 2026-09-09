@@ -1458,16 +1458,47 @@ Two corrections to what was written before:
   after no bond is taken - which also answers the "does iOS keep serving after a
   refused bond" question for macOS - while ours refuses.
 
-Where it fails: **inside the peripheral's `bluetoothd`, before our application is
-called.** The peripheral's link reports no subscriber, no fault, and neither
-`StartNotify` nor `AcquireNotify` reaches the exported object - the refusal
-instrumentation added in `fd94267` says so. BlueZ returns `0x0E` on a CCC write
-when it cannot dispatch `StartNotify` to the application's proxy at all.
+Where it fails: **not where this note said, and no longer a mystery needing root.**
 
-**Next step needs root, so it is James's:** `sudo btmon` on the uConsole across one
-subscribe, or `bluetoothd -d`. Everything short of a privileged tracer has been
-tried - the D-Bus policy denies a non-root caller reaching our own exported object,
-so the proxy cannot be exercised from outside the process.
+The original reading was "inside the peripheral's `bluetoothd`, before our
+application is called", on the evidence that the peripheral saw no subscriber, no
+fault, and neither `StartNotify` nor `AcquireNotify` reaching the exported object.
+That evidence was real but the conclusion did not follow, because only one central
+had ever been tried against it.
+
+**An Android central subscribes to the same peripheral without trouble.** Pixel 6a
+running `GattLiveDeviceTest#sendsAsCentralAcrossAPeerLinkCycle` against the uConsole
+peripheral: the peripheral logs `subscribers=[bluez-subscribers]` and then
+`rx[gatt] opaque from !000a11ce` - `0xA11CE` being the test's own synthetic sender,
+so the frames are unambiguously the Pixel's and not a stray peer's. 117 of 120
+writes accepted across a link cycle. No fault, no refusal.
+
+So the peripheral's `bluetoothd` dispatches `StartNotify` perfectly well, and our
+GATT application serves it. **The `0x0E` belongs to the BlueZ central on
+`james-pc`** - which is the same adapter that refuses `RegisterAdvertisement`. One
+adapter is now the common factor in every "Linux BLE does not work" symptom on this
+bench, rather than two unrelated bugs.
+
+Running that isolation test made the case stronger still. `james-pc` as central
+against the MacBook does not reach `StartNotify` at all - it cannot complete a
+connect, failing `br-connection-key-missing` on every attempt, against the same Mac
+the **uConsole** central connects to and drives to `:ready` unbonded.
+
+So `james-pc`'s adapter now accounts for three separate symptoms that were filed as
+unrelated bugs:
+
+1. `RegisterAdvertisement` refused (`org.bluez.Error.Failed`), so no peripheral role
+2. `StartNotify` answered ATT `0x0E` as a central
+3. cannot connect at all to a Mac another Linux host connects to fine
+
+It is a **Realtek USB controller, HCI 5.1 (0xa), revision `0xdfc6`**; the uConsole's
+CM5 is not. Nothing here is a node-kmp defect, and no `btmon` run is needed to say
+so. What would settle the last of it is a different USB adapter in `james-pc`.
+
+The one thing still genuinely unproven about the peripheral role: a **BlueZ**
+central subscribing to it. Android does, and that is what moved the fault off the
+peripheral, but Linux-to-Linux notify has never once succeeded on this bench and
+cannot until `james-pc` has a working adapter.
 
 ### The second defect: a connect storm nobody's guard caught
 
