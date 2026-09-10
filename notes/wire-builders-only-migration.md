@@ -1,22 +1,18 @@
 # Wire `buildersOnly`: making the generated protos binary-stable
 
-A migration plan for `protobufs`, `android`, `meshtastic-sdk`,
-`meshtastic-node-kmp` and `TAKPacket-SDK`.
+A migration for `protobufs`, `TAKPacket-SDK`, `meshtastic-node-kmp`,
+`meshtastic-sdk` and `android`. Executed as one coordinated change on
+2026-09-09, not as phases.
 
-**This is on the critical path to shipping `meshtastic-node-kmp` as a product**
-(confirmed 2026-09-09). It is not a someday cleanup. The reasoning is in *Why
-this is blocking* below, and the short version is that a released node-kmp
-without it cannot be consumed by `android` at all, and every release shipped
-before it makes the eventual migration strictly more expensive.
+**On the critical path to shipping `meshtastic-node-kmp` as a product.** A
+released node-kmp without it cannot be consumed by `android` at all, because
+the two repos deliberately sit on different `protobufs` pins and Wire's
+generated Kotlin is binary compatible only at an exact version match.
 
-The cheap workaround described below (`-PprotobufsVersion`) covers local
-development in the meantime. It does not survive contact with a published
-artifact, which is the whole point.
-
-Everything here was measured against the repos as they stood on 2026-09-09,
-Wire 6.4.7, `protobufs` at `ca2cb1a`. Where a claim came from generating code
-rather than from documentation, it says so - the Wire docs do not mention the
-single most important consequence.
+Measured against the repos as they stood on 2026-09-09, Wire 6.4.7,
+`protobufs` at `8db5d3e`. Everything below was compiled and run, not just
+generated and read - which is how the two blockers in *What it actually costs*
+were found.
 
 ## The problem
 
@@ -35,13 +31,13 @@ changes that signature, so a consumer compiled against a different copy of
 
 The cause on the day was `NodeInfo` gaining a single `heard_on_current_lora`
 bool ([protobufs #1061](https://github.com/meshtastic/protobufs/pull/1061)).
-Four properties make this a bad failure:
+Four properties make it a bad failure:
 
 - **`buf breaking use:[FILE]` cannot catch it.** Nothing about it is a wire
-  break. The encoded bytes stay compatible in both directions; only the JVM
-  signature moved.
-- **Both POMs claim agreement.** The metadata is not wrong, it is irrelevant -
-  the mismatch is between bytecode and bytecode.
+  break. The encoded bytes stay compatible both ways; only the JVM signature
+  moved.
+- **Both POMs claim agreement.** The metadata is not wrong, it is irrelevant.
+  The mismatch is between bytecode and bytecode.
 - **Gradle actively selects the broken pair.** Two pins on one classpath
   resolve to the higher, which is exactly the combination that fails.
 - **It surfaces far from its cause.** In the diagnosed case it was thrown
@@ -51,296 +47,293 @@ Four properties make this a bad failure:
 A version range cannot express "recompile me", so the consumer needs the
 dependency *rebuilt*, not re-resolved.
 
-### Where it bites, and where it does not
-
 It bites only where **two independently compiled artifacts share generated
-types**. Inside one build it cannot happen, because everything compiles against
-one copy.
+types**. Inside one build it cannot happen. It did not bite while the adapter
+spikes used composite builds, because a composite recompiles node-kmp against
+the consumer's protos; moving to a published artifact is what surfaced it.
 
-Today that is exactly one situation: `meshtastic-node-kmp` published as an
-artifact and consumed by `android` or `meshtastic-sdk`, which is what the
-adapter spikes do. It did not bite while those spikes used composite builds,
-because a composite *recompiles* node-kmp against the consumer's protos. Moving
-to a published artifact is what surfaced it - the composite build was hiding a
-real constraint.
-
-### The cheap workaround, already in place
-
-`meshtastic-node-kmp` (2026-09-09, commit `0c1aa70`) takes
-`-PprotobufsVersion=<v>`, which overrides the version catalog and publishes a
-second track at `0.1.0-pb<v>-SNAPSHOT` beside the default. `AGENTS.md` →
-*Consuming this from another repo* has the detail. Cost: one republish when the
-consumer's pin moves.
-
-**It only works because the consumer rebuilds the dependency**, which is
-exactly what a consumer of a published library does not do. So it covers
-side-by-side development and expires the moment node-kmp ships - it is a
-bridge to the migration, not a substitute for it.
-
-## What `buildersOnly` actually does
+## What `buildersOnly` does
 
 `wire { kotlin { buildersOnly = true } }`, added in Wire 4.4.1, documented only
 as *"True to turn visibility of all generated types' constructors to
 non-public."*
 
-Generated against our own schema (the flag flipped in
-`packages/kmp/build.gradle.kts`, generated, inspected, reverted):
+Measured by generating our own schema both ways and diffing all 163 files:
 
-```kotlin
-public class NodeInfo private constructor(   // NOT a data class
-  @field:WireField(tag = 1, ...) public val num: Int = 0,
-  ...
-) : Message<NodeInfo, NodeInfo.Builder>() {
+| | before | after |
+| --- | ---: | ---: |
+| `public fun copy(` | 142 | 0 |
+| `private constructor` | 0 | 129 |
+| real `newBuilder(): Builder` | 0 | 142 |
+| `equals`/`hashCode`/`toString` | 142 | 142 |
+| `data class` | 0 | 0 |
+| `componentN()` | 0 | 0 |
 
-  override fun newBuilder(): Builder { ... }   // every field copied across
-  override fun equals(other: Any?): Boolean { ... }
-  override fun hashCode(): Int { ... }
-  override fun toString(): String { ... }
+Three things the documentation does not say, and one thing the previous version
+of this note got wrong:
 
-  public class Builder : Message.Builder<NodeInfo, Builder>() {
-    @JvmField public var num: Int = 0
-    @JvmField public var user: User? = null
-    ...
-    override fun build(): NodeInfo = NodeInfo(...)
-  }
-}
-```
+1. **`copy()` disappears entirely.** This is the consequential one. `newBuilder()`
+   replaces it and carries `unknownFields` across, which a hand-rolled rebuild
+   would drop.
+2. **The types were never `data class`es.** Wire already emitted a plain class
+   with an explicit `copy()`. So nothing about `data` semantics changes, and
+   **destructuring was never available** - `componentN()` is absent on both
+   sides. Any migration plan with a "rewrite destructuring" work item is
+   describing a problem that does not exist.
+3. **Value semantics survive.** `equals`/`hashCode`/`toString` are still
+   generated explicitly.
+4. `buildersOnly` takes precedence over `javaInterop`, so `javaInterop` needs no
+   setting.
 
-Four findings, three of which the documentation does not state:
-
-1. **The constructor is `private`.** As documented.
-2. **There is no `copy()` at all** - the class is no longer a `data class`.
-   This is the consequential one and it appears nowhere in the docs or the
-   changelog. It is not a Kotlin `@ConsistentCopyVisibility` interaction; the
-   `data` modifier is simply not emitted.
-3. **`newBuilder()` is the replacement for `copy()`**, and it carries
-   `unknownFields` across, which a hand-rolled rebuild would drop.
-4. **`equals`/`hashCode`/`toString` are generated explicitly**, so value
-   semantics survive. Only `componentN()` destructuring is lost.
-
-Why this fixes the problem: a `Builder` is one property per field. Adding a
-proto field adds a property and leaves every existing signature untouched, so
-an artifact compiled against an older copy keeps linking. **Permanently
-binary-compatible for additive proto changes**, which is the only kind
+Why it fixes the problem: a `Builder` is one property per field. Adding a proto
+field adds a property and leaves every existing signature untouched, so an
+artifact compiled against an older copy keeps linking. **Permanently binary
+compatible for additive proto changes**, which is the only kind
 `buf breaking use:[FILE]` allows anyway.
 
-It does not change encoded bytes. `ADAPTER.encode`/`decode` are unaffected, so
-**all read paths and all serialization are untouched** - only construction and
-modification change shape. `boxOneOfsMinSize` and `makeImmutableCopies` are
-independent and keep their current values.
+### The encoded bytes do not change, proven twice
 
-`buildersOnly` takes precedence over `javaInterop`, so `javaInterop` does not
-need setting; the Builder is emitted either way. Confirmed by generating with
-`javaInterop` unset, as it is today.
+Statically, across all 163 generated types: all **2532**
+`encodeWithTag`/`encodedSizeWithTag` (adapter, tag) pairs and all **1143**
+decode tag-to-adapter mappings are identical. Only the decode *sink* moves,
+from a local variable to a builder setter.
 
-## What it costs
+At runtime: `TAKPacket-SDK` regenerates 47 golden `.bin` wire frames plus its
+`.pb` corpus from 47 CoT XML fixtures. After the rewrite all **103** files are
+byte-identical, and `compression-report.md` differs only in its `Generated:`
+date, so every compression ratio and byte count matches too. `atak.proto` is
+substantively unchanged between `v2.7.26` and master (the 29/29 diff is the
+emdash cleanup), so the schema bump cannot account for that.
 
-Call sites needing rewriting, measured 2026-09-09. "Production" is everything
-outside a test source set.
+## What it actually costs
 
-| Repo | Production | Test | Total |
-| --- | ---: | ---: | ---: |
-| `android` | 523 | 1400 | 1923 |
-| `meshtastic-sdk` | 169 | 589 | 758 |
-| `meshtastic-node-kmp` | 120 | 113 | 233 |
-| `TAKPacket-SDK` | 0 | 0 | 0 |
-| **Total** | **812** | **2102** | **2914** |
+Two blockers that only a compile finds. A plan built on generating and reading
+the output will miss both.
 
-Of those, the `.copy(field_name = …)` sites - the read-modify-write ones, which
-are the fiddly half - are 209 in `android`, 18 in `meshtastic-sdk`, 16 in
-`meshtastic-node-kmp`.
+### 1. `makeImmutableCopies` must go back on
 
-Reproduce the counts with:
-
-```sh
-P='\b(MeshPacket|FromRadio|ToRadio|AdminMessage|NodeInfo|User|Position|Telemetry|ChannelSettings|DeviceMetrics|Data|Config|ModuleConfig|Channel)\(|\.copy\(\s*[a-z]+_[a-z_]+\s*='
-grep -rn --include='*.kt' -E "$P" <repo> --exclude-dir=build --exclude-dir=.git
-```
-
-Two things make this less alarming than the total:
-
-- **72% of it is test code**, which is mechanical and fails loudly. The risk
-  concentrates in the 812 production sites.
-- **`TAKPacket-SDK` is not affected at all.** It constructs no Meshtastic proto
-  types directly.
-
-The hotspots are heavily concentrated - `android`'s top six files are all
-tests, led by `RadioConfigViewModelTest.kt` (184 sites); `meshtastic-sdk`'s
-worst production file is `internal/AdminApiImpl.kt` (63); `node-kmp`'s are
-`LocalRadio.kt` (40) and `AdminService.kt` (35).
-
-## Why this is blocking
-
-`meshtastic-node-kmp` is intended to ship as a product. Three consequences
-follow, and the first one is the decisive one.
-
-**1. A released node-kmp is unusable by `android` as things stand.** `android`
-normally tracks an unreleased `protobufs` snapshot - it is where proto changes
-originate, so it is routinely ahead of the last release (on 2026-09-09, 31
-commits ahead). node-kmp pins releases on purpose, because the pin bump is its
-parity review checkpoint. Those two positions are both correct and they are
-irreconcilable across a published artifact: whichever pin the release carries,
-the other consumer gets `NoSuchMethodError`. `-PprotobufsVersion` resolves it
-by rebuilding locally, which a consumer of a *published* library does not do.
-So without `buildersOnly`, the flagship consumer cannot adopt the flagship
-artifact.
-
-**2. Every release shipped before the migration raises its cost.** Once
-external consumers exist, the constructor shape is public API. Changing it then
-means a major version, a deprecation window, and a migration those consumers
-must perform on our schedule rather than their own. Doing it before the first
-public release costs nothing but our own call sites - and it is the *same* work
-either way.
-
-**3. Pin-matching becomes a support burden rather than a chore.** Today the
-failure lands on the person who caused it, with the repos in front of them.
-After release it lands on a stranger, at runtime, with a `NoSuchMethodError`
-naming a constructor and nothing pointing at the version skew.
-
-**Sequencing: this should land before node-kmp's first published release.**
-That release is already gated on adding a publish repository (see
-`meshtastic-node-kmp/AGENTS.md` → *Before this can go public*); this belongs in
-the same gate. Phases 1 and 2 below - `protobufs` publishing both shapes, and
-node-kmp migrating - are the blocking pair. Phases 3 and 4 (`meshtastic-sdk`,
-`android`) can follow at their own pace *provided* Phase 1 has shipped, because
-the parallel artifact is what decouples them.
-
-Secondary triggers, if the release slips:
-
-- A second independently-published Kotlin library starts exposing proto types
-  (an `apple` KMP shim, a third-party consumer).
-- The `NoSuchMethodError` class of bug is hit by anyone other than us.
-
-## Migration strategy: parallel artifact, not a flag day
-
-Flipping the flag in `protobufs` changes every Kotlin consumer in one release.
-With 2914 call sites across three repos that cannot land atomically, and a
-half-migrated consumer does not compile.
-
-**Publish both shapes for one release cycle instead.** `protobufs` takes its
-publishing coordinates from `packages/kmp/gradle.properties`
-(`GROUP=org.meshtastic`, `POM_ARTIFACT_ID=protobufs`) via
-`com.vanniktech.maven.publish`. A second Gradle module reading the same proto
-sources with `buildersOnly = true` and `POM_ARTIFACT_ID=protobufs-builders`
-publishes a parallel artifact with identical package names.
-
-That lets each consumer migrate on its own schedule by changing one catalog
-line, verify, and merge independently. When the last consumer is across, the
-builders module becomes the only one and the old artifact is deprecated.
-
-The package names collide, so **no consumer may depend on both at once**. That
-is a feature: the clash is a compile error, not a runtime surprise.
-
-### Phases
-
-**Phase 0 - decide, in `protobufs`.** Confirm the parallel-artifact approach
-and that `protobufs-builders` is the name we want to live with. Nothing else
-starts until this is settled, because the artifact id ends up in four version
-catalogs.
-
-**Phase 1 - `protobufs` publishes both.** One new module, one
-`POM_ARTIFACT_ID`, `buildersOnly = true`, everything else identical. Verify by
-decoding a fixture with each artifact and asserting byte-identical output, so
-"the bytes did not change" is proven rather than assumed. Ship it in a normal
-release.
-
-**Phase 2 - `meshtastic-node-kmp` migrates. Blocking for its first release.**
-It is the smallest (233 sites), it is private, its CI is off, and it is the
-repo whose publication forces the issue. It also proves the migration shape on
-a real codebase before either app commits. Its `checkKotlinAbi` dump will move
-- that is expected and is the point at which the public ABI change gets
-reviewed, which is exactly the review that should happen once rather than after
-strangers depend on it.
-
-Phases 1 and 2 are the pair that must land before node-kmp publishes to a
-remote. The two below are not blocking, because the parallel artifact from
-Phase 1 lets each consumer move independently.
-
-**Phase 3 - `meshtastic-sdk` (758 sites).** Do `internal/AdminApiImpl.kt` (63)
-first as the pilot. The SDK has an external downstream consumer outside this
-workspace, so this phase is a **breaking API change for them** if proto types
-appear in its public surface - check that before starting, and treat it as a
-major-version bump if so.
-
-**Phase 4 - `android` (1923 sites).** Largest, but latest and lowest-risk once
-the pattern is established twice. Split by module, one PR per `core:*` /
-`feature:*` module, production before tests within each. Do not let one PR span
-modules - the merge queue ejects on semantic conflicts and a 500-file PR will
-never land.
-
-`android` is the consumer that most needs this finished, since it is the one
-whose snapshot pin the current scheme cannot serve - so while Phase 4 is not
-blocking for node-kmp's release, it *is* blocking for android actually
-consuming it.
-
-**Phase 5 - retire.** `protobufs` drops the non-builders module,
-`POM_ARTIFACT_ID` returns to `protobufs`, consumers change one catalog line
-back. Deprecate rather than delete for one release.
-
-### Mechanical rules for the rewrite
-
-Construction, named arguments:
+`buildersOnly = true` with `makeImmutableCopies = false` **does not compile**.
+For a repeated field Wire emits the bare field name as the initialiser, which
+was a valid constructor parameter in the old shape but is a self-reference once
+the constructor takes a `Builder`:
 
 ```kotlin
-// before
-NodeInfo(num = 42, user = user, hops_away = 3)
-// after
-NodeInfo.Builder().apply { num = 42; this.user = user; hops_away = 3 }.build()
+public val chunks: List<Int> = chunks   // Variable 'chunks' must be initialized
 ```
 
-Read-modify-write - **always `newBuilder()`**, never a hand-rolled rebuild,
-because `newBuilder()` carries `unknownFields` and a rebuild silently drops
-forward-compatible data from newer firmware:
+32 such initialisers across 20 types. Setting `makeImmutableCopies = true`
+fixes all of them (`immutableCopyOf("chunks", builder.chunks)`). Worth an
+upstream Wire bug.
+
+This costs nothing here, which the old comment in `packages/kmp/build.gradle.kts`
+obscured. Copies were disabled "to reduce allocations on high-frequency decode
+paths (mesh packets)" - but **no hot-path type has a repeated field at all**.
+`MeshPacket`, `Data`, `Position`, `NodeInfo`, `Telemetry`, `DeviceMetrics`,
+`FromRadio`, `ToRadio` and `User` are scalar/message only. The 20 affected
+types are config and bulk: `ChannelSet`, `Config`, `ModuleConfig`,
+`DeviceState`, `NodeDatabase`, `RouteDiscovery`, `NeighborInfo` and the TAK
+types.
+
+### 2. `.apply { }` silently corrupts data - use `.also { wb -> }`
+
+The obvious rewrite is wrong:
 
 ```kotlin
-// before
-admin.copy(get_config_response = config)
-// after
-admin.newBuilder().apply { get_config_response = config }.build()
+// WRONG. Inside apply, the Builder's own `model` property shadows the outer
+// `model`, so this reads the builder's empty default and always writes "".
+X.Builder().apply { this.model = model ?: "" }.build()
+
+// RIGHT. also takes the builder as a parameter, so nothing shadows.
+X.Builder().also { wb -> wb.model = model ?: "" }.build()
 ```
 
-Consider adding a small `buildX { }` helper per hot type in each repo's test
-support rather than 1400 `.apply { }.build()` chains; the tests are where the
-verbosity actually hurts. Decide that in Phase 2 and apply it consistently.
+Caught in `TAKPacket-SDK` only because `-Werror` turned "elvis always returns
+the left operand" into an error. Without that warning it compiles clean and
+produces wrong data. `wb` is unused across all four consumer repos.
 
-Destructuring (`val (a, b) = proto`) breaks and has no builder equivalent -
-rewrite to property reads. Rare, but grep for it per repo before starting.
+The full rule set, and the only forms that should appear in a diff:
 
-### Verification per phase
+```kotlin
+X(a = 1, b = c)  ->  X.Builder().also { wb -> wb.a = 1; wb.b = c }.build()
+X()              ->  X.Builder().build()
+x.copy(a = 1)    ->  x.newBuilder().also { wb -> wb.a = 1 }.build()
+copy(a = 1)      ->  this.newBuilder().also { wb -> wb.a = 1 }.build()
+```
 
-- Byte-identical encode/decode against a fixture corpus, at the `protobufs`
-  boundary (Phase 1) and per consumer.
-- Each repo's own full gate, no exclusions.
-- `meshtastic-node-kmp`: `checkKotlinAbi` diff reviewed rather than blindly
-  updated.
-- The end-to-end proof that motivated all of this: `node-kmp` published from
-  its own default pin, consumed by an `android` build on a *different* pin,
-  with the phone-API handshake test passing. That is the assertion this whole
-  migration exists to make true, and it should be an explicit acceptance check
-  at the end - not inferred from green builds.
+Always `newBuilder()` for read-modify-write, never a rebuild from fields: it
+carries `unknownFields`, and a rebuild silently drops forward-compatible data
+from newer firmware. No `buildX { }` helpers - they were considered and
+rejected, because a helper per hot type is a second migration later.
+
+## Who is affected
+
+| Repo | Files | Sites | How it consumes protobufs |
+| --- | ---: | ---: | --- |
+| `protobufs` | 1 | 1 | producer. **No `.kt` sources of its own**, so the change is the flag line |
+| `TAKPacket-SDK` | 1 | 19 | `commonMain implementation`, and re-exports proto types |
+| `meshtastic-node-kmp` | 36 | 319 | pinned release |
+| `meshtastic-sdk` | 62 | 1078 | pinned release |
+| `android` | 265 | 2698 | pinned **snapshot** on `main` |
+
+Sites are what the codemod rewrote; a small judgement residue follows in each
+repo. Not affected, checked rather than assumed:
+
+- **`MQTTastic-Client-KMP`** does depend on `org.meshtastic:protobufs`, but only
+  in its unpublished `sample` module and only to **decode**
+  (`ServiceEnvelope.ADAPTER.decode`) plus the `PortNum` enum. Enums have no
+  builders and `ADAPTER` is untouched, so it needs no change. Its two apparent
+  construction sites are kotlinx.coroutines `Channel(` in a test fake.
+- **`kzstd`** has no protobufs dependency.
+- **`firmware`, `apple`, `meshtastic-python`** consume the `.proto` submodule,
+  not the Kotlin artifact.
+
+**`TAKPacket-SDK` is a serial prerequisite for `android`**, not a parallel lane.
+`android` consumes the *published* `org.meshtastic:takpacket-sdk-jvm`, which is
+compiled against constructor-shaped protos and re-exports them, so a
+buildersOnly `android` on the old TAK artifact hits exactly the
+`NoSuchMethodError` this migration exists to kill. TAK must be rebuilt and
+republished first.
+
+### Counting sites: do not use a bare grep
+
+The previous version of this note put `android` at 1923 sites from a 14-name
+regex. That number is wrong in both directions. The regex omitted every TAK
+message (`TAKPacket`, `TAKPacketV2`, `Contact`, `GeoChat`, `Group`), which is
+why it scored `TAKPacket-SDK` at 0 when the answer is 19. And it matched far
+too much: `Channel(` alone hits kotlinx.coroutines' `Channel(` and android's
+hand-written `org.meshtastic.core.model.Channel`.
+
+Seven generated **message** names collide with hand-written classes in these
+repos: `Channel`, `Config`, `Data`, `Position`, `Route`, `User`, `Waypoint`.
+node-kmp's `PacketCodec` declares its own `NodeInfo`, `Position`, `Waypoint`,
+`Neighbor` and `NeighborInfo`; `MeshNode` has its own `Config`. A name match is
+not a proto. Resolve by **import**: it is the proto only if the file has
+`import org.meshtastic.proto.<Name>` or writes it fully qualified. The
+authoritative list is the jar, not the `.proto` files - 181 types have a
+`Builder` (142 top level, 39 nested), out of 175 messages and 76 enums.
+
+## How it was done
+
+A deterministic codemod plus the compiler as the oracle, not a hand sweep and
+not per-file agents. `scripts` for it live outside the repos; the shape is:
+
+1. Take the Builder-bearing type list from the published jar.
+2. Rewrite construction with a Kotlin-aware scanner (strings, char literals,
+   nesting block comments), import-scoped per file, iterated to a fixpoint so
+   sites exposed by an outer rewrite are caught. Skip anything positional or
+   unimported and report it.
+3. **Leave `.copy(` alone.** Only the compiler knows whether a receiver is a
+   proto. Convert exactly the sites it flags.
+4. Compile, convert the flagged copies, repeat. Kotlin stops at the first
+   failing module, so each round reveals the next one.
+5. `spotlessApply` owns the formatting. Do not hand-indent the output.
+
+The two error shapes to parse. Construction:
+
+```
+No parameter with name 'X' found.
+No value passed for parameter 'builder'.
+```
+
+A lost `copy()`, which K2 reports either as a misresolution onto the stdlib
+`Map.Entry.copy()` extension or as a bare receiver mismatch, both with
+`Cannot infer type for type parameter 'K'/'V'` and an `ExperimentalStdlibApi`
+opt-in error as cascade noise:
+
+```
+Candidate 'fun <K, V> Map.Entry<K, V>.copy(): Map.Entry<K, V>' is inapplicable
+    because of a receiver type mismatch.
+Unresolved reference. None of the following candidates is applicable because of
+    a receiver type mismatch:
+```
+
+That took ~4100 sites down to single-digit or low-tens residue per repo.
+
+## Landing it
+
+No parallel artifact, no phases. **`protobufs-builders` solves a problem that
+version numbers already solve**: Maven Central releases are immutable and every
+Kotlin consumer pins an exact version, so a buildersOnly `protobufs` breaks
+nobody until each consumer chooses to bump. Publishing two shapes of the same
+package would only add a name to four version catalogs and a collision that
+must never be resolved wrongly.
+
+Decisions taken 2026-09-09:
+
+- **No version bump.** buildersOnly rides with the next `protobufs` tag,
+  whatever it is.
+- **`publishToMavenLocal` for verification**, not a branch snapshot and not
+  merging `protobufs` first. Consumer branches pin
+  `2.8.1-buildersonly-SNAPSHOT` (and `takpacket-sdk` `0.9.2-buildersonly-SNAPSHOT`)
+  which exist only in `~/.m2`. **Accepted consequence: every consumer PR is red
+  in CI until landing day**, and those pin lines are placeholders to be swapped
+  for the real tag.
+- `mavenLocal()` is injected with `gradle -I <init script>` and never committed.
+  Inject it at **settings** level only for `android`, `meshtastic-sdk` and
+  `meshtastic-node-kmp`: adding project-level repositories makes Gradle ignore
+  the settings repositories entirely and mavenCentral vanishes. `TAKPacket-SDK`
+  is the opposite case, declaring repositories per project.
+
+Order on the day: `protobufs` merges and gets tagged, `TAKPacket-SDK` releases
+against that tag, then `android` bumps both pins; `meshtastic-node-kmp` and
+`meshtastic-sdk` need only the `protobufs` tag and are independent of TAK.
+
+### Per repo
+
+- **`protobufs`** - two settings in `packages/kmp/build.gradle.kts`. Nothing
+  else, because the repo has no Kotlin sources.
+- **`TAKPacket-SDK`** - repo convention is *do not auto-commit*, so the change
+  is left staged. Its goldens are the runtime proof above. `apiCheck` passes
+  (its bcv config already ignores `org.meshtastic.proto`).
+- **`meshtastic-node-kmp`** - `checkKotlinAbi` will move. That diff is the
+  public ABI change and should be reviewed once, now, rather than after
+  strangers depend on it.
+- **`meshtastic-sdk`** - has an external downstream consumer outside this
+  workspace, so if proto types appear in its public surface this is a
+  **source-breaking change for them**. Do not `apiDump` blindly; read the
+  diff and treat the version bump as a governance decision.
+- **`android`** - largest but latest. Needs the TAK republish before it can be
+  trusted green, since the old TAK artifact would fail at runtime, not at
+  compile time.
+
+### Verification per repo
+
+- Each repo's own full gate, no exclusions. `android`'s is the baseline in its
+  `CLAUDE.md`, not just a compile.
+- `apiCheck` / `checkKotlinAbi` read, never blindly regenerated.
+- The end-to-end proof this whole migration exists to make true, and it should
+  be asserted explicitly rather than inferred from green builds: **node-kmp
+  published from its own default pin, consumed by an `android` build on a
+  different pin, with the phone-API handshake test passing.**
 
 ## Alternatives considered and rejected
 
+- **A parallel `protobufs-builders` artifact for one release cycle.** Redundant,
+  as above.
 - **Version ranges / `resolutionStrategy` force.** Cannot work: the requirement
   is recompilation, not re-resolution, and forcing produces exactly the
   mismatched pair.
-- **Shading protobufs into `node-kmp`.** Correct in principle for its
-  bytes-only seams (`PhoneApiSession` exposes only `ByteArray`), but Shadow is
-  JVM-only - there is no KMP relocation - and `nodeDefaults`, `AdminService`
-  and `BackupPreferences` are proto-shaped in the public API regardless.
+- **Shading protobufs into `node-kmp`.** Correct in principle for its bytes-only
+  seams, but Shadow is JVM-only - there is no KMP relocation - and
+  `nodeDefaults`, `AdminService` and `BackupPreferences` are proto-shaped in the
+  public API regardless.
 - **Keeping every repo on one pin by policy.** Fails on the first day someone
   needs an unreleased proto field, which is `android`'s normal working mode.
 - **`@Deprecated(level = HIDDEN)` retention of old constructors.** Wire
   generates the constructor; we do not, so there is nowhere to put it.
+- **Per-file LLM agents for the sweep.** Used only for the judgement residue.
+  The bulk is a deterministic transform, and a script does it more cheaply and
+  more reliably than 4100 model calls.
 
 ## Related
 
-- `meshtastic-node-kmp/AGENTS.md` → *Consuming this from another repo* - the
-  `-PprotobufsVersion` track and why it overrides the catalog rather than the
-  resolution.
+- `meshtastic-node-kmp/AGENTS.md` -> *Consuming this from another repo* - the
+  `-PprotobufsVersion` track, which covers side-by-side development and expires
+  the moment node-kmp ships, because a consumer of a published library does not
+  rebuild its dependencies.
 - [`cross-repo-contracts.md`](./cross-repo-contracts.md) - the wire-level rules
-  this sits underneath. Note that the "additive changes are safe" rule stated
-  there is a *wire* rule; it is not a binary-compatibility rule for Wire's
-  Kotlin output, which is the whole subject of this document.
+  this sits underneath. The "additive changes are safe" rule stated there is a
+  *wire* rule; it is not a binary-compatibility rule for Wire's Kotlin output,
+  which is the whole subject of this document.
 - `2026-09-05-heard-on-current-lora.md` - the field that triggered the
   diagnosis.

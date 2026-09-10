@@ -77,6 +77,16 @@ SDK).
   happen. It blocks shipping `meshtastic-node-kmp` as a product, and the fix
   (Wire's `buildersOnly`) plus the interim `-PprotobufsVersion` workaround are
   in [`notes/wire-builders-only-migration.md`](./notes/wire-builders-only-migration.md).
+- **`TAKPacket-SDK` is a `protobufs` consumer too, and it sits under `android`.**
+  Its Kotlin module takes `org.meshtastic:protobufs` as a `commonMain
+  implementation` and *re-exports* the generated types (its bcv config ignores
+  `org.meshtastic.proto`), so protobufs ships transitively in its POM. `android`
+  consumes the published `org.meshtastic:takpacket-sdk-jvm`, which means a
+  protobufs codegen change has to be rebuilt and republished *through* TAK
+  before `android` can be trusted - the failure is at runtime, not at compile
+  time. `MQTTastic-Client-KMP` also depends on protobufs but only in its
+  unpublished `sample`, and only to `ADAPTER.decode` plus a `PortNum` enum, so
+  codegen shape changes do not reach it. `kzstd` has no protobufs dependency.
 - `meshtastic-sdk` is consumed by **neither `android` nor `apple`** (checked
   2026-09-05: no `org.meshtastic.sdk` import in either; both talk to radios
   through their own phone-API transports) - but it **does** have a downstream
