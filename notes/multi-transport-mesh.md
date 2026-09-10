@@ -458,19 +458,22 @@ Once Phases 1–2 exist, these are "implement one interface":
   Android - far more bandwidth than BLE, on the existing seam (Knit ships this).
   **Built and proven on hardware 2026-09-09** (Pixel 6a ↔ Pixel 9 Pro, both
   directions).
-- **Apple Wi-Fi Aware - shelved 2026-09-09, noted deliberately.** NAN is a Wi-Fi
-  Alliance standard and iOS 26 / macOS 26 ship a `WiFiAware` framework, so the
-  "Android only" line this workspace and node-kmp both carried was wrong. Apple's
-  model is the obstacle, not the absence of one: paired devices only, paired
-  through a user-driven `DevicePairingView`, carrying TCP over an NDP data path via
-  `NWListener`/`NWConnection`, behind the `com.apple.developer.wifi-aware`
-  entitlement. A mesh bearer cannot prompt to pair each neighbour, so this is a
-  **separate transport, not an `actual`** - the call GATT already made. Apple also
-  requires a Wi-Fi Aware **4.0** peer (Pixel 9 reportedly is not one), and
-  Android↔Apple data paths currently fail at NDP setup with radars open. So:
-  Apple↔Apple is the plausible first step, cross-platform Aware is not dependable
-  yet, and none of it is buildable without the Mac. Detail in
-  `meshtastic-node-kmp/AGENTS.md` and the transport's KDoc.
+- **Apple Wi-Fi Aware - shelved 2026-09-09, researched 2026-09-09.** NAN is a
+  Wi-Fi Alliance standard and Apple ships a `WiFiAware` framework, so the "Android
+  only" line this workspace and node-kmp both carried was wrong. What is wrong with
+  it is a **layer**, not a feature: NAN has a discovery layer (connectionless
+  follow-up frames, which is all our bearer uses) and an NDP data path, and Apple
+  exposes only the second, only to paired devices. There is no message or datagram
+  symbol anywhere in the framework. A mesh bearer cannot prompt to pair each
+  neighbour, so this is a **separate transport, not an `actual`** - the call GATT
+  already made. Three corrections to what this note used to say: the platforms are
+  **iOS 26, iPadOS 26 and Mac Catalyst 26**, there is **no macOS**; the Pixel 9 Pro
+  **is** a 4.0 peer on this bench (`isNanPairingSupported=true`, measured
+  2026-09-09, where the Pixel 6a on the same build is false); and the Android↔Apple
+  NDP failures are sourced to Apple-forum radars FB18751572, FB19568037, FB19570341
+  and FB19683706, all from 2025 and not re-verified since. Full research, prior art
+  and the pending bench experiment in
+  [`notes/wifi-aware-cross-platform.md`](./wifi-aware-cross-platform.md).
 - **Content-digest anti-entropy sync** (Knit / IPFS Bitswap / range-based set
   reconciliation): an idle mesh does zero data-path work; a new message triggers a
   *targeted* sync only with peers that need it. Directly answers the "N writes per
@@ -1817,6 +1820,66 @@ bigger MTU alone would not fix it. Available on every
 platform that matters: Android `createL2capChannel` (API 29+), iOS `CBL2CAPChannel`,
 BlueZ L2CAP sockets. Firmware would need to publish a PSM. This is a **firmware +
 client** change, not a node-kmp-only one.
+
+### L2CAP CoC client-to-client: proven cross-platform and unpaired, 2026-09-09
+
+Lever 1 above is about the phone-to-**firmware** link, and every cost in it -
+firmware publishing a PSM, `CONFIG_BT_NIMBLE_L2CAP_COC_MAX_NUM`, a fork of Bluefruit's
+init to re-derive the SoftDevice RAM base - is a firmware cost. **Client-to-client CoC
+has none of them, and it is the one BLE shape both Android and CoreBluetooth can do
+with no pairing at all.** That was never tested here. It is now.
+
+Setup: a Mac running `notes/spikes/l2cap/l2cap-peripheral` (a ~100-line Swift CLI:
+`CBPeripheralManager`, `publishL2CAPChannel(withEncryption: false)`, PSM exposed on a
+characteristic under a custom advertised service, echoes what it receives) against the
+Pixel 9 Pro running `L2capCocProbeDeviceTest` on branch `jamesarich/spike-l2cap-coc`.
+CoreBluetooth is the same framework on macOS and iOS and `publishL2CAPChannel` needs no
+entitlement, so the Mac stands in for the iPad and needs no signed app - which matters,
+because the Wi-Fi Aware entitlement turned out to need a paid team.
+
+**Both questions answered.** Android side:
+
+    peer 2C:CA:16:30:A7:A2 bondState(before)=BOND_NONE
+    PSM read over GATT = 192
+    CONNECTED, isConnected=true
+    wrote 22 B
+    read 27 B: echo:hello from Pixel 9 Pro
+    bondState(after)=BOND_NONE
+    VERDICT: CoC carried bytes with bondState BOND_NONE - no pairing, no prompt
+
+and the Mac agreeing from the other end: `L2CAP CHANNEL OPEN ... psm=192`, `rx 22 B`,
+`echoed 27 B`.
+
+- **No pairing, no bond, no prompt**, on either platform, across a channel that carried
+  a full round trip. `withEncryption: false` really does skip Security Mode 1 Level 3.
+  This is the thing GATT could not be made to do: this file spends pages on pairing
+  popups that could not be suppressed, and a BlueZ agent that is never consulted.
+- **PSM discovery is solved, not open.** The PSM is assigned at publish time and Apple
+  cannot advertise arbitrary bytes, but it *can* advertise a service UUID, and a GATT
+  read of a characteristic under that service carries the PSM fine. A
+  `CBMutableCharacteristic` created with a value is served from CoreBluetooth's own
+  cache without waking the delegate, so it costs the Apple side no code.
+
+What this does **not** yet say:
+
+- **Only one direction is proven**: Apple as peripheral/listener, Android as
+  central/dialer. That is the deployable direction, since iOS backgrounding favours the
+  peripheral role, but Android-as-listener (`listenUsingInsecureL2capChannel`) against a
+  CoreBluetooth central is untested.
+- **iOS is not macOS.** Same framework, and the entitlement-free path means an iPad test
+  is cheap, but it has not been run.
+- **Throughput, MTU and concurrent-channel limits are unmeasured**, and so is anything
+  about backgrounding, which is where an iOS bearer usually dies.
+- **API 29 floors the Android half** against a minSdk of 26, so this is capability-gated
+  rather than universal. GATT stays as the fallback, which is what Lever 1 already said.
+
+The shape this suggests, unbuilt: a `node-transport-ble-l2cap` sitting beside the GATT
+transport rather than replacing it, streaming rather than one-write-per-packet, and
+crucially **cross-platform without a pairing ceremony** - which is exactly the plane the
+Wi-Fi Aware research says we need and cannot get from Aware.
+[`notes/wifi-aware-cross-platform.md`](./wifi-aware-cross-platform.md) for why Aware
+cannot be it. Knit ships this shape as its own cross-platform plane
+(`docs/IOS_PORT_REVIEW.md` §1.1, `mesh/link/FramedLink.kt`).
 
 ### Lever 2 - extended advertising: already done, and this note was wrong
 

@@ -78,3 +78,7 @@
 # so it falls under the deny-all above like every other checkout here. It was
 # tracked content until 2026-09-02; its history moved with it via subtree split.
 __pycache__/
+
+# L2CAP CoC spike: the Apple half of the cross-platform probe
+!notes/spikes/
+!notes/spikes/**
