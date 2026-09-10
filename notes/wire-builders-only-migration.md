@@ -27,8 +27,18 @@ are placeholders.
 | `protobufs` | [#1076](https://github.com/meshtastic/protobufs/pull/1076) | 1 | Wire 7.0.0 + `oneofMode`, **stacked on #1074** |
 | `TAKPacket-SDK` | [#141](https://github.com/meshtastic/TAKPacket-SDK/pull/141) | 2 | prerequisite for android |
 | `meshtastic-node-kmp` | [#1](https://github.com/meshtastic/meshtastic-node-kmp/pull/1) | 42 | |
-| `meshtastic-sdk` | [#125](https://github.com/meshtastic/meshtastic-sdk/pull/125) | 64 | **split the 2.7.26 -> 2.8.x pin bump out** |
+| `meshtastic-sdk` | [#125](https://github.com/meshtastic/meshtastic-sdk/pull/125) | 64 | rebase onto #126, drop its `RadioMetrics` changes |
+| `meshtastic-sdk` | [#126](https://github.com/meshtastic/meshtastic-sdk/pull/126) | 3 | the schema bump, **split out and not draft** - green on published 2.8.0 |
 | `Meshtastic-Android` | [#7115](https://github.com/meshtastic/Meshtastic-Android/pull/7115) | 279 | lands last |
+
+The `meshtastic-sdk` schema bump separates cleanly, verified rather than
+assumed: with the pin at the published 2.8.0 and **no source changes at all**,
+the whole SDK produces exactly **one** compile error. 2.8.0 made `rx_rssi` an
+`optional int32` because 0 dBm is a real reading on an SX126x, and
+`toRadioMetrics()` was using `rx_rssi == 0` as its "no metrics" test - the
+exact ambiguity the field became optional to remove, so a genuine 0 dBm packet
+was being discarded. That is a firmware-side fix that would have been buried
+inside a 1078-site mechanical refactor, which is the argument for splitting.
 
 `TAKPacket-SDK`'s repo convention is not to auto-commit, so that branch was
 committed only because the work needed somewhere durable to live; the diff is
