@@ -683,8 +683,10 @@ inherit the desktop agent. Same defect class as the LoRa init spam fixed in
       `updateKotlinAbi` replaces `apiDump`. `keepLocallyUnsupportedTargets` keeps
       the committed declarations for a target the host cannot build, so **the gate
       has no exclusions on any host** and a Linux dump no longer empties
-      `node-desktop-ble-macos`'s macosArm64 klib. That half is *kept*, not checked -
-      only a Mac verifies it. Two dump changes fell out: the Android variant now has
+      `node-desktop-ble-macos`'s macosArm64 klib. On Linux that half is *kept*, not
+      checked - only a Mac compiles the target and verifies the dump. **Done
+      2026-09-09: `checkKotlinAbi` on darwin at `0c1aa70` passes with no drift in
+      any module's `api/`.** Two dump changes fell out: the Android variant now has
       a committed surface (`api/android/`), and a 0-byte lora klib dump BCV wrote
       for a module with no native targets is gone.
    3. **Kotlin 2.4.20.** 2.4.10's matrix stops at Gradle 9.5.0 / AGP 9.1.0 against
