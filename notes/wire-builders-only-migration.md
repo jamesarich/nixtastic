@@ -249,6 +249,53 @@ Unresolved reference. None of the following candidates is applicable because of
 
 That took ~4100 sites down to single-digit or low-tens residue per repo.
 
+**Compile every source set, not just the JVM target.** `jvmTestClasses` was the
+oracle for the bulk, and it is a trap: it never compiles `androidMain`,
+`androidHostTest`, the `google`/`fdroid` flavor test source sets, or the Apple
+targets. `android` looked finished and still had 22 sites hiding there, found
+only by `assembleDebug kmpSmokeCompile test allTests`. Run each repo's real
+gate before believing a number.
+
+Four shapes that need a human, all found this way:
+
+- **Import aliases.** `import org.meshtastic.proto.Position as ProtoPosition`
+  puts the proto in scope under another name, so a name-based type check misses
+  `ProtoPosition(...)` entirely. 46 alias imports across `android` and
+  `meshtastic-sdk`.
+- **Nullable receivers.** `x?.copy(a = 1)` must become
+  `x?.newBuilder()?.also { … }?.build()`. Convert only the first call and the
+  safe call stops covering the chain, leaving `.also` on a `Builder?`.
+- **Compound expressions.** `node.copy(user = node.user.copy(…))` where the
+  outer receiver is a hand-written `core.model.Node` and only the inner one is
+  a proto. The compiler reports one line; only one of the two copies may move.
+- **A build-then-rebuild round trip.** `X.Builder().build().newBuilder()`
+  allocates two messages to produce one. It appears when a pass converts the
+  constructor and leaves the trailing `.copy()` for the next pass.
+
+`Message.Builder` has **no public `unknownFields` property** either - only
+`addUnknownFields(ByteString)` - so `X(unknownFields = b)` becomes
+`X.Builder().addUnknownFields(b).build()`.
+
+### It costs android 27 detekt violations
+
+All in production code, and the cause is uniform rather than 27 separate
+problems:
+
+- **15 `CyclomaticComplexMethod`**, concentrated in
+  `feature/settings/**/*Config{ItemList,Screen}.kt`. Each setting row's
+  `formState.value.copy(field = x)` becomes an `also { }` lambda, and detekt
+  counts the lambda, so a screen with twenty rows gains twenty points of
+  "complexity" without gaining a branch. `MQTTConfigScreen` reaches 33 against
+  a limit of 15.
+- **7 `MagicNumber`.** `ignoreNamedArgument` defaults to true, so `X(hop_limit
+  = 3)` was exempt and `wb.hop_limit = 3` is not. The rule already excludes
+  test source sets.
+- **4 `LongMethod` and 1 `LargeClass`**, from the extra lines.
+
+None of it is a real complexity regression, so the choice is a house-style one:
+raise the two thresholds, suppress on the affected declarations, or extract the
+config screens. Not a decision the migration should make silently.
+
 ## Landing it
 
 No parallel artifact, no phases. **`protobufs-builders` solves a problem that
@@ -285,13 +332,15 @@ against that tag, then `android` bumps both pins; `meshtastic-node-kmp` and
 - **`TAKPacket-SDK`** - repo convention is *do not auto-commit*, so the change
   is left staged. Its goldens are the runtime proof above. `apiCheck` passes
   (its bcv config already ignores `org.meshtastic.proto`).
-- **`meshtastic-node-kmp`** - `checkKotlinAbi` will move. That diff is the
-  public ABI change and should be reviewed once, now, rather than after
-  strangers depend on it.
-- **`meshtastic-sdk`** - has an external downstream consumer outside this
-  workspace, so if proto types appear in its public surface this is a
-  **source-breaking change for them**. Do not `apiDump` blindly; read the
-  diff and treat the version bump as a governance decision.
+- **`meshtastic-node-kmp`** - `checkKotlinAbi` passes unchanged, which was not
+  what I expected: the proto types appear in its ABI dump as external
+  references, and none of its own signatures moved. So there is no ABI review
+  to hold here after all.
+- **`meshtastic-sdk`** - `checkKotlinAbi` also passes unchanged, so its
+  external downstream consumer keeps a compatible binary surface. Note the pin
+  here moved 2.7.26 -> 2.8.x, which is a **schema** bump carrying its own
+  semantics: `rx_rssi` became `optional int32`, and that, not `buildersOnly`,
+  is what broke `RadioMetrics`. Worth splitting from the migration.
 - **`android`** - largest but latest. Needs the TAK republish before it can be
   trusted green, since the old TAK artifact would fail at runtime, not at
   compile time.
