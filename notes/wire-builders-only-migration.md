@@ -369,6 +369,81 @@ against that tag, then `android` bumps both pins; `meshtastic-node-kmp` and
   published from its own default pin, consumed by an `android` build on a
   different pin, with the phone-API handshake test passing.**
 
+## Wire 7.0.0 (released 2026-09-10) does not change any of this
+
+Checked by generating our own schema with 7.0.0 and diffing against the 6.4.7
+buildersOnly output, not by reading the changelog.
+
+**`buildersOnly` is byte-for-byte the same feature.** 163 files either way, and
+the shape is identical: 129 private constructors, 142 real `newBuilder()`, 0
+`copy()`, 0 data classes. All 2532 `encodeWithTag`/`encodedSizeWithTag`
+(adapter, tag) pairs are unchanged, so **the bump alters no encoded bytes**.
+Nothing in the 7.x changelog touches the all-args constructor, `copy()`, or
+binary compatibility. The migration stands exactly as written.
+
+**Neither of our two Wire annoyances is fixed.** Both are about repeated
+fields, and both reproduce on 7.0.0:
+
+- `buildersOnly = true` with `makeImmutableCopies = false` still emits the same
+  32 self-referential initialisers. The coupling above stays.
+- The generated code still trips `UNNECESSARY_NOT_NULL_ASSERTION` 9 times, on
+  `MutableList<Int>`/`MutableList<Float>` receivers. RC01's "warning-free under
+  Kotlin 2.1" does not cover this, so `packages/kmp`'s `freeCompilerArgs`
+  suppression stays. Verified by removing it and building with
+  `allWarningsAsErrors`.
+
+One report upstream covers both, and 7.0.0 being the latest release makes it
+land better.
+
+### What is worth taking, in a separate PR
+
+Do not fold this into the buildersOnly change. A decode-semantics change does
+not belong in a 4100-site refactor.
+
+- **Security, and this is the real reason to bump.** 6.4.7 carries fixed
+  advisories: `GHSA-7xpr-hc2w-34m9` (negative lengths when skipping groups,
+  unchecked runtime exceptions instead of `ProtocolException`) and
+  `GHSA-9rm7-3qhh-h2mc` (oversized lengths and fixed-width values past the
+  reader limit). Every Meshtastic client decodes frames that arrived over the
+  air from a sender it cannot vouch for, and `android` already fuzzes that path
+  in `ReplayFuzzTest`.
+- **`oneofMode` (new in 7.0.0-alpha01) replaces our magic number.** We set
+  `boxOneOfsMinSize = 5000` purely to force flat nullable oneof properties, and
+  the comment there says so. `oneofMode = "flat"` is now the documented,
+  explicit spelling of that intent and still honours `boxOneOfsMinSize`.
+- **Oneofs decode in constant size per field** (#3691), which is the
+  `MeshPacket` hot path.
+
+### The one thing to validate before bumping
+
+⚠ **Decode semantics change on the packet path.** 42 generated types now route
+singular message fields through `decodeMessageOrMerge`. Concretely, in
+`MeshPacket`:
+
+```kotlin
+// 6.4.7:  4 -> builder.decoded(Data.ADAPTER.decode(reader))
+// 7.0.0:  4 -> builder.decoded(decodeMessageOrMerge(Data.ADAPTER, reader, builder.decoded))
+```
+
+`decoded` is a member of the `payload_variant` oneof. Where a field appeared
+twice on the wire, 6.4.7 kept the last occurrence and 7.0.0 merges them. That
+direction is the protobuf specification's rule for embedded messages, so this
+is Wire fixing a compliance gap rather than inventing behaviour - but it is
+still a behaviour change on frames that arrive from the air, and our schema has
+19 oneofs across 8 files. **Check it against the firmware's nanopb decode
+before bumping** (`firmware-is-the-sentinel-for-node-kmp`): if nanopb merges,
+the bump moves the Kotlin clients *toward* parity, and that is worth saying in
+the PR.
+
+Not applicable to us, checked rather than assumed: our schema has no
+`FieldMask`, no `redacted` fields, and no message named `Builder`, and the
+CamelCase-sealed-class break only affects `oneofMode = sealed_class`, which we
+do not use. The Gradle 8.2+ floor is satisfied (we are on 9.7.1), the plugin no
+longer applying the Kotlin plugin transitively is fine because
+`packages/kmp` applies it itself, and the provider-backed `set(...)` migration
+does not reach the three scalar options we set - verified by generating with
+7.0.0 and the DSL unchanged.
+
 ## Alternatives considered and rejected
 
 - **A parallel `protobufs-builders` artifact for one release cycle.** Redundant,
