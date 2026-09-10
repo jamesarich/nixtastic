@@ -14,6 +14,30 @@ Measured against the repos as they stood on 2026-09-09, Wire 6.4.7,
 generated and read - which is how the two blockers in *What it actually costs*
 were found.
 
+## The pull requests
+
+All draft, opened 2026-09-10. Every consumer PR is **red in CI by design**: its
+`protobufs` pin is `2.8.1-buildersonly-SNAPSHOT`, which exists only in a local
+`~/.m2`, so dependency resolution fails until `protobufs` tags. Those pin lines
+are placeholders.
+
+| Repo | PR | Files | Notes |
+| --- | --- | ---: | --- |
+| `protobufs` | [#1074](https://github.com/meshtastic/protobufs/pull/1074) | 1 | the flag. Mergeable on its own, breaks nobody |
+| `protobufs` | [#1076](https://github.com/meshtastic/protobufs/pull/1076) | 1 | Wire 7.0.0 + `oneofMode`, **stacked on #1074** |
+| `TAKPacket-SDK` | [#141](https://github.com/meshtastic/TAKPacket-SDK/pull/141) | 2 | prerequisite for android |
+| `meshtastic-node-kmp` | [#1](https://github.com/meshtastic/meshtastic-node-kmp/pull/1) | 42 | |
+| `meshtastic-sdk` | [#125](https://github.com/meshtastic/meshtastic-sdk/pull/125) | 64 | **split the 2.7.26 -> 2.8.x pin bump out** |
+| `Meshtastic-Android` | [#7115](https://github.com/meshtastic/Meshtastic-Android/pull/7115) | 279 | lands last |
+
+`TAKPacket-SDK`'s repo convention is not to auto-commit, so that branch was
+committed only because the work needed somewhere durable to live; the diff is
+also parked at `nixtastic/tak-buildersonly.patch`.
+
+Order on the day: `protobufs` tags, `TAKPacket-SDK` releases against that tag,
+then `android` bumps both pins. `meshtastic-node-kmp` and `meshtastic-sdk` need
+only the `protobufs` tag and are independent of TAK.
+
 ## The problem
 
 **Wire's generated Kotlin types are binary compatible only at an exact version
