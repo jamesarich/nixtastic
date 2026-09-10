@@ -414,26 +414,43 @@ not belong in a 4100-site refactor.
 - **Oneofs decode in constant size per field** (#3691), which is the
   `MeshPacket` hot path.
 
-### The one thing to validate before bumping
+### The decode change closes a firmware parity gap, it does not open one
 
-⚠ **Decode semantics change on the packet path.** 42 generated types now route
-singular message fields through `decodeMessageOrMerge`. Concretely, in
-`MeshPacket`:
+42 generated types now route singular message fields through
+`decodeMessageOrMerge`. In `MeshPacket`:
 
 ```kotlin
 // 6.4.7:  4 -> builder.decoded(Data.ADAPTER.decode(reader))
 // 7.0.0:  4 -> builder.decoded(decodeMessageOrMerge(Data.ADAPTER, reader, builder.decoded))
 ```
 
-`decoded` is a member of the `payload_variant` oneof. Where a field appeared
-twice on the wire, 6.4.7 kept the last occurrence and 7.0.0 merges them. That
-direction is the protobuf specification's rule for embedded messages, so this
-is Wire fixing a compliance gap rather than inventing behaviour - but it is
-still a behaviour change on frames that arrive from the air, and our schema has
-19 oneofs across 8 files. **Check it against the firmware's nanopb decode
-before bumping** (`firmware-is-the-sentinel-for-node-kmp`): if nanopb merges,
-the bump moves the Kotlin clients *toward* parity, and that is worth saying in
-the PR.
+`decoded` is a member of the `payload_variant` oneof. Measured all three
+decoders against the same eight bytes - a `MeshPacket` carrying field 4 twice,
+first `Data{portnum=1}`, then `Data{want_response=true}`:
+
+| Decoder | `portnum` | `want_response` | Behaviour |
+| --- | ---: | --- | --- |
+| firmware nanopb 0.4.9.2 | 1 | true | **merge** |
+| Wire 6.4.7 | 0 | true | **last-wins** |
+| Wire 7.0.0 | 1 | true | **merge** |
+
+**Wire 6.4.7 is the outlier, and 7.0.0 matches the firmware exactly.** So the
+bump moves every Kotlin client onto the firmware's behaviour rather than away
+from it, and onto the protobuf specification's rule for embedded messages at
+the same time. That belongs in the PR description as a fix, not a risk.
+
+nanopb reaches merge by two independent mechanisms, both in
+`.pio/libdeps/*/Nanopb/pb_decode.c`: `decode_field`'s `PB_HTYPE_ONEOF` case
+zeroes the union **only** when the incoming tag differs from the one already
+stored, and `pb_dec_submessage` passes `PB_DECODE_NOINIT` for any static
+non-repeated submessage. A repeated same-member occurrence therefore decodes
+into the struct that is already there.
+
+Reproduce: the C harness links firmware's own nanopb and generated descriptors
+(exclude `deviceonly*.pb.c`, whose callbacks live in firmware source, and
+compile as C++ because some generated headers include `<vector>`). The Kotlin
+side is a four-line `main` over `MeshPacket.ADAPTER.decode`; a Wire 7 build of
+our schema is in `~/.m2` as `2.8.1-wire7-SNAPSHOT` for exactly this.
 
 Not applicable to us, checked rather than assumed: our schema has no
 `FieldMask`, no `redacted` fields, and no message named `Builder`, and the
