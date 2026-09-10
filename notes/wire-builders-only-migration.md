@@ -276,7 +276,7 @@ Four shapes that need a human, all found this way:
 `addUnknownFields(ByteString)` - so `X(unknownFields = b)` becomes
 `X.Builder().addUnknownFields(b).build()`.
 
-### It costs android 27 detekt violations
+### It cost android 27 detekt violations
 
 All in production code, and the cause is uniform rather than 27 separate
 problems:
@@ -292,9 +292,23 @@ problems:
   test source sets.
 - **4 `LongMethod` and 1 `LargeClass`**, from the extra lines.
 
-None of it is a real complexity regression, so the choice is a house-style one:
-raise the two thresholds, suppress on the affected declarations, or extract the
-config screens. Not a decision the migration should make silently.
+None of it is a real complexity regression. Measured both ways to be sure:
+detekt is clean on `origin/main` (34 tasks executed, 0 violations) and reports
+27 on the branch, so the migration causes all of them.
+
+**Resolved by raising the three thresholds** (2026-09-09): `allowedComplexity`
+15 -> 35, `LongMethod` 60 -> 70, `LargeClass` 600 -> 1100, each with a comment
+naming the cause. The alternative was restructuring twenty config screens to
+satisfy a metric that is counting lambdas rather than branches.
+
+`MagicNumber` was **not** loosened, because it has no threshold and its seven
+reports had a cleaner fix. All seven were numbers that had been exempt as
+named arguments (`ignoreNamedArgument` defaults true) until the rewrite made
+them assignments. Two in `CommandSenderImpl` now use the `MILLIS_PER_SECOND`
+constant that file already declared; the other five are Compose preview sample
+data, so the rule gains the same `ignoreAnnotated: ['Preview',
+'PreviewLightDark', 'PreviewScreenSizes']` list `LongMethod` already carried,
+plus one in-place suppression on a preview helper that is not itself annotated.
 
 ## Landing it
 
