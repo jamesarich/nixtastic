@@ -2231,3 +2231,59 @@ The sitting also produced `0d7b007`: a `Detached` bearer now takes its wording f
 the device source, because "no CH341 stick attached" named a bridge a spidev host
 does not have; and an init failure that never changes is logged once rather than
 every retry, which on a bus with no chip was 73 identical lines in five minutes.
+
+## The car sitting (2026-09-11, Pixel 9 Pro, on the road to VCF Midwest)
+
+Kit in the car: the Meshtadpole, a WisMesh Pocket (still on its spike load), four
+T1000-E/T-Beam-class radios on a private channel, one Pixel 9 Pro on Android 17
+acting as hotspot. `:monitor-android` from `7bfab20`, later `e808296`.
+
+### Proven
+
+- **LoRa via the Meshtadpole on a Pixel 9 Pro**, USB-C OTG, 906.875 MHz at 10 dBm:
+  all four car radios `lora direct` at -44 to -61 dBm within a minute of plugging
+  in. One NodeInfo went out on LoRa; whether a radio listed `!9c724d03` was not
+  checked from the car.
+- **The Pocket bridges LoRa onto BLE-adv**, and the phone hears both: the same
+  packet ids arrive `rx[lora]` and `rx[ble-adv]`, the second dropped `DUPLICATE`.
+  Before the Tadpole was plugged in the phone already had four peers over
+  `ble-adv` alone, from a radio it never touched.
+- Every frame was `opaque (chan #50)`: the monitor's one channel is LongFast with
+  the default key and the group is on a private one. Channel import in the
+  monitor, or the radios on default LongFast, is the open decision for the show.
+  Chicagoland Mesh is LongFast, US, slot 20, with a published secondary
+  "Chicago" channel, so the default key reads the public local mesh as-is.
+- **Wi-Fi Aware will not attach while the phone is the hotspot** - `would not
+  attach (N in a row)`, NAN and SoftAP do not coexist on a Pixel. Phone-to-phone
+  Aware at a venue means hotspot off.
+
+### The defect: a pairing dialog every 30 s
+
+The phone held a bond with the Pocket from the stock app; the Pocket had been
+reflashed since and no longer had its half. The monitor's central connected (the
+Pocket advertises the mesh-peer UUID), Android encrypted the bonded link on its
+own, got `LE_ENCRYPT_FAILURE`, dropped the bond, began "autonomous repairing" -
+the dialog - which timed out after 30 s, dropped the link, and the next
+advertisement started it over. `dumpsys bluetooth_manager` shows it as one
+connect per 32 s, disconnect reason 22, reconnect 300 ms later, from 15:48 until
+the `gatt` chip was turned off. The same connect discovered against Android's
+cached attribute table, so "no mesh characteristic among 6 services" was the
+stale cache rather than the radio.
+
+Fixed in `meshtastic-node-kmp` `e808296`: the Android central skips any radio the
+device is bonded to (named once in the fault channel - a mesh-peer link is
+unpaired by design, and a bonded radio belongs to the app that paired it), and a
+peer dialled and dropped before it reached ready is held off by `RetryBackoff`,
+5 s doubling to 60 s - the BlueZ gate from 2026-09-08, moved to commonMain with
+its test so both centrals share it. Three minutes with GATT back on: no bond
+events, no connections to the Pocket, no dialogs, LoRa and BLE-adv unaffected.
+The bonded-skip branch was exercised on hardware; the Android backoff branch was
+not - the only advertising peer was bonded - so that half is unit-tested and
+wired, not proven live. Gate run: the module's jvmTest (122), `checkKotlinAbi`,
+`spotlessCheck`, `detekt`, the APK; not the per-target `allTests` or Apple links.
+
+Two follow-ups. The skip renders as `fault:` in the status header and stays there
+as the last fault, which reads as a problem during a demo. And the trade-off is
+deliberate but real: a phone can never mesh-peer with the radio its own stock
+app is paired to; forgetting the Pocket in Bluetooth settings would also test the
+cached-table theory, at the cost of re-pairing the stock app.
