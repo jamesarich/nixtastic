@@ -2351,3 +2351,19 @@ reinstall the node came up `on gatt, ble-adv, lora` with the SX1261 tuned to
 906.875 MHz and nothing re-saved. The car radios have not been heard since
 about 17:30; the Pocket's absence or the radios' private secondary are the two
 guesses, neither checked.
+
+**Polish pass, 18:30.** The transport now logs every `MeshEvent` (bearer named
+on each) and sets `hopLimit = 3` at build time: the library's default is 0, so
+a fresh install would have sent packets nothing relays - the "hops 0 on first
+read" was the node's truth, not a display bug. With events visible: the phone's
+NodeInfo goes out `via=[ble-adv, lora]` (GATT had no peer), wiggie's packets
+arrive on both bearers and the copies drop `DUPLICATE`, all four car radios are
+`Opaque(channelHash=50)` on LoRa at -42 dBm, so the group is chatting on its
+private channel right now and only NodeInfo is readable. Radios are being heard
+after the restart; the "58 min ago" Seeeds are the radios, not the receiver.
+Two things found on the phone itself: the Play-store `com.geeksville.mesh` is
+running its own `MeshService` alongside the debug build (it is the app that
+bonded the Pocket), and the battery sits at 22 % and cannot charge with the
+Tadpole on OTG - the stick draws from the phone. The main logcat buffer was
+64 KB and rotated inside a minute; set to 16 MB (`logcat -G`), survives until
+reboot. A stale "Pairing request" notification from 15:52 is still in the shade.
