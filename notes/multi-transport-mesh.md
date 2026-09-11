@@ -2287,3 +2287,53 @@ as the last fault, which reads as a problem during a demo. And the trade-off is
 deliberate but real: a phone can never mesh-peer with the radio its own stock
 app is paired to; forgetting the Pocket in Bluetooth settings would also test the
 cached-table theory, at the cost of re-pairing the stock app.
+
+### The stock app on the phone's own node (2026-09-11, later the same drive)
+
+James's call, made in the car: the monitor was re-implementing what
+Meshtastic-Android already does, so the demo is the stock app with the phone as
+the radio. Two paths were weighed - the phone API over loopback TCP (the node's
+server is JVM-only today, `platformServe` on Android is a null stub) and an
+in-process transport in the app - and the in-process one was chosen, with the
+protobufs pin aligned by hand for the demo rather than solved.
+
+**Built and proven on the Pixel 9 Pro, in the car:**
+
+- `meshtastic-node-kmp` published to `~/.m2` as
+  `0.1.0-pb2.8.0.35-g3b3df2a-SNAPSHOT` (`-PprotobufsVersion=` android's pin,
+  from `e808296`); android's `core/network` resolves the six modules' Android
+  variants from it with `-PuseMavenLocal=1`, one protobufs, one Wire runtime.
+- android branch `feat/node-transport-demo` (pushed, not mergeable):
+  `NodeRadioTransport` in `core/network` androidMain runs a `MeshNode` and
+  speaks `PhoneApiSession` to the app; `InterfaceId.NODE('p')`, offered as
+  "This device as a mesh node" behind the Demo Mode gate;
+  `BLUETOOTH_ADVERTISE` added to the manifest and both runtime permission
+  lists. `meshtastic://meshtastic/connections?address=p` selects it.
+- The stock app connected to its own node - "Pixel 9 Pro node, firmware
+  2.8.0-node-kmp" - and ran its handshake, telemetry and store-and-forward
+  requests against it unmodified. Setting the region on the app's own LoRa
+  screen wrote `set_config(lora)` into the node's `AdminService`; the transport
+  rebuilt the node with a LoRa bearer (DeviceSleep then Connected, the radio
+  reboot shape), the system asked USB permission for the Tadpole, and the SX1261
+  came up. A car radio (`!da574db8`, "wiggie") appeared in the app's node list
+  within a minute.
+
+**Two library facts that bit, both in `LocalRadio`:** it reports the bearer's
+region over the phone's write and `AdminService.persist()` stores that view, so
+a region written to a node with no LoRa bearer is (a) invisible to
+`preferences()` and (b) persisted as UNSET. The transport reads the written
+section from the `NodeSettings` overlay instead, and after rebuilding re-issues
+`setConfig(lora)` through the new node's radio view so the store carries the
+region. Both belong in the library; recorded here, not fixed there.
+
+**Also seen:** choosing a US region in the app's LoRa screen flips the preset
+to LONG_TURBO (the 2.8 region default) - set LONG_FAST back by hand for the
+group and Chicagoland. The node reported `hop_limit 0` to the app on first
+read; set hops to 3 before saving or nothing relays the phone's packets. TX
+power 0 from the app maps to the 10 dBm OTG cap. The monitor and the app must
+not both run a node on one phone.
+
+**Not done:** Wi-Fi Aware and UDP bearers in the app transport, a foreground
+service of its own (the app's `MeshService` keeps the process alive for now),
+channel import from the app side untested, the spec lifecycle skipped on
+purpose.
