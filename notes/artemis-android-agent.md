@@ -36,6 +36,10 @@ construction. Keep assertions on the deterministic path.
 
 ## Running it
 
+**There is no TUI.** The only terminal-UI dependency is `rich` and the README
+never claims one; what reads like a TUI is rich-styled output and spinners
+during `run` and the frontend build. The real front end is the web UI below.
+
 Key goes in `~/src/artemis/.env` as `GEMINI_API_KEY` (aistudio.google.com/apikey,
 free tier covers casual runs). `get_env_file()` resolves that path off the
 checkout, not the cwd, so the MCP server finds it wherever Claude Code spawns
@@ -53,13 +57,41 @@ uv run artemis run "<goal>" --profile flash --locked-app com.geeksville.mesh.fdr
 `--locked-app` keeps it inside the package. Use it on the Pixel 6a - that phone
 is a bench device, but it is still a real phone.
 
+**The web UI** is `uv run artemis ui`, an Angular "Showcase UI" plus admin
+console on `127.0.0.1:8000`. It opens a browser by default, so pass
+`--no-open` when driving it from an agent. Ctrl-C in its pane or `uv run
+artemis stop` ends it. Three views: **New / Home** launches a task (prompt box,
+Flash/Pro toggle, canned demos); **System Setup & Prerequisites** is a live
+readiness panel covering python, adb, config, scrcpy, the Gemini key with a
+Test Key button, and the attached devices; **Workspace** streams a running
+task's log payloads beside the queue and history. The setup panel is the
+quickest read on key/device/scrcpy state, faster than `uv run artemis doctor`.
+
+Its device selector lists **every** attached adb device (both the Pixel 6a and
+the Pixel 9 Pro showed up here), and it is what picks the target. Keep it on
+the 6a per the rule above. An empty `GEMINI_API_KEY` surfaces as an empty key
+field, not an error, and a locked phone surfaces as a "Device Is Locked"
+banner - both block a run without failing loudly.
+
+**First `ui` launch in a source checkout always builds the frontend.**
+`ensure_showcase_built()` skips npm only when `apps/showcase_ui/` is absent,
+which means an installed wheel, whose dist is baked at packaging time. In a
+clone it runs `npm install` then `ng build` whenever
+`apps/showcase_ui/dist/**/index.html` is missing or older than anything under
+`src/`, so a pull that touches the frontend makes the next `ui` slow (11s cold
+here, but it is npm - do not bank on it). If npm is not on PATH it returns
+silently and serves whatever stale `dist/` is there, with no warning.
+
 ## Gotchas
 
 - **`./start.sh` writes global MCP config and a `rules.md` into every AI IDE it
   detects.** Never run it. `uv run artemis mcp --generate-config claude` prints
   the snippet instead, which is how the entry above was made.
-- **`scrcpy` is missing on james-pc**, so traces compile with 0 images and 0
-  steps and there is no video replay. Everything else works.
+- **`scrcpy` is per-machine.** Still missing on **james-pc**, where traces
+  compile with 0 images and 0 steps and there is no video replay. Everything
+  else works. Installed on the **Mac** 2026-09-10 (`brew install scrcpy`,
+  scrcpy 4.1; ffmpeg 9.0.1 was already there), which clears the setup panel's
+  Video Toolchain card.
 - **uiautomator2 installs an ATX agent APK on the device.** Our `uiautomator dump`
   path leaves nothing behind. Worth knowing before pointing it at a phone you
   care about.
