@@ -2367,3 +2367,12 @@ bonded the Pocket), and the battery sits at 22 % and cannot charge with the
 Tadpole on OTG - the stick draws from the phone. The main logcat buffer was
 64 KB and rotated inside a minute; set to 16 MB (`logcat -G`), survives until
 reboot. A stale "Pairing request" notification from 15:52 is still in the shade.
+
+**Round trip, 18:45.** After importing the group's channel URL in the app
+(olm3sh primary, IROMesh, LongFast; the URL's LoRa section also triggered a
+needless bearer rebuild), the two apps on one phone exchanged texts on olm3sh:
+demo node -> LoRa -> T1000-E -> BLE -> Play-store app ("PIXE: demo node to prod
+1841" in its list, Sent `via=[ble-adv, lora]`, implicit ack `via=ble-adv`
+within the second), and Play-store app -> T1000-E -> LoRa -> demo node
+(`TextMessage(from=!5264ff52 ... rssi=-23, via=lora)`, shown in the demo app's
+olm3sh conversation). First decoded text from a radio, both directions.
