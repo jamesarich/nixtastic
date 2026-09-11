@@ -8,7 +8,7 @@ agent-workspace work, after [agent-tools.md](./agent-tools.md).
 
 Nothing here is built yet. The tools it composes all exist:
 [`pr.py`](../scripts/pr.py), [`pins.py`](../scripts/pins.py),
-[`worktree.sh`](../scripts/worktree.sh), `herdr`, `gh`.
+[`worktree.sh`](../scripts/worktree.sh), [`herdr`](./herdr.md), `gh`.
 
 ## Why a new tool rather than another pane
 
@@ -87,7 +87,7 @@ degradation. Nothing else in the app knows how data arrives.
 
 | id | fetch | interval | cache | if unavailable |
 | --- | --- | --- | --- | --- |
-| `sessions.herdr` | `herdr agent list` | 2 s | memory | skip (absent on the laptop) |
+| `sessions.herdr` | `herdr agent list` | 2 s | memory | skip if no local herdr server |
 | `sessions.claude` | `claude agents --json` | 10 s | memory | skip |
 | `sessions.files` | `~/.claude/sessions/*.json`, liveness by `kill -0` **and** matching `procStart` | 3 s | memory | always available |
 | `sessions.work` | tail each live session's transcript JSONL | 10 s | memory | row shows no repo |
@@ -99,6 +99,13 @@ degradation. Nothing else in the app knows how data arrives.
 | `pins` | `pins.py` | 5 min | disk | cache + age |
 | `limits` | `~/.claude/abtop-rate-limits.json` (by mtime) | 5 s | memory | hide the segment |
 | `system` | `psutil` | 2 s | memory | - |
+
+`sessions.herdr` only ever sees the **local** herdr server. Pane and agent IDs
+are scoped to one server, so a dashboard on james-pc cannot enumerate the
+laptop's sessions even though the herdr sidebar shows both machines at once -
+that aggregation is a TUI feature, not something the CLI exposes. Covering both
+would mean a second fetch over ssh per saved machine, which is out of scope
+here. [herdr.md](./herdr.md).
 
 Two tiers, one panel, `gh-dash`-style sections. The **hot** tier is repos with a
 live session, a worktree, or an open PR of yours: per-PR detail, refreshed each
@@ -240,7 +247,7 @@ Each row is a first-class state with its own rendering, not an exception path.
 
 | Missing | Behaviour |
 | --- | --- |
-| `herdr` (the laptop) | sessions come from `~/.claude/sessions/*.json` plus `claude agents --json`; `enter` is disabled and the help says why |
+| no local `herdr` server | sessions come from `~/.claude/sessions/*.json` plus `claude agents --json`; `enter` is disabled and the help says why |
 | `gh`, or not authenticated | PR panels keep their cache, the header says so, and there is no retry storm |
 | network | cached values with a visible age; startup never blocks |
 | `abtop-rate-limits.json` | the limits segment leaves the strip |
