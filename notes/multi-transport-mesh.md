@@ -2337,3 +2337,17 @@ not both run a node on one phone.
 service of its own (the app's `MeshService` keeps the process alive for now),
 channel import from the app side untested, the spec lifecycle skipped on
 purpose.
+
+**Later the same evening.** A text sent from the app's LongFast conversation
+went out on LoRa (`tx ok len=45 toa=600ms`) and came back as an implicit ack
+340 ms later, so a radio heard the phone node and relayed it; the app showed
+"Delivered to mesh". Which bearer the radio heard us on is not knowable from
+the log: the Pocket bridges LoRa onto BLE-adv, the LoRa bearer logs no receives
+and `NodeRadioTransport` collects `node.events` without logging them, so the
+"Hops Away 1" on every radio and the ack path stay unattributed. Logging
+`MeshEvent.Sent/Received/Delivered` with their bearer names is the first thing
+to add before a demo. Region persistence held: after a force-stop and
+reinstall the node came up `on gatt, ble-adv, lora` with the SX1261 tuned to
+906.875 MHz and nothing re-saved. The car radios have not been heard since
+about 17:30; the Pocket's absence or the radios' private secondary are the two
+guesses, neither checked.
