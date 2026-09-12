@@ -2385,3 +2385,19 @@ of the same name sets it and publishes `0.1.0-pb2.8.0.35-nodekmp-SNAPSHOT`;
 the android demo branch pins both. The Nodes tab now reads `NODE_KMP`. Older
 clients decode 148 as UNSET (Wire) or the raw int (nanopb), so the Play-store
 app will call it unknown. The real enum is a one-line protobufs PR, deferred.
+
+**VCFMW plan, 22:15 to 22:30 - a real library bug.** James imported
+chicagolandmesh.org/vcfmw/ (ShortTurbo, US, hop 7, an unnamed default-key
+primary plus vcfmw/buysell/videogames/retrocomp/meetups). The bearer retuned
+correctly, `926.75 MHz ShortTurbo US slot 49/52`, and heard a dozen radios at
+the venue - every one `Opaque(channelHash=14)`. Firmware `Channels::getName`
+substitutes the modem preset's display name for an empty channel name before
+hashing (or "Custom" off-preset), so the plan's primary is hash 14; node-kmp
+hashed the empty name literally and got the key alone. Never surfaced before
+because every channel we ever built was named. Fixed on main (050ca94):
+`MeshChannel.defaultName`, `ChannelNames.defaultFor(lora)`, `MeshNode.
+setDefaultChannelName`, `AdminService.applyConfig` follows each lora write; the
+stored name stays empty so the phone reads back what it wrote. Workaround
+without the fix: name the primary "ShortTurbo" in the app. The phone-side
+verification waits on the Tadpole, which is on the Mac so the phone can charge;
+the Mac does not enumerate it (no CH34x in `system_profiler`), so no JVM check.
