@@ -2401,3 +2401,25 @@ stored name stays empty so the phone reads back what it wrote. Workaround
 without the fix: name the primary "ShortTurbo" in the app. The phone-side
 verification waits on the Tadpole, which is on the Mac so the phone can charge;
 the Mac does not enumerate it (no CH34x in `system_profiler`), so no JVM check.
+
+**Overnight audit (2026-09-12).** The crash buffer held two deaths from the
+evening. 22:14:57: `ClosedSendChannelException` out of `PhoneApiSession.emit`
+via the transport's ToRadio loop - the channel import rebuilt the node while a
+write was being answered, the old session's outbound channel was closed, and
+the uncaught throw killed the process. Fixed both sides: node-kmp 3b0e645 (a
+closed session drops the late reply) and the transport's loop catches per
+write. 22:12:28: a Compose `LookaheadDelegate has not been measured yet` in a
+LazyList, app-side, seen once, not chased. The channel/crypto audit against
+firmware found the import path clean (PSK table, nonce, hash formula, indexes,
+hop_start all match) and two host misses now fixed: the transport's default
+channel was the literal name "LongFast" where firmware stores "" (a fresh node
+on ShortTurbo before any import would have hashed 8 against the room's 14),
+and the frequency slot never saw the primary's name (only matters for a named
+primary). Library follow-ups from the same audit, none on the demo path:
+`ChannelSetUrl.decode` still bakes the preset name into an empty name;
+`resolveChannels` truncates at the first DISABLED slot where firmware skips it;
+ack/NodeInfo/traceroute replies pick a channel by hash where firmware uses the
+decoded index (collision-only); a borrowed secondary PSK is persisted resolved.
+Four further audits (LoRa bearer on ShortTurbo, transport lifecycle, fresh
+install and BLE, dense-room behaviour) were cut off by the weekly API limit at
+their first step; rerun after 05:00 CDT.
