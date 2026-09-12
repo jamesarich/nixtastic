@@ -2376,3 +2376,12 @@ demo node -> LoRa -> T1000-E -> BLE -> Play-store app ("PIXE: demo node to prod
 within the second), and Play-store app -> T1000-E -> LoRa -> demo node
 (`TextMessage(from=!5264ff52 ... rssi=-23, via=lora)`, shown in the demo app's
 olm3sh conversation). First decoded text from a radio, both directions.
+
+**NODE_KMP, 19:13.** The app printed `PRIVATE_HW` for the phone node because
+`LocalRadio` hard-codes it and `HardwareModel` is the shared proto enum. For
+the demo: protobufs branch `demo/node-kmp-hw-model` adds `NODE_KMP = 148`,
+published from `packages/kmp` as `2.8.0.35-nodekmp-SNAPSHOT`; node-kmp branch
+of the same name sets it and publishes `0.1.0-pb2.8.0.35-nodekmp-SNAPSHOT`;
+the android demo branch pins both. The Nodes tab now reads `NODE_KMP`. Older
+clients decode 148 as UNSET (Wire) or the raw int (nanopb), so the Play-store
+app will call it unknown. The real enum is a one-line protobufs PR, deferred.
