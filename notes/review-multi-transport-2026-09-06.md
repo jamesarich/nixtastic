@@ -1698,30 +1698,69 @@ since a clock correction can no longer move it. Both production hosts (`node-hea
 constructor added across `ProtoPacketCodec`, `NodeModules`, `NodeDb` and `LocalRadio` needs Builder
 form there.
 
-NOT DONE - the honest remainder:
-- **T3** `LocalStats` to the phone. The seam now exists (`TransportAirtime`
-  carries the packet counters; `NodeDb` can answer num_online/num_total against
-  firmware's `NUM_ONLINE_SECS`), so this is assembly, not design.
-- **M1** `DeviceMetadata.excluded_modules` still 0, so an app offers every module
-  screen. Note the interaction: **do not** exclude `TELEMETRY_CONFIG` now that
-  `device_update_interval` genuinely drives the node. **M2** `position_flags`,
-  **M3** hardcoded `hasWifi`, **M4** `reboot_count`/`firmware_edition` unchanged.
-- The three library deferrals from the overnight audit are untouched:
-  `ChannelSetUrl.decode` baking the preset name into an empty one (now redundant
-  as well as wrong, since `MeshChannel.defaultName` landed in 050ca94),
-  `resolveChannels` truncating at the first DISABLED slot, and `LocalRadio`
-  reporting the bearer's region over the phone's write so `persist()` stores UNSET.
-- Firmware scales the periodic intervals by online-node count
-  (`getConfiguredOrDefaultMsScaled`); this does not, and the KDoc now says so.
-- **R2-13** linuxX64, unchanged - James's call.
+FIXED (`a938d15`) - the rest of the list, same gate, mutation-checked:
+- **T3** `LocalStats` to the phone on firmware's fifteen-minute cadence
+  (`sendStatsToPhoneIntervalMs`). `rxDupe` and `txRelayCanceled` are new node-level
+  counters, as firmware keeps them on `Router` rather than per bearer; `num_online_nodes`
+  uses `NUM_ONLINE_SECS` (two hours) and counts this node, as `getNumMeshNodes` does.
+  Heap stays unset - firmware's own Portduino build leaves it, and a JVM heap figure is
+  not the number the field means.
+- **M1** `excluded_modules`, derived so that each exclusion matches a verb
+  `AdminVerbSurfaceTest` already declines by name. Telemetry and network are *not*
+  excluded, because both now describe live behaviour; MQTT only when no MQTT bearer is
+  wired. **M2** `position_flags` follows the position beacon (ALTITUDE, which is all
+  `NodePosition` carries). **M3** `hasWifi` becomes the host's to declare, and
+  `hasBluetooth` follows the BLE bearers instead of being asserted true.
+- **`ChannelSetUrl.decode`** keeps a blank name blank and carries the preset as
+  `defaultName`. Both hash the same; only this one reads back what the phone wrote and
+  makes `encode(decode(url))` the URL that came in.
+- **`resolveChannels`** keeps a hole's index instead of ending the set at it. A
+  primary/disabled/secondary set used to lose the secondary outright. A DISABLED
+  `MeshChannel` now holds the place and matches nothing - `MeshChannel.enabled`,
+  `primary()` and `matching()` are the guards, because a disabled slot's hash is whatever
+  an empty name and key produce and can collide with a real channel's.
+- **`LocalRadio`'s region-over-write.** A region written to a node with no LoRa bearer now
+  reads back, so `persist()` stores it and it survives a restart; a node that *has* a
+  bearer still reports the band it is really on. Two tests encoded the pre-2026-09-09
+  Safety rule and were updated to the reversed one, which is explicit that a stored region
+  arms the bearer and a phone-written one arms it too.
+- **Interval scaling.** All three periodic intervals now ride
+  `congestionScalingCoefficient`: nothing up to forty online nodes, then each further node
+  widens by the bearer's own `2^SF / (BW_kHz * 100)`, exposed as
+  `MeshTransport.congestionScaling`. A node with no modem is never scaled. The region
+  profile's `telemetryThrottle` multiplier on top of that is not carried here - it is a
+  per-region table this library does not have.
 
-**The demo is not fixed by any of this.** James's phone node runs a *published*
-snapshot from the `demo/node-kmp-hw-model` worktree, and android's
-`NodeRadioTransport` still constructs its node with no `power` provider. Three
-steps before the reported symptom goes away: rebase that branch onto `main` and
-republish, wire `MeshNode.Config.power` to Android's `BatteryManager` in the
-transport, and re-pin android. The first two steps alone bring back
-`channel_utilization` and `air_util_tx` from the LoRa bearer; only battery and
-voltage wait on the `BatteryManager` wiring. Until then the phone node still
-reports uptime and nothing else - now because nothing tells it the battery level,
-rather than because the library could not say.
+**The `:node-transport-udp` multicast failures are the VPN, and are not a library bug.**
+`netstat -rn` shows `224.0.0/4` routed to `utun4` with the `en0` entry marked rejected, so
+the tunnel has captured the whole multicast net; a bare Python sender gets ENETUNREACH
+with `IP_MULTICAST_IF` pinned to en0 too. Nothing in `UdpMulticastTransport` can route
+around that, and firmware's `UdpMulticastHandler` binds `INADDR_ANY` the same way, so it is
+not a parity gap either. Drop the VPN and the three tests pass. The test's
+`@Suppress("UNUSED_PARAMETER") nif` - it picks a multicast-capable interface and then never
+binds to it - is still a real smell worth closing one day, but it is not this.
+
+**The demo is wired up, not yet run.** All three steps are done and committed, none
+pushed:
+- `meshtastic-node-kmp` `demo/node-kmp-hw-model` rebased onto `main` (`808f295`, clean -
+  the NODE_KMP lines applied straight onto the new metadata code) and republished to
+  `~/.m2` at the same `0.1.0-pb2.8.0.35-nodekmp-SNAPSHOT` coordinate android already pins,
+  so no version bump is needed. That branch also gained `87d3f01`: the
+  `-PprotobufsVersion` path only added the Sonatype snapshot repo, and the protos carrying
+  `NODE_KMP = 148` exist only in `~/.m2`, so a scoped `mavenLocal()` sits beside it under
+  the same flag.
+- android `feat/node-transport-demo` `73bb07d7c8`: `MeshNode.Config.power` reads the
+  phone's battery off the sticky `ACTION_BATTERY_CHANGED` broadcast (no permission, no
+  registration), 101 when plugged as firmware's own external-power vocabulary, voltage
+  only on a real reading. `hasWifi = true` goes with it. `:core:network` compiles against
+  the republished library, spotless and detekt clean, `testAndroidHostTest` green.
+
+What remains is a bench run: install the debug build, connect the app to its own node, and
+read the Device Metrics screen. Channel and TX utilisation should appear the moment a LoRa
+bearer is up, battery and voltage from the first 60-second feed, and local stats after
+fifteen minutes.
+
+**The `chore/wire-builders-only` rebase (PR #1) got harder, not easier.** Round 3 added
+`Telemetry`, `DeviceMetrics`, `Position`, `LocalStats`, `NodeInfo` and `MeshPacket`
+constructors across `ProtoPacketCodec`, `NodeModules`, `NodeDb`, `LocalRadio` and
+`PhoneApiSession`; every one needs Builder form there.
