@@ -33,6 +33,13 @@ channel name hashed as "" rather than "LongFast", so an imported default channel
 was silent both ways. Full list, method and the parts that stayed unaudited:
 [`review-multi-transport-2026-09-06.md`](./review-multi-transport-2026-09-06.md).
 
+**BLE capacity, range and the bearer on/off switch**, audited 2026-09-13:
+[`ble-mesh-capacity-and-bearer-config.md`](./ble-mesh-capacity-and-bearer-config.md).
+How many GATT peers each side actually holds (a stock radio: zero), what is and is
+not measured about range, where the throughput and range levers are, and why
+`network.enabled_protocols` is the home for a bearer toggle rather than a new
+config module.
+
 Left standing from the parity plan: the cross-peer fan-out inside a single GATT
 send (needs three connected peers), step 0's remaining app-side adapters, and
 per-bearer rates over time in the monitor. The commonization pass and the
