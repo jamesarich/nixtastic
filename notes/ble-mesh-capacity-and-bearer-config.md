@@ -200,15 +200,22 @@ radio, plus a Linux run for the BlueZ half. Neither can be done from the Mac.
 
 ### Asymmetries found while looking
 
-- **GATT chunk size, fixed.** Android grants an MTU of 517, so `mtu - 3` is 514
-  and the bench log reads `chunk=514` against an Espressif address. The firmware
-  receives into a `BLE_GATT_MESH_MAX_CHUNK` (512) buffer and takes
-  `min(r.len, cap)` in `platformPollInbound`, so **the last two bytes are dropped
-  with no error anywhere**: the fragment header survives, the payload is short,
-  and reassembly yields a packet that decodes as nothing. `GattPeerTable`'s
-  `maxChunkSize` now clamps to `MIN_CHUNK..MAX_CHUNK`, mirroring the firmware's
-  pair rather than only its minimum, which was already mirrored. Unproven that it
-  was biting in practice; proven that the two ceilings disagreed.
+- **GATT chunk size: a latent ceiling mismatch, clamped.** Android grants an MTU
+  of 517, so `mtu - 3` is 514 and the bench log reads `chunk=514` against an
+  Espressif address, while the firmware caps at `BLE_GATT_MESH_MAX_CHUNK` (512).
+  `GattPeerTable`'s `maxChunkSize` now clamps to `MIN_CHUNK..MAX_CHUNK`, mirroring
+  the firmware's pair rather than only its minimum, which was already mirrored.
+
+  Two corrections to the first version of this entry, both from reading further.
+  The **mechanism** is not truncation: `onWrite` is
+  `if (len == 0 || len > BLE_GATT_MESH_MAX_CHUNK) return;`, so an oversize chunk
+  is dropped whole and silently, and the `min(r.len, cap)` in `platformPollInbound`
+  is a second guard that never fires. There is no overflow. And the **reach** is
+  smaller than it looks: `MeshFragment.split` sizes each chunk to its own payload
+  rather than padding to `maxChunkSize`, so a 514-byte write needs a packet over
+  509 bytes, and `DATA_PAYLOAD_LEN` is 233. Nothing this library originates today
+  gets near it. What is proven is that the two ceilings disagreed and the client
+  was the side free to pick the wrong one.
 - **BlueZ duplicate filtering: already correct.** `SetDiscoveryFilter` passes
   `DuplicateData: true`, matching Android's `CALLBACK_TYPE_ALL_MATCHES`, Apple's
   `allowDuplicates` and the firmware's `filter_duplicates = 0`. Checked because
