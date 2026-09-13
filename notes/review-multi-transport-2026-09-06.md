@@ -1710,7 +1710,11 @@ FIXED (`a938d15`) - the rest of the list, same gate, mutation-checked:
   excluded, because both now describe live behaviour; MQTT only when no MQTT bearer is
   wired. **M2** `position_flags` follows the position beacon (ALTITUDE, which is all
   `NodePosition` carries). **M3** `hasWifi` becomes the host's to declare, and
-  `hasBluetooth` follows the BLE bearers instead of being asserted true.
+  `hasBluetooth` follows the BLE bearers instead of being asserted true. That last one is a
+  changed meaning, not just a changed value: firmware's `hasBluetooth` says "this radio has a
+  BLE chip a phone can pair to", ours now says "this node has a BLE *mesh* bearer". A node on
+  UDP and LoRa reports false and the phone hides the Bluetooth config screen - which is the
+  same screen `excluded_modules` already excludes, so the two agree.
 - **`ChannelSetUrl.decode`** keeps a blank name blank and carries the preset as
   `defaultName`. Both hash the same; only this one reads back what the phone wrote and
   makes `encode(decode(url))` the URL that came in.
