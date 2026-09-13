@@ -1465,3 +1465,155 @@ REAL CHANGE, LEFT FOR JAMES:
   on both without a mismatch, and maven-publish would ship a linuxx64 artifact unless configured
   test-only. Adding it means either aligning sdk too or excluding the target from publish - a
   coordinated decision, ~1 hr once made. Not bolted on unasked.
+
+# 2026-09-13 round 3 - the periodic-module and node-DB lane
+
+James: "device telemetry basically only showed uptime ... audit node-kmp vs firmware, look for
+the little things, gaps, misses, misalignments, deferrals." Rounds 1 and 2 swept the wire, the
+crypto, the relay, concurrency and the admin verb surface. What neither swept is the layer
+*above* the wire: what a node **periodically originates**, what it **answers when asked**, and
+what it **remembers about a peer**. Firmware does all three in modules (`DeviceTelemetry`,
+`NodeInfoModule`, `PositionModule`) and in `NodeDB`; node-kmp has `BroadcastPolicy` for one of
+the three and `NodeDb` for a thin slice of the fourth. That is where every finding below sits.
+
+Sentinels read: `firmware/src/modules/Telemetry/DeviceTelemetry.cpp`, `src/mesh/MeshModule.cpp`
+(`callModules`), `src/mesh/NodeDB.cpp` (`installDefaultConfig`, `updateTelemetry`), `mesh.proto`
+`NodeInfo`/`DeviceMetadata`/`MyNodeInfo`, at firmware develop `80cfa5266`.
+
+## The telemetry cluster - why only uptime showed
+
+Five separate causes, not one. In the demo all five fired at once.
+
+- **T1 [host+library] `power` is never wired.** `NodeRadioTransport.kt:198` constructs
+  `LocalRadio(node, region, loraSection, clock, settings)` with no `power` lambda, so
+  `LocalRadio.deviceTelemetry()` (LocalRadio.kt:105) leaves `battery_level` and `voltage` null by
+  its own (correct) unmeasurable-is-unset rule. Android can read both off `BatteryManager`. Host
+  fix on the demo branch, but the library should make the omission visible - a node that can
+  measure nothing reports one field, and nothing says so.
+- **T2 [library/parity] channel utilisation and TX air utilisation are never reported, even with
+  a LoRa bearer up.** `DeviceTelemetryTest`'s `channel utilisation is never claimed` encodes the
+  rationale "a node on GATT, BLE advertisement and UDP occupies no air at all" - written before
+  `node-transport-lora` existed. `LoraAirtime.channelUtilPct/txUtilPct` already compute exactly
+  firmware's two numbers and gate transmission on them; nothing surfaces them. Firmware's
+  `getDeviceTelemetry()` sets both unconditionally. Needs a transport-level seam
+  (`MeshTransport` has no stats surface at all) so `LocalRadio` can ask the node rather than the
+  bearer directly - node-phone-api must not depend on node-transport-lora.
+- **T3 [library/parity] no `LocalStats` telemetry to the phone.** Firmware's `runOnce` calls
+  `sendLocalStatsToPhone()` on its own cadence beside the device-metrics send: uptime, channel
+  util, air util tx, num_online_nodes, num_total_nodes, num_packets_tx/rx/rx_bad, num_rx_dupe,
+  num_tx_relay, num_tx_relay_canceled, noise_floor. The Android app has a whole Local Stats
+  surface fed by it (`FakeMeshLogRepository` gates on `hasLocalStatsTelemetry`). node-kmp emits
+  device metrics only (`PhoneApiSession.kt:162`). Every counter but heap and noise floor already
+  exists in `LoraStats`/`NodeDb`/`PacketHistory`.
+- **T4 [library/parity] no telemetry is broadcast to the mesh at all.** `BroadcastPolicy` covers
+  NodeInfo and position; firmware's `DeviceTelemetryModule` also broadcasts device metrics every
+  `device_update_interval` (`default_telemetry_broadcast_interval_secs`, scaled by online-node
+  count and gated on `isTxAllowedChannelUtil`). So peers never see this node's battery or uptime -
+  the same shape as the "the monitor never called `announce()`" bug `BroadcastPolicy`'s own KDoc
+  describes. The phone can already *write* `moduleConfig.telemetry.device_update_interval`; it is
+  stored and drives nothing.
+- **T5 [library/parity] our own `node_info` carries no `device_metrics`.** `LocalRadio.ownNodeInfo()`
+  (LocalRadio.kt:91) sets num/user/last_heard/hops_away only. Firmware calls
+  `nodeDB->updateTelemetry(ourNodeNum, ..., RX_SRC_LOCAL)` on every own-telemetry send, so the
+  phone's connect-time dump already carries our battery. Here the node-list row for our own node is
+  blank until the first 60 s telemetry packet arrives, and blank again on every reconnect.
+
+## Answering a request - `want_response` is read for exactly one portnum
+
+- **W1 [parity] a to-us `want_response` on any portnum but NODEINFO is answered with silence.**
+  `MeshNode.kt:846` is the only `wantResponse` read on the receive path. Firmware's
+  `MeshModule::callModules` (MeshModule.cpp:178-224) asks each module for a reply and, when none
+  answers, **NAKs `NO_RESPONSE`** so the asker stops waiting. node-kmp sends neither reply nor NAK.
+  Concretely: the app's "Request position" and "Request telemetry" on this node hang until the
+  client's own timeout; `PacketCodec.kt:286`'s KDoc already names the mechanism for NodeInfo.
+- **W2 [parity] no `TELEMETRY_APP` reply.** Firmware's `DeviceTelemetryModule::allocReply` answers
+  a device-metrics request with `getDeviceTelemetry()` and a `local_stats` request with
+  `getLocalStatsTelemetry()`. Both unimplemented here.
+- **W3 [parity] no `POSITION_APP` reply.** `MeshNode.kt:907` decodes a peer position into an event
+  and stops; a `want_response` position request gets nothing back even when
+  `BroadcastPolicy.position` is configured and the node knows where it is.
+
+## What this node remembers about a peer
+
+`NodeDb.NodeInfoLite` holds nodeNum, names, publicKey, lastHeard, rssi, hopsAway, via. Firmware's
+`meshtastic_NodeInfoLite` additionally holds hw_model, role, snr, position, device_metrics,
+channel, and the via_mqtt/is_favorite/is_ignored bitfield - and that struct is what seeds the
+phone's node list at connect.
+
+- **P1 [parity] the NODEINFO decode drops `hw_model`, `role`, `is_licensed`, `is_unmessagable`.**
+  `ProtoPacketCodec.kt:405` builds `DecodedPacket.NodeInfo` from long_name/short_name/public_key
+  only. Firmware's `NodeDB::updateUser` stores the whole `User`. Every peer in this node's
+  connect-time dump therefore reports `hw_model = UNSET` and role CLIENT-by-default.
+- **P2 [parity] `peerNodeInfo` drops `hops_away`, which `NodeDb` already tracks.** LocalRadio.kt:116
+  sets num/user/last_heard/snr=0f and nothing else, while `NodeInfoLite.hopsAway` is populated on
+  every frame. A one-line miss: the app's "Hops away" column is blank for every peer at connect
+  and only fills in for peers heard while connected.
+- **P3 [parity] `snr = 0f` is a claim, not an absence.** Same line. `NodeInfo.snr` is a plain float
+  (not `optional`), so 0.0 reads as "0 dB SNR" in the app. `NodeDb` keeps `rssi` but no SNR at all;
+  the LoRa bearer has one per frame.
+- **P4 [parity] a peer's telemetry and position are decoded, surfaced as events, and forgotten.**
+  `MeshNode.kt:907` and `:941` emit `PositionReport`/`DeviceTelemetry` and never touch `nodeDb`.
+  Firmware's `updateTelemetry`/`updatePosition` write them into the row. The live app is unharmed -
+  it sees the raw packets through `_packets` and folds them itself - but the connect-time dump and
+  any headless consumer of `nodeDb.all()` lose everything but names.
+- **P5 [parity] `via_mqtt` and `channel` are never set on a peer's `NodeInfo`.** `NodeDb` records
+  `via` (the bearer name) and could answer the first exactly.
+
+## Reported-field misses in the metadata surfaces
+
+`ConfigFieldParityTest` mechanically holds `derivedConfigs()`; `DeviceMetadata` and `MyNodeInfo`
+are outside it, and both have unwired fields - the exact class of bug `AGENTS.md` → "The bug this
+repo actually has" names.
+
+- **M1 [parity] `DeviceMetadata.excluded_modules = 0`.** LocalRadio.kt:72. Zero means "this node
+  runs every module", which is how an app decides whether to show a module's config screen. The
+  `AdminVerbSurfaceTest` list already declines serial, canned-message, ringtone, GPIO, scale and
+  sensors *by name*; `excluded_modules` is the wire field that says so, and it is the lever that
+  stops an app offering screens this node stores and ignores.
+- **M2 [parity] `DeviceMetadata.position_flags = 0`** while `BroadcastPolicy.position` may carry a
+  real policy; firmware installs ALTITUDE|ALTITUDE_MSL|SPEED|HEADING|DOP|SATINVIEW.
+- **M3 [low] `hasWifi = true` is hardcoded** for a library that also runs on a desktop with no
+  Wi-Fi and on a node with only a LoRa stick. Same class as the six `AGENTS.md` names.
+- **M4 [low] `MyNodeInfo.reboot_count` and `firmware_edition` are unset.** Neither drives anything
+  in the clients today; recorded so the next reader does not re-find them.
+
+## Verified and deliberately left alone (do not re-raise)
+
+- **`Telemetry.time` unset.** `DeviceTelemetryTest` refuses to copy firmware's `getTime()`, which
+  on an unsynced radio emits seconds-since-boot as an epoch. Checked the consumer:
+  `TelemetryPacketHandlerImpl.kt:70` substitutes the packet's arrival time when `time == 0`, so
+  the app is unharmed. LocalRadio's `clock` *is* contractually an epoch (`ownNodeInfo` uses it for
+  `last_heard`), so setting it honestly would be strictly better - but it is cosmetic, not a gap.
+- **The whole admin verb surface.** `AdminVerbSurfaceTest` classifies all 40-odd inbound verbs as
+  HANDLED or DECLINED with a reason each and mechanically fails on a new one. Not an audit gap.
+  Two classifications are worth revisiting on their *round-trip* behaviour rather than their
+  reasoning, though: `remove_by_nodenum` and `nodedb_reset` are declined as "the host's to drop",
+  so removing a node in the app and reconnecting brings it straight back from `otherNodes()`.
+- **`hopLimit = 0` / `rebroadcastMode = NONE` defaults.** Documented safe defaults, and the demo
+  had to patch `hopLimit = 3` host-side. Defensible as a library default; recorded because it is
+  the one place a node-kmp node is *silently* less useful than a radio out of the box.
+
+## Deferrals from the 2026-09-12 overnight audit - still open, with dispositions
+
+- **`ChannelSetUrl.decode` bakes the preset name into an empty name** (ChannelSetUrl.kt:47,
+  `it.name.ifEmpty { emptyNameAs }`). Confirmed still there. Now redundant *and* wrong: main's
+  `MeshChannel.defaultName` / `ChannelNames.defaultFor` fix hashes an empty name correctly, so
+  decode should keep `""` and let the node's default-name mechanism do the substitution. As it
+  stands an imported channel reads back to the phone under a name the phone never wrote.
+- **`resolveChannels` truncates at the first DISABLED slot** (AdminService.kt:376,
+  `takeWhile { it.role != DISABLED }`). Firmware keeps `channels_count` slots and skips DISABLED
+  ones in place (`Channels.cpp:396`, `decryptForHash` indexes by the packet's own channel index),
+  so a hole drops every channel above it here. Apps compact, so it needs a hand-built set to hit.
+- **Replies pick a channel by hash where firmware uses the decoded index.** Firmware's
+  `decryptForHash(chIndex, channelHash)` takes the index off the packet and *checks* the hash;
+  node-kmp matches on hash alone (MeshNode.kt:849). Collision-only.
+- **A borrowed secondary PSK is persisted resolved.**
+- **`LocalRadio` reports the bearer's region over the phone's write**, so `AdminService.persist()`
+  stores UNSET for a node with no LoRa bearer - the demo works around it by re-issuing
+  `setConfig(lora)` through the rebuilt node. Belongs in the library.
+- **`NODE_KMP = 148` hardware model** - cross-repo, a one-line protobufs PR. Surface, do not fix here.
+- **R2-13 linuxX64 test target** - James's call, unchanged.
+- **`heard_on_current_lora`** (NodeInfo field 15) is never set. Harmless *today*: android gates the
+  read on `Capabilities.supportsHeardOnCurrentLora`, which is `UNRELEASED`, and node-kmp reports
+  `2.8.0-node-kmp`. It stops being harmless the moment firmware ships the field, because node-kmp
+  rebuilds its bearer on every LoRa change and would then report every peer as unheard.
