@@ -1681,6 +1681,23 @@ claimed rather than did:
   NULL, so collapsing the two would turn each throttled reply into a refusal.
   `PositionModule`'s three-minute reply throttle came with it.
 
+ALSO FIXED (`cb1e146`): `MeshPacket.priority` was never set by this library at all, while a KDoc
+claimed BACKGROUND - the reported-field bug one layer down. It is plaintext field 11 and every
+bearer but LoRa carries the whole proto, so a firmware peer reads it to order its transmit queue;
+firmware's three periodic modules stamp BACKGROUND for a client role and now so do ours. The
+NO_RESPONSE NAK travels `getHopLimitForResponse`'s distance with it.
+
+**One behaviour change worth knowing:** uptime now comes off `MeshNode.Config.clock` (monotonic)
+rather than `LocalRadio`'s own clock, which is the wall clock in every host here - strictly better,
+since a clock correction can no longer move it. Both production hosts (`node-headless`,
+`MonitorController`) set the node clock, so nothing regressed; a host that leaves it at
+`FROZEN_CLOCK` and passes a real clock only to `LocalRadio` would now report uptime 0.
+
+**For the `chore/wire-builders-only` worktree (PR #1):** the rebase is not mechanical. Every
+`Telemetry(...)`, `DeviceMetrics(...)`, `Position(...)`, `NodeInfo(...)` and `MeshPacket(...)`
+constructor added across `ProtoPacketCodec`, `NodeModules`, `NodeDb` and `LocalRadio` needs Builder
+form there.
+
 NOT DONE - the honest remainder:
 - **T3** `LocalStats` to the phone. The seam now exists (`TransportAirtime`
   carries the packet counters; `NodeDb` can answer num_online/num_total against
@@ -1703,6 +1720,8 @@ snapshot from the `demo/node-kmp-hw-model` worktree, and android's
 `NodeRadioTransport` still constructs its node with no `power` provider. Three
 steps before the reported symptom goes away: rebase that branch onto `main` and
 republish, wire `MeshNode.Config.power` to Android's `BatteryManager` in the
-transport, and re-pin android. Until then the phone node still reports uptime and
-nothing else - now because nothing tells it the battery level, rather than
-because the library could not say.
+transport, and re-pin android. The first two steps alone bring back
+`channel_utilization` and `air_util_tx` from the LoRa bearer; only battery and
+voltage wait on the `BatteryManager` wiring. Until then the phone node still
+reports uptime and nothing else - now because nothing tells it the battery level,
+rather than because the library could not say.
