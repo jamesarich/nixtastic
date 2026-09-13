@@ -1617,3 +1617,92 @@ repo actually has" names.
   read on `Capabilities.supportsHeardOnCurrentLora`, which is `UNRELEASED`, and node-kmp reports
   `2.8.0-node-kmp`. It stops being harmless the moment firmware ships the field, because node-kmp
   rebuilds its bearer on every LoRa change and would then report every peer as unheard.
+
+## 2026-09-13 round 3 - resolution
+
+Landed on `meshtastic-node-kmp` `main`, each batch gated
+(`spotlessCheck detekt checkKotlinAbi allTests testAndroidHostTest`) and
+mutation-checked. Run on the Mac, so the Apple native suites really executed for
+the first time in a while - see the new finding below.
+
+**A new finding, found by running the gate: `main` did not compile for any Apple
+target.** Three separate breaks, all invisible to `jvmTest`, fixed in `9d18bd8`:
+three backticked test names carrying commas (Kotlin/Native rejects them - the
+exact trap `AGENTS.md` records from 2026-09-05, back again), and
+`MonitorController` reaching into `node-transport-lora` from `commonMain` for a
+modem preset's display name when that module is JVM and Android only, which has
+broken the iOS monitor since the VCFMW default-channel-name fix landed. So
+`allTests` has silently been `jvmTest` for some days, which is the anti-pattern
+`AGENTS.md` names in that very section. Worth a CI thought: nothing here runs
+the Apple half except a human on a Mac.
+
+FIXED (`e3f5408`):
+- **T2** channel utilisation and TX air utilisation are reported once a bearer
+  occupies a shared medium. New `MeshTransport.airtime` seam, answered by the
+  LoRa bearer from the `LoraAirtime` figures it already gates its own sends on,
+  null everywhere else - so `channel_utilization` stays *unset* on a node with no
+  radio rather than becoming a claim that somebody else's channel is idle.
+- **T5** our own `node_info` carries `device_metrics`, as firmware's
+  `updateTelemetry(ourNodeNum, RX_SRC_LOCAL)` puts them there.
+- **W2/W3** a peer's telemetry or position request is answered, at
+  `getHopLimitForResponse`'s distance, with `isMultiHopBroadcastRequest`'s
+  reply-storm guard.
+- **P1-P5** `NodeDb` learns hw_model, role, is_licensed, is_unmessagable, SNR
+  (new `InboundFrame.snr`, filled by the LoRa bearer), via_mqtt (new
+  `MeshTransport.viaMqtt`, declared by the MQTT bearer the way `floods` is), and
+  a peer's device metrics and position, merged field-by-field as
+  `NodeDB::updateTelemetry`/`updatePosition` merge them. `peerNodeInfo` reports
+  the lot including `hops_away`, which was tracked on every frame and never once
+  reported.
+- **T1** `DevicePower` moves to node-core as `MeshNode.Config.power`: the mesh
+  broadcast needs it and `LocalRadio` is not below the node. One
+  `MeshNode.deviceMetrics()` now feeds all three consumers, as
+  `getDeviceTelemetry` does.
+
+FIXED (`30192c7`) - three corrections to the above, each a thing the first pass
+claimed rather than did:
+- **T4** the mesh telemetry broadcast. Defaulted **off**, not on:
+  `installDefaultModuleConfig` sets `device_telemetry_enabled = false`, so a
+  stock radio broadcasts none either, and the first pass' 30-minute default would
+  have made a node-kmp node the noisier of the two.
+  `default_telemetry_broadcast_interval_secs` is an hour, not half of one.
+  A phone's `set_module_config` now reaches `MeshNode.setTelemetryInterval` and
+  takes effect live, and the telemetry section is derived from the node - a
+  writable field that drove nothing was the reported-field bug again.
+- **R2-6's dead code.** `LoraAirtime.txAllowed` - the 40 % politeness ceiling -
+  was unreachable after round 2 correctly moved every send onto duty cycle alone,
+  because a bearer cannot classify a sealed frame. The *caller* can:
+  `MeshTransport.sendBackground`, defaulted to `send`, used by the three periodic
+  modules. A busy channel now holds this node's chatter back and still carries
+  its user traffic.
+- **W1** the `NO_RESPONSE` NAK, with firmware's `ignoreRequest` distinction
+  modelled as a separate outcome (`Answer.SUPPRESSED` vs `UNHANDLED`) - every
+  throttle in firmware's modules sets `ignoreRequest` on its way to returning
+  NULL, so collapsing the two would turn each throttled reply into a refusal.
+  `PositionModule`'s three-minute reply throttle came with it.
+
+NOT DONE - the honest remainder:
+- **T3** `LocalStats` to the phone. The seam now exists (`TransportAirtime`
+  carries the packet counters; `NodeDb` can answer num_online/num_total against
+  firmware's `NUM_ONLINE_SECS`), so this is assembly, not design.
+- **M1** `DeviceMetadata.excluded_modules` still 0, so an app offers every module
+  screen. Note the interaction: **do not** exclude `TELEMETRY_CONFIG` now that
+  `device_update_interval` genuinely drives the node. **M2** `position_flags`,
+  **M3** hardcoded `hasWifi`, **M4** `reboot_count`/`firmware_edition` unchanged.
+- The three library deferrals from the overnight audit are untouched:
+  `ChannelSetUrl.decode` baking the preset name into an empty one (now redundant
+  as well as wrong, since `MeshChannel.defaultName` landed in 050ca94),
+  `resolveChannels` truncating at the first DISABLED slot, and `LocalRadio`
+  reporting the bearer's region over the phone's write so `persist()` stores UNSET.
+- Firmware scales the periodic intervals by online-node count
+  (`getConfiguredOrDefaultMsScaled`); this does not, and the KDoc now says so.
+- **R2-13** linuxX64, unchanged - James's call.
+
+**The demo is not fixed by any of this.** James's phone node runs a *published*
+snapshot from the `demo/node-kmp-hw-model` worktree, and android's
+`NodeRadioTransport` still constructs its node with no `power` provider. Three
+steps before the reported symptom goes away: rebase that branch onto `main` and
+republish, wire `MeshNode.Config.power` to Android's `BatteryManager` in the
+transport, and re-pin android. Until then the phone node still reports uptime and
+nothing else - now because nothing tells it the battery level, rather than
+because the library could not say.
