@@ -151,6 +151,80 @@ the valuable half, and node-kmp is the only client that could fill it honestly -
 "BLE off", "no permission", "no CH341 attached" - because the reason comes from
 the transport itself.
 
+## The alignment pass, 2026-09-13
+
+Done in the same sitting as the audit above, on `meshtastic-node-kmp` `main`.
+
+**The advertisement pattern now matches the firmware's on both platforms.** The
+numbers in the table above were the *before*. Android moves from
+`INTERVAL_MEDIUM`/`TX_POWER_MEDIUM` and a blind `delay` to `INTERVAL_LOW`,
+`TX_POWER_HIGH` and `maxExtendedAdvertisingEvents = 3`, awaiting
+`onAdvertisingEnabled(set, false, _)` - the same shape as
+`ble_gap_ext_adv_start(inst, 0, BLE_MESH_ADV_EVENTS)`, which passes duration 0 and
+bounds on events. `durationMs` stays the ceiling rather than becoming a second
+bound, so the signature does not change and BlueZ, which has no event knob, is
+unaffected by it.
+
+Three constants settled the design, read out of the Android 37 sources rather
+than the docs:
+
+- `TX_POWER_MEDIUM = -7` and `TX_POWER_HIGH = 1` are **dBm**, so the 8 dB gap was
+  a fact and not an estimate. `TX_POWER_MAX_AVAILABLE = 20` is the nearer match to
+  the firmware's "controller picks its maximum" and is deliberately unused: it is
+  a flagged API, and the builder range-checks against `TX_POWER_MAX`, which is +1.
+- `INTERVAL_LOW = 160` units = 100 ms, and equals `INTERVAL_MIN`. **The firmware's
+  30 ms is below Android's public floor**, so 100 ms is as close as the platform
+  allows. That residual asymmetry is not closable from the client.
+- Three events at 100 ms fit inside the 300 ms budget one advertisement already
+  held, so this costs no airtime. Same ceiling, three times the repeats, 8 dB more
+  power.
+
+`onAdvertisingSetStarted` reports the power the controller actually granted. This
+library has no log, so reading it is the device test's job.
+
+**BlueZ gets the same two knobs, guarded.** `MinInterval`/`MaxInterval` at the
+same 100 ms, both bounds pinned to one value as the firmware pins
+`itvl_min == itvl_max`; and `TxPower` set from the adapter's own `MaxTxPower`,
+which is BlueZ's nearest equivalent of `tx_power = 127`. Two traps, both handled:
+`CanSetTxPower` lives on `SupportedFeatures` (an array) while the value lives on
+`SupportedCapabilities` (a dict), and `MaxTxPower` is a signed `int16` that
+`capabilityByte`'s unsigned mask would have read -7 dBm as 249. BlueZ validates
+both properties at parse time and fails the whole `RegisterAdvertisement` rather
+than ignoring one field, so the register path tries tuned and falls back to bare:
+a Linux node that went silent would be worse than one advertising at the default.
+
+**None of this has been on the air.** It compiles, `:node-transport-ble:jvmTest`
+covers the BlueZ property map and both capability readers, and both new tests were
+mutation-checked. The proof is `AndroidBleRadioTest` on a Pixel against a spike
+radio, plus a Linux run for the BlueZ half. Neither can be done from the Mac.
+
+### Asymmetries found while looking
+
+- **GATT chunk size, fixed.** Android grants an MTU of 517, so `mtu - 3` is 514
+  and the bench log reads `chunk=514` against an Espressif address. The firmware
+  receives into a `BLE_GATT_MESH_MAX_CHUNK` (512) buffer and takes
+  `min(r.len, cap)` in `platformPollInbound`, so **the last two bytes are dropped
+  with no error anywhere**: the fragment header survives, the payload is short,
+  and reassembly yields a packet that decodes as nothing. `GattPeerTable`'s
+  `maxChunkSize` now clamps to `MIN_CHUNK..MAX_CHUNK`, mirroring the firmware's
+  pair rather than only its minimum, which was already mirrored. Unproven that it
+  was biting in practice; proven that the two ceilings disagreed.
+- **BlueZ duplicate filtering: already correct.** `SetDiscoveryFilter` passes
+  `DuplicateData: true`, matching Android's `CALLBACK_TYPE_ALL_MATCHES`, Apple's
+  `allowDuplicates` and the firmware's `filter_duplicates = 0`. Checked because
+  a mesh node's payload changes every frame, so first-report-only would look
+  exactly like an idle mesh. Not a gap.
+- **nRF52 and ESP32 agree.** `NRF52BLEMesh.cpp` uses the same
+  `BLE_MESH_ADV_EVENTS`, `BLE_MESH_ADV_INTERVAL`, `BLE_MESH_SCAN_INTERVAL` and
+  `BLE_MESH_SCAN_WINDOW` macros, so aligning to ESP32 aligned to both radios.
+- **In-flight fragments: no gap.** The firmware holds 2 assemblies per peer, the
+  client's reassembler allows 4 - receiver generosity, which is fine. On the
+  sending side `GattLinkBase` holds one lock per peer for a whole packet, so at
+  most one assembly is ever in flight toward a peer.
+- **Still open, and not closable from the client:** Apple cannot set a PHY or
+  transmit an advertisement at all, BlueZ has no PHY API, and both firmware
+  advertisement PHYs are hardcoded 1M. Coded PHY stays a both-ends change.
+
 ## Configuration patterns worth revisiting
 
 - **A section the node reports must be one it honours, or one `excluded_modules`
