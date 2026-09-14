@@ -875,8 +875,8 @@ expect '^merge +BLOCKED +unresolved threads: 2 +queue: not enqueued +conflicts: 
 expect '^checks@aaaaaaa +ok 2 +fail 0 +pending 1 +validate-and-build / Build Desktop Debug'
 refuse 'fail 1'
 # The head-SHA reply wrapper must NOT count as a review; the skipped check must show.
-expect '^review +CodeRabbit: skipped at aaaaaaa - last full review at bbbbbbb; post'
-expect '^next .*CodeRabbit skipped at this head'
+expect '^review +CodeRabbit: skipped at aaaaaaa - last full review at bbbbbbb; post `pr … rereview --full`'
+expect '^next .*CodeRabbit skipped at this head: `pr … rereview --full`'
 expect '^reviews +APPROVED 1 \(garth\)'
 expect 'coderabbitai +app/MapScreen.kt:123 +"Consider guarding the null case here\.'
 expect '^next +resolve 2 threads'

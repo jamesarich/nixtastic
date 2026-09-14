@@ -213,8 +213,10 @@ def render_status(d):
         nxt.append("then checks")
     if d["mergeable"] == "CONFLICTING":
         nxt.append("rebase onto base")
-    if d["review"]["state"] in ("skipped", "paused"):
-        nxt.append(f"CodeRabbit {d['review']['state']} at this head: `pr … rereview`")
+    if d["review"]["state"] == "paused":
+        nxt.append("CodeRabbit paused at this head: `pr … rereview`")
+    if d["review"]["state"] == "skipped":
+        nxt.append("CodeRabbit skipped at this head: `pr … rereview --full`")
     if d["review"]["state"] == "draft":
         nxt.append("CodeRabbit skips drafts: mark ready, or `pr … rereview --full`")
     if d["state"] == "OPEN" and not q:
@@ -245,7 +247,7 @@ def review_line(d):
     if r["state"] == "paused":
         return f"CodeRabbit: auto-review paused at {h}{last}; post `pr … rereview`"
     if r["state"] == "skipped":
-        return f"CodeRabbit: skipped at {h}{last}; post `pr … rereview`"
+        return f"CodeRabbit: skipped at {h}{last}; post `pr … rereview --full`"
     if r["state"] == "pending":
         return f"CodeRabbit: running on {h}{last}"
     return f"CodeRabbit: none at {h}{last}"
@@ -300,7 +302,9 @@ def main():
     ap.add_argument("--all", action="store_true", help="threads: include resolved")
     ap.add_argument("--full", action="store_true",
                     help="rereview: whole-diff pass instead of the delta - re-reads unchanged "
-                         "lines and raises fresh findings on them; drafts need it")
+                         "lines and raises fresh findings on them. Needed where the delta pass "
+                         "has nothing to act on: drafts, and repos with "
+                         "auto_incremental_review:false (apple)")
     ap.add_argument("--until", choices=["checks", "queue", "merged", "reviewed"], default="checks")
     ap.add_argument("--timeout", type=int, default=900, help="wait: seconds before exit 75")
     a = ap.parse_args()
