@@ -1,10 +1,10 @@
 # Heard-on-current-LoRa node bit - cross-repo umbrella
 
 Status: in progress - protobufs merged (9a78479); android PR #7055 MERGED 2026-09-07; apple shipped an interim.
-firmware#11811 is open and **changed the mechanism from a sweep to a derived per-node slot fingerprint**
-(see the 2026-09-11 section). Follow-ups are up as drafts: android **#7138** (MQTT-only nodes,
-string, docs) and protobufs **#1079** (the field's own doc comment). Thomas still needs telling
-that the proto text is fixed separately, while #11811 is open.
+firmware **#11811 MERGED 2026-09-11 (`2a01676`)**, and it **changed the mechanism from a sweep to a
+derived per-node slot fingerprint** (see the 2026-09-11 section). design#146 has been rewritten to
+match. Follow-ups up as drafts: android **#7138** (MQTT-only nodes, string, docs) and protobufs
+**#1079** (the field's own doc comment).
 Started: 2026-09-05
 
 ## Goal
@@ -174,9 +174,9 @@ fine to ship on.
 
 ## Firmware changed the mechanism: derived, not swept (2026-09-11)
 
-firmware#11811 (caveman99, open, branch `fix/nodedb-heard-on-current-lora`)
-implements the firmware half, and it does **not** implement the sweep this
-note scoped. The first push did; James asked on the PR whether it handled
+firmware#11811 (caveman99, **merged 2026-09-11 as `2a01676`**, branch
+`fix/nodedb-heard-on-current-lora`) implements the firmware half, and it does
+**not** implement the sweep this note scoped. The first push did; James asked on the PR whether it handled
 `discovery` rolling through presets, Garth having flagged it the day before,
 and Thomas rewrote it.
 
@@ -288,3 +288,28 @@ as the Wire all-args-constructor ABI example, not as tracked behaviour.
   old design and the new one.
 - firmware `develop` (cccefa09a) populates the field nowhere. #11811 is the
   first implementation, so no shipped firmware has ever set it.
+
+### apple is unaffected mechanically, and was already right about MQTT
+
+Garth's interim (apple#2429, merged) never reads the proto field. It is a pure
+phone-side heuristic in `Meshtastic/Helpers/LoRaConfigChange.swift`: stamp a
+`changedAt` per radio in `UserDefaults` when the app observes a channel move
+(`movesOffChannel`), then flag any node whose `lastHeard < changedAt`. So the
+firmware mechanism change cannot break it.
+
+Three places it is weaker than the field now merged:
+
+1. **Preset sweeping breaks it the same way it broke the firmware sweep.**
+   `recordChange` stamps a fresh `changedAt` on every move, so A→B→A flags the
+   whole list where firmware restores the marks by itself.
+2. **A config change made off-phone is invisible** - device menu, CLI, or a
+   second phone never stamps, so apple shows nothing. That is the stated reason
+   the bit lives in firmware at all.
+3. It compares a radio-sourced `lastHeard` against a phone-sourced `Date.now`.
+
+**`LoRaConfigChange.isUnheard` already carries `guard !viaMqtt else { return
+false }`** - exactly the bug android#7138 had to fix. If apple#2427 switches to
+the proto field, that guard must survive the switch, because the field itself
+has the MQTT problem baked in.
+
+apple#2427 (open) is the switch-to-the-field issue and is unblocked now.
