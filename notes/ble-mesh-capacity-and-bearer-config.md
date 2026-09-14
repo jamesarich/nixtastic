@@ -153,6 +153,22 @@ What to build, in order:
 3. Still open: `MeshNode.transportAvailability` as a `StateFlow<Map<String,
    TransportAvailability>>`, so hosts stop rewriting the fold.
 
+**And the `MESH_TRANSPORTS` exception is gone, without a proto field.** The audit
+treated the bearer list as a setting with no durable home, which made the unlanded
+BLE flags look like a blocker. It was a machine description filed under settings.
+On a radio the bearer set *is* the board variant, and the config only decides
+whether each is used - two questions, one variable answering both. Split, each half
+lands in a category the repo already had: what a host can build is hardware, so
+`MESH_TRANSPORTS` joins `MESH_LORA_SPIDEV` and never persists; whether a built
+bearer transmits is a setting, and `network.enabled_protocols` plus `lora.region`
+already hold that. The bespoke bearer store is deleted.
+
+Two things that made the wrong answer look right for two rounds. `AGENTS.md` itself
+named `bluetooth.enabled` as a candidate home, and it is not one - in firmware that
+field gates the phone-API BLE interface, not any mesh bearer. And "the list has no
+durable home" is true and irrelevant, because the list is not the thing that needed
+one.
+
 One finding from fixing it, worth more than the fix. `ConfigFieldParityTest`
 could not have caught this. It proves a `NODE`-classified field *varies* between
 two probe nodes, and `enabled_protocols` did vary - by bearer presence. **It
