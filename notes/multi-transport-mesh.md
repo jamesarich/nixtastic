@@ -40,6 +40,15 @@ not measured about range, where the throughput and range levers are, and why
 `network.enabled_protocols` is the home for a bearer toggle rather than a new
 config module.
 
+**Re-evaluated 2026-09-14** after the bench work, Ron's `Node-Bridging` branch
+and the prior-art survey:
+[`ble-mesh-reevaluation-2026-09-14.md`](./ble-mesh-reevaluation-2026-09-14.md).
+GATT is the only BLE medium every platform has in both directions, so it is the
+primary bearer; the advertisement bearer has never carried a full-size packet
+(no fragmentation, 243-byte budget against LoRa's 239-byte ciphertext); overhear
+suppression is not actually active on BLE; and Ron's per-peer encryption gives up
+the one-to-many property that chose advertisements in the first place.
+
 Left standing from the parity plan: the cross-peer fan-out inside a single GATT
 send (needs three connected peers), step 0's remaining app-side adapters, and
 per-bearer rates over time in the monitor. The commonization pass and the
