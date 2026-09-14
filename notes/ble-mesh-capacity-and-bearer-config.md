@@ -237,9 +237,24 @@ a Linux node that went silent would be worse than one advertising at the default
   interval plus callback latency. The 10 s ceiling is the point - at the 300 ms default,
   "the bound worked" and "the callback never came" are milliseconds apart.
 
-**Still not on the air:** that a radio *hears* any of it needs a bench board running
-the BLE-mesh spike in range, and the BlueZ half needs a Linux run. Neither is possible
-from the Mac.
+**The BlueZ half has no host in this fleet that can run it**, measured on the uConsole
+the same day. That controller is HCI version 9 (BT 5.0, Broadcom) on bluez 5.82, and
+`LEAdvertisingManager1.SupportedCapabilities` still reports `MaxAdvLen 31`: BlueZ sees
+no extended advertising, so a `MeshPacket` cannot leave the host and `canTransmit`
+correctly reads false. `james-pc`'s Realtek adapter refuses advertising outright. So
+the tuned `RegisterAdvertisement` is never reached on either box.
+
+It did settle the half that matters most, though. `SupportedFeatures` is **empty** -
+no `CanSetTxPower` - so `maxTxPower()` returns null and no `TxPower` property is sent.
+That guard is load-bearing rather than defensive: BlueZ fails the whole registration on
+a `TxPower` the controller cannot honour, and this is a real adapter that cannot. The
+tuned-then-bare fallback was written blind and the first hardware it met would have
+needed it.
+
+**Still not on the air:** that anything *hears* the Pixel's advertisement. The uConsole
+cannot - a controller with no extended advertising cannot receive one either, and a
+scan there sees ordinary devices and never company ID 0xFFFF. That needs a bench board
+running the BLE-mesh spike in range of the Pixel.
 
 ### Asymmetries found while looking
 
