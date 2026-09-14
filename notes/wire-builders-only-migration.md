@@ -373,6 +373,9 @@ Order on the day: `protobufs` merges and gets tagged, `TAKPacket-SDK` releases
 against that tag, then `android` bumps both pins; `meshtastic-node-kmp` and
 `meshtastic-sdk` need only the `protobufs` tag and are independent of TAK.
 
+`protobufs` #952 (field metadata) is a hard ordering coupling rather than a
+merge conflict - see *Interaction with `protobufs` #952*.
+
 ### Per repo
 
 - **`protobufs`** - two settings in `packages/kmp/build.gradle.kts`. Nothing
@@ -494,6 +497,102 @@ longer applying the Kotlin plugin transitively is fine because
 `packages/kmp` applies it itself, and the provider-backed `set(...)` migration
 does not reach the three scalar options we set - verified by generating with
 7.0.0 and the DSL unchanged.
+
+## Interaction with `protobufs` #952 (field metadata)
+
+[#952](https://github.com/meshtastic/protobufs/pull/952) adds a custom Wire
+`SchemaHandler` in `packages/kmp/buildSrc` that emits a `FieldMetadataRegistry`
+into the published artifact. It changes no message shape, so it looks orthogonal
+to this migration and is not. It breaks in two independent places
+against #1074/#1076, found by compiling the merge rather than reading it. Branch
+`spike/buildersonly-fieldmeta` in the `protobufs` worktrees (`0fe9692`) is
+`pr1076` merged with `pr952` plus both fixes, `compileKotlinJvm` green.
+
+`packages/kmp/build.gradle.kts` merges cleanly. #1074 rewrites the
+`makeImmutableCopies` lines inside `kotlin { }`, #952 appends a `custom { }`
+block after it, and git resolves the adjacent hunks unaided. There is no
+textual conflict to plan for.
+
+### 1. `buildSrc` pins its own `wire-schema`, and it wins
+
+The `packages/kmp/buildSrc/build.gradle.kts` #952 adds takes
+`com.squareup.wire:wire-schema:6.4.0`. buildSrc dependencies sit on the
+*buildscript* classpath, so once #1076 moves the plugin to 7.0.0 that 6.4.0
+copy shadows the plugin's own and generation dies before any Kotlin compiles:
+
+    Execution failed for task ':generateCommonMainProtos'
+    > Class com.squareup.wire.schema.ProtoType does not have member field
+      'com.squareup.wire.schema.ProtoType FIELD_MASK'
+
+Nothing to do with the "our schema has no `FieldMask`" check above - this is
+Wire 7's codegen reaching for a `ProtoType` constant 6.4.0 does not declare.
+The fix is the one version string.
+
+The handler *source* needs nothing. `SchemaHandler`, `SchemaHandler.Factory`
+and `SchemaHandler.Context` are identical between `wire-schema` 6.4.0 and
+7.0.0 - javap-diffed, 7.0.0 adding only a `protected final
+checkPathInOutDirectory`. The pin is the whole problem.
+
+### 2. The emitted registry constructs messages, at 336 sites
+
+`renderConstructor` renders each annotated field as a `FieldMetadata(...)`
+constructor call. The generated `FieldMetadataRegistry.kt` is 760 lines and
+336 of them are that call, so `buildersOnly` making the constructor private
+means the file #952 generates cannot compile:
+
+    FieldMetadataRegistry.kt:733:32 No parameter with name 'deprecated' found.
+    FieldMetadataRegistry.kt:733:32 No value passed for parameter 'builder'.
+
+One method fixes it, under the same `.also { wb -> }` rule as every consumer
+repo:
+
+    private val Config_BluetoothConfig_enabled: FieldMetadata =
+        FieldMetadata.Builder().also { wb -> wb.label = "Enabled" }.build()
+
+The handler did not process `enum_value_metadata` at all - `collect()` walked
+`MessageType.fieldsAndOneOfFields` and nothing else, so every enum-value label
+reached the Go and Swift generators and stopped there. Fixed on
+`feat/field-metadata-fill` (`7e0e815`): 136 enum values now generate accessors,
+matching exactly the 136 in the schema that carry the annotation or the standard
+`deprecated` option.
+
+**The trap there is worth keeping.** Following the field pattern for enum values
+produces an extension on the companion named after the value, and that is
+*shadowed by the enum entry itself* - Kotlin resolves members before extensions.
+The declaration compiles; the accessor is simply unreachable, with no warning.
+Compiled both ways to be sure: `val Role.Companion.CLIENT: FieldMetadata`
+declares clean and `Role.CLIENT` still yields `Role`, failing only at the call
+site as `Return type mismatch: expected 'FieldMetadata', actual
+'Config.DeviceConfig.Role'`. The shape that works is an extension on the enum
+type, dispatching on the receiver - `val Role.metadata: FieldMetadata?` - which
+also suits the call site, since a UI holds a `Role` rather than a field
+reference.
+
+Enum accessors are immune to `buildersOnly` (enums have no builders and
+`ADAPTER` is untouched), but the `FieldMetadata` values the registry emits for
+them follow the same Builder rule as everything else.
+
+### The emit has to flip, so the order is fixed
+
+No form compiles both ways. `packages/kmp` sets no `javaInterop` and Wire emits
+**0** real `newBuilder()` methods without `buildersOnly` (the table in *What
+`buildersOnly` does*), so Builder form fails today and constructor form fails
+after #1074. The emit flips exactly when #1074 lands.
+
+**#952 lands as written; #1074 rebases onto it and carries both changes.** That
+leaves #952 with no dependency on the buildersOnly timeline and puts the fix in
+the PR that causes the break. Worth stating on #952, so the handler is not
+independently "cleaned up" to Builder form, which breaks its own build.
+
+`javaInterop = true` would decouple them and is the wrong trade: it changes the
+published artifact's JVM shape, which is the break class this migration exists
+to remove.
+
+The promise #952 makes is the argument for landing both. "Add a scalar to
+`FieldMetadata`, every target regenerates, no generator change" moves
+`FieldMetadata`'s all-args constructor signature every time, which is exactly
+the `NoSuchMethodError` in *The problem*. `buildersOnly` is what makes that
+promise safe to keep.
 
 ## Alternatives considered and rejected
 
