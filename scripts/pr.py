@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 import time
+from datetime import datetime
 
 
 def repos_tsv():
@@ -60,6 +61,14 @@ SUMMARY_MARKS = ("Recent review info", "No actionable comments", "Draft PR not r
                  "Reviews paused", "Actionable comments posted")
 
 
+def _ts(s):
+    """ISO-8601 to datetime. Never compare these as strings: REST always says
+    "Z", but GraphQL's GitTimestamp is documented as NOT normalized to UTC, so
+    an offset like -05:00 sorts before an earlier UTC time and a previous
+    round's summary reads as this head's."""
+    return datetime.fromisoformat(s.replace("Z", "+00:00")) if s else None
+
+
 def cr_summary(repo, n):
     """CodeRabbit's pinned summary comment. A round that finds nothing posts no
     review object at all - it edits this comment in place, so `updated_at` is
@@ -88,7 +97,7 @@ def review_state(repo, n, sha, checks, head_date=None):
                                        + ((c.get("output") or {}).get("summary") or "")).lower() for c in cr)
     s = cr_summary(repo, n)
     body = s.get("body") or ""
-    fresh = bool(head_date) and (s.get("updated_at") or "") >= head_date
+    fresh = bool(_ts(s.get("updated_at")) and _ts(head_date)) and _ts(s["updated_at"]) >= _ts(head_date)
     actionable, via = None, None
     if at_head:
         state, via = "reviewed", "review"

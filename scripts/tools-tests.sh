@@ -842,13 +842,13 @@ cat > "$FIX/view.json" <<'EOF'
 {"number":7000,"title":"feat: offline map fallback","state":"OPEN","isDraft":false,"author":{"login":"jamesarich"},"headRefOid":"aaaaaaa1111111111111111111111111111111111","headRefName":"feat/map","baseRefName":"main","mergeStateStatus":"BLOCKED","mergeable":"MERGEABLE","reviewDecision":"APPROVED","url":"https://github.com/meshtastic/Meshtastic-Android/pull/7000"}
 EOF
 cat > "$FIX/gql.json" <<'EOF'
-{"data":{"repository":{"pullRequest":{"mergeQueueEntry":null,"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T12:00:00Z"}}]},"reviews":{"nodes":[{"author":{"login":"garth"},"state":"APPROVED"}]},"reviewThreads":{"nodes":[
+{"data":{"repository":{"pullRequest":{"mergeQueueEntry":null,"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T07:00:00-05:00"}}]},"reviews":{"nodes":[{"author":{"login":"garth"},"state":"APPROVED"}]},"reviewThreads":{"nodes":[
  {"id":"T1","isResolved":false,"comments":{"nodes":[{"author":{"login":"coderabbitai"},"path":"app/MapScreen.kt","line":123,"body":"Consider guarding the null case here.\nmore"}]}},
  {"id":"T2","isResolved":false,"comments":{"nodes":[{"author":{"login":"jamesarich"},"path":"core/Repo.kt","line":40,"body":"this leaks the scope"}]}},
  {"id":"T3","isResolved":true,"comments":{"nodes":[{"author":{"login":"garth"},"path":"a.kt","line":1,"body":"done"}]}}]}}}}}
 EOF
 cat > "$FIX/gql_after.json" <<'EOF'
-{"data":{"repository":{"pullRequest":{"mergeQueueEntry":{"position":2,"state":"QUEUED"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T12:00:00Z"}}]},"reviews":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
+{"data":{"repository":{"pullRequest":{"mergeQueueEntry":{"position":2,"state":"QUEUED"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T07:00:00-05:00"}}]},"reviews":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
 EOF
 cat > "$FIX/checks_head.json" <<'EOF'
 {"check_runs":[{"id":1,"name":"validate-and-build / Build Desktop Debug","status":"in_progress","conclusion":null},{"id":2,"name":"Unit Tests","status":"completed","conclusion":"success"},{"id":3,"name":"CodeRabbit","status":"completed","conclusion":"success","output":{"title":"Review skipped","summary":"Review skipped: incremental reviews are disabled"}}]}
