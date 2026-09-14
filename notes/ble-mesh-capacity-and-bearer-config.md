@@ -198,10 +198,12 @@ unaffected by it.
 Three constants settled the design, read out of the Android 37 sources rather
 than the docs:
 
-- `TX_POWER_MEDIUM = -7` and `TX_POWER_HIGH = 1` are **dBm**, so the 8 dB gap was
-  a fact and not an estimate. `TX_POWER_MAX_AVAILABLE = 20` is the nearer match to
-  the firmware's "controller picks its maximum" and is deliberately unused: it is
-  a flagged API, and the builder range-checks against `TX_POWER_MAX`, which is +1.
+- `TX_POWER_MEDIUM = -7` and `TX_POWER_HIGH = 1` are **dBm**, so the gap was a fact
+  and not an estimate. **Measured on a Pixel 6a it is 9 dB, not 8**: that controller
+  grants -8 at MEDIUM and +1 at HIGH, because the constant is a request and the grant
+  is the controller's answer. `TX_POWER_MAX_AVAILABLE = 20` is the nearer match to the
+  firmware's "controller picks its maximum" and is deliberately unused: it is a flagged
+  API, and the builder range-checks against `TX_POWER_MAX`, which is +1.
 - `INTERVAL_LOW = 160` units = 100 ms, and equals `INTERVAL_MIN`. **The firmware's
   30 ms is below Android's public floor**, so 100 ms is as close as the platform
   allows. That residual asymmetry is not closable from the client.
@@ -223,10 +225,21 @@ both properties at parse time and fails the whole `RegisterAdvertisement` rather
 than ignoring one field, so the register path tries tuned and falls back to bare:
 a Linux node that went silent would be worse than one advertising at the default.
 
-**None of this has been on the air.** It compiles, `:node-transport-ble:jvmTest`
-covers the BlueZ property map and both capability readers, and both new tests were
-mutation-checked. The proof is `AndroidBleRadioTest` on a Pixel against a spike
-radio, plus a Linux run for the BlueZ half. Neither can be done from the Mac.
+**The Android half ran on hardware on 2026-09-14** - a Pixel 6a on Android 17,
+`:node-transport-ble:connectedAndroidDeviceTest`. What that settled:
+
+- The new parameters are accepted rather than rejected at the builder: `INTERVAL_LOW`,
+  `TX_POWER_HIGH` and an event bound all take.
+- **9 dB, not 8.** The controller grants -8 dBm at MEDIUM and +1 at HIGH.
+- **The event bound really ends the advertisement.** I had flagged that I had not
+  verified Android fires `onAdvertisingEnabled(set, false, _)` on self-termination.
+  It does: 380 ms measured against a 10 s ceiling, which is three events at the 100 ms
+  interval plus callback latency. The 10 s ceiling is the point - at the 300 ms default,
+  "the bound worked" and "the callback never came" are milliseconds apart.
+
+**Still not on the air:** that a radio *hears* any of it needs a bench board running
+the BLE-mesh spike in range, and the BlueZ half needs a Linux run. Neither is possible
+from the Mac.
 
 ### Asymmetries found while looking
 
