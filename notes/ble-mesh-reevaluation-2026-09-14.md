@@ -55,6 +55,14 @@ is `251 - 8` and `BleMeshTransport.send` returns false above it. It at least
 surfaces as a send failure rather than a log line, and `MeshFragment.split`
 exists but lives in `node-transport-ble-gatt`, not here.
 
+**And the envelope is bigger than it needs to be.** `buildAdvPayload` encodes
+the packet as it stands, so a relayed packet carries `rx_rssi`, `rx_snr` and
+`rx_time` over the air. `rx_rssi` is `int32` and negative, which nanopb encodes
+as a 10-byte varint. Ron's ingress strips all of them on receipt, which is the
+tell that they are on the wire. `UdpMulticastHandler::onSend` does the same
+thing, so this is a pre-existing pattern rather than something the BLE spike
+invented; it just costs nothing on a 1500-byte MTU and costs real budget here.
+
 **Unproven:** the exact cutoff in bytes. The 219/194 figures are computed from
 the field sizes, not measured by encoding a maximal packet. Worth a native test
 that encodes `MAX_RADIO_PAYLOAD_LEN` of ciphertext and asserts what happens.
@@ -116,12 +124,36 @@ gated on the adapter either way.
 - Max 3 paired peers, 60-second pairing window with matching display codes.
 - `onSend` loops **once per paired peer**, queueing a separate advertisement
   each.
-- Packaging win, and it is a real one: `env:rak4631_blemesh` and
-  `nrf52840_s140_v6_blemesh.ld` deleted, the opt-in moved into shared variant
-  `.ini` files.
+- `env:rak4631_blemesh` and `nrf52840_s140_v6_blemesh.ld` deleted, the build
+  settings moved into shared variant `.ini` files.
 
-The packaging change should land regardless. The protocol change needs a
-decision first, for three reasons.
+**Correction to the first draft of this note: the packaging change is not a
+clean win, and it is not packaging.** Read properly, it changes what every board
+builds:
+
+- `-DHAS_BLE_MESH=1`, `CONFIG_BT_NIMBLE_EXT_ADV=y` and `EXT_SCAN=y` move into
+  `[ble_mesh_esp32]`, which `esp32s3.ini`, `esp32c3.ini` and `esp32c6.ini` now
+  all reference. Every S3/C3/C6 build compiles the transport in and rebuilds
+  NimBLE with extended advertising and extended scanning. Runtime opt-in still
+  gates it (`isEnabled()` reads `enabled_protocols`, default off), so this is a
+  legitimate shipping shape, but the flash and RAM cost is real and
+  **unmeasured**.
+- `nrf52840_s140_v6.ld` and `_v7.ld` go from `ORIGIN = 0x20004000` back to
+  `0x20006000`, and `-DBLE_MESH_NRF52_CENTRAL=1` moves into `nrf52840.ini`.
+  `develop` is at `0x20004000`, so this is not restoring a baseline: it takes
+  **8 KB of RAM from every nRF52840 build** to buy the central link one opt-in
+  feature needs.
+- `-DHAS_BLE_GATT_MESH=1` is removed from the ESP32 block and from
+  `rak4631/platformio.ini`, and **no variant on the branch sets it**. The
+  `BLEGattMeshHandler` source is still there; nothing compiles it. The GATT
+  proxy role is gone from every build.
+
+So the branch moves opposite to the recommendation below on both axes at once:
+advertisements in every build, GATT in none. That is most likely scope (a branch
+called `Node-Bridging` is about radio-to-radio) rather than a rejection, but it
+is a question for Ron, not something to cherry-pick.
+
+The protocol change needs a decision first, for three reasons.
 
 **1. It gives up the one property that justified advertisements over GATT.**
 The spike chose connectionless because one transmission reaches every listener.
@@ -197,9 +229,12 @@ property.
    reference, and `node-transport-ble-gatt` already has `MeshFragment.split`) or
    state the cutoff in the protocol doc and log it as a counter, not a
    `LOG_WARN`.
-3. **Take Ron's packaging change, hold the protocol change.** The variant `.ini`
-   opt-in and the deleted linker script are unambiguously better. v2 needs the
-   NetKey-vs-pairwise question answered first, and it breaks node-kmp's wire.
+3. **Ask Ron before taking anything from `Node-Bridging`.** It is not a
+   packaging change: it compiles the advertisement bearer into every S3/C3/C6
+   build, gives back the spike's 8 KB of nRF52840 RAM, and leaves
+   `HAS_BLE_GATT_MESH` set by no variant, so the GATT proxy role is compiled out
+   everywhere. v2 also needs the shared-key-vs-pairwise question answered, and
+   it breaks node-kmp's wire.
 4. **Widen the dedup gate** before claiming overhear suppression.
 5. **Neither bearer ships** while the company ID is `0xFFFF` and the service
    UUIDs are unregistered. Unchanged from the spike.
