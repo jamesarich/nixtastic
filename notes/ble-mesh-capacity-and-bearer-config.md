@@ -137,14 +137,28 @@ every other host would have to as well. There is no wire representation at all.
 
 What to build, in order:
 
-1. `MeshNode.setTransportEnabled(name, Boolean)` that stops collecting
-   `incoming()` and skips fan-out. `TransportActivity` already knows whether
-   anything is collecting, so the plumbing is there. Kills the rebuild and keeps
-   the peer table.
-2. Widen `enabledProtocols()` to the three flags and make the write live. The
-   toggle stops springing back.
-3. `MeshNode.transportAvailability` as a `StateFlow<Map<String,
+1. ~~`MeshNode.setTransportEnabled(name, Boolean)` that stops collecting
+   `incoming()`~~ - **done differently, and the audit was wrong here.** Firmware
+   does not gate receive: `Router::send` tests the flag on every packet, while
+   the receive path is wired inside `UdpMulticastHandler::start()` and never
+   re-checks, so a radio whose flag is cleared keeps hearing the mesh until it
+   reboots. Cancelling the receive flow would have been this library inventing a
+   behaviour. `MeshNode.setBroadcastVia(name, on)` mutes transmit only, which is
+   also why nothing rebuilds and the node DB survives a toggle.
+2. **Done.** `enabled_protocols` now reports the gate rather than the wiring, and
+   a phone's write drives it through `AdminService.applyConfig` - so `restore()`
+   carries a stored flag to the node at startup, which is firmware's boot read.
+   Only UDP has a flag until `feat/ble-mesh-protocol-flags` lands; `broadcastsVia`
+   is keyed by bearer name, so each BLE flag is one line when it does.
+3. Still open: `MeshNode.transportAvailability` as a `StateFlow<Map<String,
    TransportAvailability>>`, so hosts stop rewriting the fold.
+
+One finding from fixing it, worth more than the fix. `ConfigFieldParityTest`
+could not have caught this. It proves a `NODE`-classified field *varies* between
+two probe nodes, and `enabled_protocols` did vary - by bearer presence. **It
+cannot prove a field is complete.** That is a limit of the harness, not a missing
+line in the field's derivation, and the same blind spot covers any field that
+reports a subset of something.
 
 The UX shape is one row per bearer: a switch and a state line. The state line is
 the valuable half, and node-kmp is the only client that could fill it honestly -
