@@ -829,6 +829,7 @@ case "$*" in
   *"pr view"*)        cat "$PRFIX/view.json" ;;
   *mutation*)         echo "$*" >> "$PRFIX/posted"; echo '{"data":{"resolveReviewThread":{"thread":{"isResolved":true}}}}' ;;
   *graphql*)          if [ -f "$PRFIX/flip" ] && [ "$n" -ge "$(cat "$PRFIX/flip")" ]; then cat "$PRFIX/gql_after.json"; else cat "$PRFIX/gql.json"; fi ;;
+  *"/issues/"*comments*) cat "$PRFIX/comments.json" ;;
   *"/reviews"*)       if [ -f "$PRFIX/flip" ] && [ "$n" -ge "$(cat "$PRFIX/flip")" ]; then cat "$PRFIX/reviews_after.json"; else cat "$PRFIX/reviews.json"; fi ;;
   *"/check-runs"*)    case "$*" in *aaaaaaa*) cat "$PRFIX/checks_head.json" ;; *) cat "$PRFIX/checks_stale.json" ;; esac ;;
   *"/compare/"*)      echo '{"behind_by": 0}' ;;
@@ -841,13 +842,13 @@ cat > "$FIX/view.json" <<'EOF'
 {"number":7000,"title":"feat: offline map fallback","state":"OPEN","isDraft":false,"author":{"login":"jamesarich"},"headRefOid":"aaaaaaa1111111111111111111111111111111111","headRefName":"feat/map","baseRefName":"main","mergeStateStatus":"BLOCKED","mergeable":"MERGEABLE","reviewDecision":"APPROVED","url":"https://github.com/meshtastic/Meshtastic-Android/pull/7000"}
 EOF
 cat > "$FIX/gql.json" <<'EOF'
-{"data":{"repository":{"pullRequest":{"mergeQueueEntry":null,"reviews":{"nodes":[{"author":{"login":"garth"},"state":"APPROVED"}]},"reviewThreads":{"nodes":[
+{"data":{"repository":{"pullRequest":{"mergeQueueEntry":null,"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T12:00:00Z"}}]},"reviews":{"nodes":[{"author":{"login":"garth"},"state":"APPROVED"}]},"reviewThreads":{"nodes":[
  {"id":"T1","isResolved":false,"comments":{"nodes":[{"author":{"login":"coderabbitai"},"path":"app/MapScreen.kt","line":123,"body":"Consider guarding the null case here.\nmore"}]}},
  {"id":"T2","isResolved":false,"comments":{"nodes":[{"author":{"login":"jamesarich"},"path":"core/Repo.kt","line":40,"body":"this leaks the scope"}]}},
  {"id":"T3","isResolved":true,"comments":{"nodes":[{"author":{"login":"garth"},"path":"a.kt","line":1,"body":"done"}]}}]}}}}}
 EOF
 cat > "$FIX/gql_after.json" <<'EOF'
-{"data":{"repository":{"pullRequest":{"mergeQueueEntry":{"position":2,"state":"QUEUED"},"reviews":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
+{"data":{"repository":{"pullRequest":{"mergeQueueEntry":{"position":2,"state":"QUEUED"},"commits":{"nodes":[{"commit":{"committedDate":"2026-09-14T12:00:00Z"}}]},"reviews":{"nodes":[]},"reviewThreads":{"nodes":[]}}}}}
 EOF
 cat > "$FIX/checks_head.json" <<'EOF'
 {"check_runs":[{"id":1,"name":"validate-and-build / Build Desktop Debug","status":"in_progress","conclusion":null},{"id":2,"name":"Unit Tests","status":"completed","conclusion":"success"},{"id":3,"name":"CodeRabbit","status":"completed","conclusion":"success","output":{"title":"Review skipped","summary":"Review skipped: incremental reviews are disabled"}}]}
@@ -859,6 +860,9 @@ cat > "$FIX/reviews.json" <<'EOF'
 EOF
 cat > "$FIX/reviews_after.json" <<'EOF'
 [{"id":3,"user":{"login":"coderabbitai[bot]"},"body":"**Actionable comments posted: 0**","commit_id":"aaaaaaa1111111111111111111111111111111111","state":"COMMENTED"}]
+EOF
+cat > "$FIX/comments.json" <<'EOF'
+[{"user":{"login":"coderabbitai[bot]"},"updated_at":"2026-09-14T11:00:00Z","body":"**Walkthrough**\n\nNo actionable comments were generated.\n\nRecent review info"}]
 EOF
 cat > "$FIX/checks_stale.json" <<'EOF'
 {"check_runs":[{"id":9,"name":"Unit Tests","status":"completed","conclusion":"failure"}]}
@@ -872,7 +876,7 @@ expect '^checks@aaaaaaa +ok 2 +fail 0 +pending 1 +validate-and-build / Build Des
 refuse 'fail 1'
 # The head-SHA reply wrapper must NOT count as a review; the skipped check must show.
 expect '^review +CodeRabbit: skipped at aaaaaaa - last full review at bbbbbbb; post'
-expect '^next .*CodeRabbit skipped this head'
+expect '^next .*CodeRabbit skipped at this head'
 expect '^reviews +APPROVED 1 \(garth\)'
 expect 'coderabbitai +app/MapScreen.kt:123 +"Consider guarding the null case here\.'
 expect '^next +resolve 2 threads'
@@ -892,7 +896,28 @@ printf '%s\n' "$res" | grep -q 'timed out' || { echo "T32: no timeout message"; 
 rc=0; NIXTASTIC_PR_POLL=0.1 "$pr" android 7000 wait --until queue --timeout 1 >/dev/null 2>&1 || rc=$?
 [ "$rc" = 75 ] || { echo "T32: timeout exit must be 75, got $rc"; exit 1; }
 run "$pr" android 7000 rereview
-[ "$(grep -c 'full review' "$FIX/posted")" = 1 ] || { echo "T32: rereview did not post once"; exit 1; }
+expect "posted '@coderabbitai review'"
+[ "$(grep -c 'full review' "$FIX/posted")" = 0 ] || { echo "T32: rereview must not post a full review"; exit 1; }
+run "$pr" android 7000 rereview --full
+[ "$(grep -c 'full review' "$FIX/posted")" = 1 ] || { echo "T32: rereview --full did not post once"; exit 1; }
+# A clean round posts NO review object - it edits the pinned summary. Dated after the head
+# commit that is the round; dated before it (above) it is the previous round and must not count.
+cat > "$FIX/comments.json" <<'EOF'
+[{"user":{"login":"coderabbitai[bot]"},"updated_at":"2026-09-14T12:30:00Z","body":"**Walkthrough**\n\nNo actionable comments were generated.\n\nRecent review info"}]
+EOF
+run "$pr" android 7000
+expect '^review +CodeRabbit: reviewed at aaaaaaa \(0 actionable, per the pinned summary\)'
+refuse 'CodeRabbit skipped at this head'
+rc=0; "$pr" android 7000 reviewed >/dev/null 2>&1 || rc=$?
+[ "$rc" = 0 ] || { echo "T32: a clean pinned summary must count as reviewed, got $rc"; exit 1; }
+# Auto-pause after auto_pause_after_reviewed_commits: nothing was looked at, and it outranks
+# the check run's "Review skipped" wording.
+cat > "$FIX/comments.json" <<'EOF'
+[{"user":{"login":"coderabbitai[bot]"},"updated_at":"2026-09-14T12:30:00Z","body":"Reviews paused\n\nRecent review info"}]
+EOF
+run "$pr" android 7000
+expect '^review +CodeRabbit: auto-review paused at aaaaaaa'
+expect '^next .*CodeRabbit paused at this head'
 run_lax "$pr" notarepo 1
 expect 'unknown repo'
 rc=0; "$pr" android 7000 reviewed >/dev/null 2>&1 || rc=$?

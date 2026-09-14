@@ -49,19 +49,36 @@ def gh(*args):
 
 GQL = """query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){
  mergeQueueEntry{position state}
+ commits(last:1){nodes{commit{committedDate}}}
  reviews(last:30){nodes{author{login} state}}
  reviewThreads(first:100){nodes{id isResolved comments(first:1){nodes{author{login} path line body}}}}}}}"""
 
 OK_CONCLUSIONS = ("success", "skipped", "neutral")
 CR_LOGIN = "coderabbitai[bot]"
+# Phrases that identify CodeRabbit's pinned summary comment, whichever state it is in.
+SUMMARY_MARKS = ("Recent review info", "No actionable comments", "Draft PR not reviewed",
+                 "Reviews paused", "Actionable comments posted")
 
 
-def review_state(repo, n, sha, checks):
-    """Did CodeRabbit review THIS head? Only a review whose body says
-    "Actionable comments posted" is a real pass - every reply it makes on a
-    thread is wrapped in its own review object carrying the head SHA and an
-    empty body, which reads as "re-reviewed" when nothing was. The CodeRabbit
-    check saying "Review skipped" means skipped, not clean."""
+def cr_summary(repo, n):
+    """CodeRabbit's pinned summary comment. A round that finds nothing posts no
+    review object at all - it edits this comment in place, so `updated_at` is
+    the round's timestamp and the body is the only record of the verdict. It
+    also carries the "Reviews paused" and "Draft PR not reviewed" states."""
+    cs = json.loads(gh("api", f"repos/{repo}/issues/{n}/comments?per_page=100"))
+    mine = [c for c in cs if (c.get("user") or {}).get("login") == CR_LOGIN
+            and any(m in (c.get("body") or "") for m in SUMMARY_MARKS)]
+    return mine[-1] if mine else {}
+
+
+def review_state(repo, n, sha, checks, head_date=None):
+    """Did CodeRabbit look at THIS head? Two different records say yes and
+    neither is the check run. A round WITH findings posts a review whose body
+    says "Actionable comments posted" - every reply it makes on a thread is
+    wrapped in its own review object carrying the head SHA and an empty body,
+    which reads as "re-reviewed" when nothing was. A round with NO findings
+    posts nothing and edits the pinned summary instead, so reading reviews
+    alone reports a clean round as unreviewed and sends you to `rereview`."""
     revs = json.loads(gh("api", f"repos/{repo}/pulls/{n}/reviews?per_page=100"))
     full = [r for r in revs if (r.get("user") or {}).get("login") == CR_LOGIN
             and "Actionable comments posted" in (r.get("body") or "")]
@@ -69,19 +86,28 @@ def review_state(repo, n, sha, checks):
     cr = [c for c in checks if "coderabbit" in (c.get("name") or "").lower()]
     skipped = any("review skipped" in (((c.get("output") or {}).get("title") or "")
                                        + ((c.get("output") or {}).get("summary") or "")).lower() for c in cr)
+    s = cr_summary(repo, n)
+    body = s.get("body") or ""
+    fresh = bool(head_date) and (s.get("updated_at") or "") >= head_date
+    actionable, via = None, None
     if at_head:
-        state = "reviewed"
-    elif skipped:
-        state = "skipped"
-    elif any(c["status"] != "completed" for c in cr):
-        state = "pending"
-    else:
-        state = "none"
-    actionable = None
-    if at_head:
+        state, via = "reviewed", "review"
         m = re.search(r"Actionable comments posted:\s*\**\s*(\d+)", at_head[-1]["body"])
         actionable = int(m.group(1)) if m else None
-    return {"state": state, "full_reviews": len(full), "actionable_at_head": actionable,
+    elif fresh and "No actionable comments" in body:
+        state, via, actionable = "reviewed", "summary", 0
+    elif "Draft PR not reviewed" in body:
+        state = "draft"
+    elif any(c["status"] != "completed" for c in cr):
+        state = "pending"
+    elif "Reviews paused" in body:
+        state = "paused"
+    elif skipped:
+        state = "skipped"
+    else:
+        state = "none"
+    return {"state": state, "via": via, "full_reviews": len(full), "actionable_at_head": actionable,
+            "summary_updated": s.get("updated_at"),
             "last_full_sha": (full[-1].get("commit_id") or "")[:7] if full else None}
 
 
@@ -117,7 +143,9 @@ def fetch(repo, n, deep=False):
                 log = gh("api", f"repos/{repo}/actions/jobs/{c['id']}/logs")
                 if "FROM-CACHE" in log:
                     replayed.append(c["name"])
-    review = review_state(repo, n, sha, checks)
+    hc = (pr.get("commits") or {}).get("nodes") or []
+    head_date = (hc[-1]["commit"]["committedDate"] if hc else None)
+    review = review_state(repo, n, sha, checks, head_date)
     reviews = {}
     for r in pr["reviews"]["nodes"]:
         reviews.setdefault(r["state"], []).append(r["author"]["login"])
@@ -176,8 +204,10 @@ def render_status(d):
         nxt.append("then checks")
     if d["mergeable"] == "CONFLICTING":
         nxt.append("rebase onto base")
-    if d["review"]["state"] == "skipped":
-        nxt.append("CodeRabbit skipped this head: `pr … rereview`")
+    if d["review"]["state"] in ("skipped", "paused"):
+        nxt.append(f"CodeRabbit {d['review']['state']} at this head: `pr … rereview`")
+    if d["review"]["state"] == "draft":
+        nxt.append("CodeRabbit skips drafts: mark ready, or `pr … rereview --full`")
     if d["state"] == "OPEN" and not q:
         nxt.append("`gh pr merge --squash` here means enqueue")
     print("next     " + ("; ".join(nxt) if nxt else ("in queue" if q else "nothing pending")))
@@ -198,8 +228,13 @@ def review_line(d):
     h = d["head"][:7]
     if r["state"] == "reviewed":
         n = r["actionable_at_head"]
-        return f"CodeRabbit: reviewed at {h}" + (f" ({n} actionable)" if n is not None else "")
+        src = ", per the pinned summary" if r["via"] == "summary" else ""
+        return f"CodeRabbit: reviewed at {h}" + (f" ({n} actionable{src})" if n is not None else "")
     last = f" - last full review at {r['last_full_sha']}" if r["last_full_sha"] else " - no full review yet"
+    if r["state"] == "draft":
+        return f"CodeRabbit: draft not reviewed at {h} - its green check means nothing was looked at"
+    if r["state"] == "paused":
+        return f"CodeRabbit: auto-review paused at {h}{last}; post `pr … rereview`"
     if r["state"] == "skipped":
         return f"CodeRabbit: skipped at {h}{last}; post `pr … rereview`"
     if r["state"] == "pending":
@@ -254,6 +289,9 @@ def main():
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--deep", action="store_true", help="grep passing test jobs' logs for FROM-CACHE")
     ap.add_argument("--all", action="store_true", help="threads: include resolved")
+    ap.add_argument("--full", action="store_true",
+                    help="rereview: whole-diff pass instead of the delta - re-reads unchanged "
+                         "lines and raises fresh findings on them; drafts need it")
     ap.add_argument("--until", choices=["checks", "queue", "merged", "reviewed"], default="checks")
     ap.add_argument("--timeout", type=int, default=900, help="wait: seconds before exit 75")
     a = ap.parse_args()
@@ -266,8 +304,9 @@ def main():
         resolve_thread(repo, n, a.thread, a.reply)
         return 0
     if a.cmd == "rereview":
-        gh("pr", "comment", str(n), "--repo", repo, "--body", "@coderabbitai full review")
-        print(f"posted '@coderabbitai full review' on {repo}#{n}")
+        body = "@coderabbitai full review" if a.full else "@coderabbitai review"
+        gh("pr", "comment", str(n), "--repo", repo, "--body", body)
+        print(f"posted '{body}' on {repo}#{n}")
         return 0
     d = fetch(repo, n, deep=a.deep)
     if a.json:
