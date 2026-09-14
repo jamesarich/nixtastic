@@ -33,11 +33,13 @@ MAX_RADIO_PAYLOAD_LEN    239     the largest `encrypted` a LoRa packet can carry
 
 A 239-byte `encrypted` field alone costs 242 encoded bytes (tag + 2-byte length
 + payload). That leaves **one byte** of v1's budget for `from`, `to`, `id`,
-`channel` and the hop fields, which need about 24 (`from`, `to` and `id` are
-`fixed32`, so 5 bytes each with the tag). So:
+`channel` and the hop fields, which need 24 (`from`, `to` and `id` are
+`fixed32`, so 5 bytes each with the tag). Measured by binary search against
+`buildAdvPayload` itself, and independently against Wire in node-kmp:
 
-- **v1** carries ciphertext up to roughly **219 bytes**, against LoRa's 239.
-- **v2** carries roughly **194**.
+- **v1** carries ciphertext up to **219 bytes**, against LoRa's 239.
+- **v1 relaying** carries **198**, see below.
+- **v2** would carry roughly **194** (derived, not measured).
 
 Everything above that is dropped by `buildAdvPayload` returning 0, logged as
 `does not fit`, and goes out over LoRa only. Most traffic is far below the
@@ -63,9 +65,10 @@ tell that they are on the wire. `UdpMulticastHandler::onSend` does the same
 thing, so this is a pre-existing pattern rather than something the BLE spike
 invented; it just costs nothing on a 1500-byte MTU and costs real budget here.
 
-**Unproven:** the exact cutoff in bytes. The 219/194 figures are computed from
-the field sizes, not measured by encoding a maximal packet. Worth a native test
-that encodes `MAX_RADIO_PAYLOAD_LEN` of ciphertext and asserts what happens.
+**Measured 2026-09-14** and pinned in both repos: firmware
+`test_ble_mesh` (20/20 in the Docker native runner on james-pc) and node-kmp
+`BleAdvertCeilingTest`. 219 for a locally-originated packet, 198 for a relay.
+The v2 figure is still derived, since nothing builds that branch here.
 
 ## What we proved on hardware, 2026-09-13
 
@@ -208,16 +211,25 @@ is a GATT case, or a shared-bridge-key case, not a per-peer advertisement case.
 connectionless advertising is actually good at, and the only case where it beats
 GATT. It is also the case Ron's change removes the justification for.
 
-## The other thing that is not true yet
+## Overhear suppression: fixed 2026-09-14
 
-`FloodingRouter::perhapsCancelDupe` is gated on
-`transport_mechanism == TRANSPORT_LORA`, and `Router::cancelSending` reaches
-only `iface`. **Overhear suppression is not active on BLE.** The advertisement
-bearer's flood is an unsuppressed flood today. Knit's design (jittered,
-overhear-suppressed flooding) is the reference for fixing it, and the fix is
-cheap: widen the gate and give the BLE handler a cancel path into its TX queue.
-Until then, "advertisements let us suppress duplicates later" is a plan, not a
-property.
+`FloodingRouter::perhapsCancelDupe` was gated on `TRANSPORT_LORA`, so a node
+that overheard a neighbour relaying over BLE advertised its own copy anyway.
+Fixed on `spike/ble-mesh-transport` in `42e64cfa5`.
+
+The gate is now per medium, which is the part that matters. Cancelling across
+media is wrong in the other direction: hearing a neighbour on BLE is no evidence
+about who heard us on LoRa, so a BLE dupe must not stand a LoRa rebroadcast down.
+`MeshTransportBase::cancelTransportsOn` carries the medium; `AdvSlot` carries
+`from`/`id`; `runOnce` remembers the identity of the burst it started, so a
+cancel reaches a payload already repeating on air as well as the queued ones.
+
+**node-kmp cannot take the same fix as a flag.** It already has the machinery -
+`MeshTransport.floods` and `MeshNode.cancelSending` - but it keeps **one** relay
+job covering every bearer, so setting `floods = true` on the advertisement
+transport would let a BLE dupe cancel the LoRa leg too. Its own KDoc says so.
+Same-medium suppression there is a design change (per-bearer relay legs), not a
+property flip.
 
 ## Where this lands
 
@@ -236,8 +248,15 @@ property.
    everywhere. v2 also needs the shared-key-vs-pairwise question answered, and
    it breaks node-kmp's wire.
 4. **Widen the dedup gate** before claiming overhear suppression.
-5. **Neither bearer ships** while the company ID is `0xFFFF` and the service
-   UUIDs are unregistered. Unchanged from the spike.
+5. **Neither bearer ships** while the company ID is `0xFFFF`. Costed
+   2026-09-14: SIG Adopter membership is **$0/yr**, a Company Identifier is
+   **$1,250**, a 16-bit UUID is **$3,750** (one-off, no renewal). The free option
+   is the one the project already uses: the phone API advertises a random 128-bit
+   UUID (`6ba1b218-15a8-461f-9fa8-5dcae273eafd`), and service data under a
+   128-bit UUID costs nothing and is the only form a backgrounded iOS scan can
+   filter on. It costs 14 more bytes of budget than manufacturer data (18 vs 4),
+   which on a bearer with 219 usable bytes is about 6%. That is the trade to
+   decide, not whether to keep `0xFFFF`.
 
 Worth stealing from the prior art, still: Knit's content-digest anti-entropy
 sync and delay-tolerant store-and-forward, which are the two things that make a
