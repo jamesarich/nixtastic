@@ -5,7 +5,6 @@
 seeds, and whether each consumer is current. Offline by default; reads local
 checkouts and local tags. Reports, never judges. Design: notes/agent-tools.md."""
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -78,12 +77,27 @@ def toml_version(consumer, relfile, key):
     return None
 
 
-def sha256(path):
+def load_json(path):
     try:
-        with open(path, "rb") as fh:
-            return hashlib.sha256(fh.read()).hexdigest()
-    except OSError:
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
         return None
+
+
+def seed_verdict(key, src, seed):
+    """api/data holds what the endpoint reads; android bundles what it served.
+    Three resources are served verbatim, so parsed equality is the test - bytes
+    would flag pretty-printing alone. deviceLinks is *derived* from a different
+    catalog shape (PascalCase Routes -> camelCase links, hwModels joined in from
+    the hardware list), so only the short codes survive the transform."""
+    if src is None or seed is None:
+        return "missing"
+    if key == "deviceLinks":
+        a = [r.get("ShortCode") for r in (src.get("Routes") or [])]
+        b = [x.get("shortCode") for x in (seed.get("links") or [])]
+        return f"{'same' if a == b else 'DIFFERS'} (shortcodes)"
+    return "same" if src == seed else "DIFFERS"
 
 
 def row(kind, repo, detail, pinned="", resolves="", verdict=""):
@@ -145,9 +159,9 @@ def rows():
                  ("deviceLinks", "device_links"), ("eventFirmware", "event_firmware"))
         parts = []
         for a, b in pairs:
-            ha = sha256(os.path.join(ROOT, "api", "data", f"{a}.json"))
-            hb = sha256(os.path.join(ROOT, "android", "androidApp", "src", "main", "assets", f"{b}.json"))
-            parts.append(f"{b} {'same' if ha and ha == hb else ('DIFFERS' if ha and hb else 'missing')}")
+            src = load_json(os.path.join(ROOT, "api", "data", f"{a}.json"))
+            seed = load_json(os.path.join(ROOT, "android", "androidApp", "src", "main", "assets", f"{b}.json"))
+            parts.append(f"{b} {seed_verdict(a, src, seed)}")
         out.append(row("consumer", "android assets", "  ".join(parts)))
     return out
 

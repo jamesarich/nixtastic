@@ -797,8 +797,17 @@ mkdir -p "$root/android/gradle"; printf '[versions]\nmeshtastic-protobufs = "2.8
 mkdir -p "$root/meshtastic-sdk/gradle"; printf '[versions]\nmeshtasticProtobufs = "2.7.26"\n' > "$root/meshtastic-sdk/gradle/libs.versions.toml"
 (cd "$root/TAKPacket-SDK" && git tag v0.9.1)
 mkdir -p "$root/api/data" "$root/android/androidApp/src/main/assets"
-echo '{"a":1}' > "$root/api/data/maintenanceUf2.json"; echo '{"a":1}' > "$root/android/androidApp/src/main/assets/maintenance_uf2.json"
-echo '{"b":1}' > "$root/api/data/deviceLinks.json";     echo '{"b":2}' > "$root/android/androidApp/src/main/assets/device_links.json"
+# Served verbatim, and pretty-printed differently on the two sides: parsed
+# equality, not bytes, is what makes this `same`.
+printf '{ "a": 1, "b": [2, 3] }\n' > "$root/api/data/maintenanceUf2.json"
+printf '{\n  "a": 1,\n  "b": [\n    2,\n    3\n  ]\n}\n' > "$root/android/androidApp/src/main/assets/maintenance_uf2.json"
+# Served verbatim and genuinely different.
+echo '{"editions":[{"edition":"A"}]}' > "$root/api/data/eventFirmware.json"
+echo '{"editions":[{"edition":"B"}]}' > "$root/android/androidApp/src/main/assets/event_firmware.json"
+# Derived: api holds the PascalCase msh.to catalog, the seed holds the response
+# envelope, so only the short codes are comparable offline.
+echo '{"Routes":[{"ShortCode":"github"},{"ShortCode":"rak"}]}' > "$root/api/data/deviceLinks.json"
+echo '{"version":1,"generatedAt":"t","links":[{"shortCode":"github"},{"shortCode":"rak"}]}' > "$root/android/androidApp/src/main/assets/device_links.json"
 run "$pins"
 expect 'producer +protobufs .*latest tag v2\.8\.0'
 expect 'consumer +firmware .*v2\.8\.0 +current'
@@ -808,7 +817,13 @@ expect 'consumer +meshtastic-sdk .*2\.7\.26 .*behind: v2\.8\.0'
 expect 'consumer +android .*takpacket-sdk 0\.9\.1 .*current'
 expect 'consumer +apple .*unknown'
 expect 'maintenance_uf2 same'
-expect 'device_links DIFFERS'
+expect 'event_firmware DIFFERS'
+expect 'device_links same \(shortcodes\)'
+expect 'device_bootloader_ota_quirks missing'
+# A short code added on one side only is the staleness the derived row can see.
+echo '{"Routes":[{"ShortCode":"github"}]}' > "$root/api/data/deviceLinks.json"
+run "$pins"
+expect 'device_links DIFFERS \(shortcodes\)'
 run "$pins" --json
 printf '%s\n' "$res" | jq -e 'map(select(.verdict=="behind: v2.8.0")) | length == 2' >/dev/null || { echo "T33: json verdicts"; exit 1; }
 run "$pins" --repo meshtastic-python --short

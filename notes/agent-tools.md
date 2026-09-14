@@ -135,7 +135,7 @@ Offline by default: local checkouts, local tags. `--fetch` runs `git fetch
     consumer  meshtastic         submodule static/design @ 77fafb2            behind by N commits
     producer  api                data/*.json
     consumer  android assets     maintenance_uf2 same   device_bootloader_ota_quirks same
-                                 device_links DIFFERS   event_firmware DIFFERS
+                                 device_links same (shortcodes)   event_firmware same
 
 Rules:
 
@@ -145,11 +145,24 @@ Rules:
   the pin lives in, the pinned value, what it resolves to (tag or short SHA),
   and one verdict: `current`, `behind: <what>`, `ahead`, `unknown`.
 - One reader per pin format: the submodule SHA from `git ls-tree HEAD`; a
-  TOML `[versions]` key; byte comparison for the JSON seed
+  TOML `[versions]` key; parsed-JSON comparison for the seed
   pairs (`maintenanceUf2`↔`maintenance_uf2`,
   `bootloaderOtaQuirks`↔`device_bootloader_ota_quirks`,
   `deviceLinks`↔`device_links`, `eventFirmware`↔`event_firmware`). Adding a pin
   is one function and one row.
+- **The seed pairs are not byte-comparable, and one is not even
+  document-comparable.** `api/data/<x>.json` is what the endpoint *reads*;
+  android's asset is what it *served*, written by the hourly
+  `scheduled-updates.yml` through `jq .`. Three resources are served verbatim,
+  so the two sides are the same document in different whitespace - a byte
+  compare called `eventFirmware` DIFFERS for a `prettier` line-collapse alone.
+  `deviceLinks` is worse: `api/src/lib/deviceLinks.ts` *derives* the response
+  from a PascalCase msh.to catalog (`Routes`→`links`, `hwModels` joined in from
+  the hardware list, a per-request `generatedAt`), so the files can never match
+  and a whole-document compare could not work either. The row therefore
+  compares the ordered short codes, the only field that survives the transform
+  1:1 - and says `(shortcodes)` so the reader knows what was checked. Corrected
+  2026-09-14; the original byte compare produced two permanent false positives.
 - **Apple's proto pin is a submodule too**: `apple/.gitmodules` names
   `protobufs`, so the same reader serves it. `Package.resolved` holds only
   `swift-protobuf` and is not read. A submodule past the latest tag reports
@@ -157,9 +170,10 @@ Rules:
 - `brief <repo>` gains one `PINS` line with that repo's rows. The cross-repo
   skill's scope step says "run `just pins`" instead of grepping.
 
-Measured 2026-09-05: firmware and android are on protobufs v2.8.0,
-meshtastic-python is on v2.7.26, and two of the four api seeds differ from
-android's bundled assets.
+Measured 2026-09-05: firmware and android are on protobufs v2.8.0 and
+meshtastic-python is on v2.7.26. The "two of the four api seeds differ" read
+here until 2026-09-14 was the byte compare lying - all four seeds were current
+with the live endpoints, verified by fetching them.
 
 ## Orientation hook
 
