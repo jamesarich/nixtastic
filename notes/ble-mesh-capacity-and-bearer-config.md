@@ -47,6 +47,44 @@ count at all.
 
 Three is the right number for a phone. Raising it is not the lever.
 
+## Measured delivery, 2026-09-15
+
+First per-direction numbers for the advertisement bearer, taken with
+`nix run .#blebench` between a RAK4631 on `spike/ble-mesh-transport` and a
+node-kmp headless node on james-pc's BlueZ adapter, three inches apart, at
+-51 dBm. "Delivered" is unique packets, not frames: node-kmp's `rx=` counter
+counts advertising events, so it reads ~10x higher than packets at
+`BLE_MESH_ADV_EVENTS=10`.
+
+| `BLE_MESH_ADV_EVENTS` | airtime/frame | node-kmp -> radio | radio -> node-kmp |
+| --- | --- | --- | --- |
+| 3 (default) | ~90 ms | 90% | 20% |
+| 10 | ~300 ms | 75% | 38% |
+
+The trade is real and it is a single-radio trade. Each extra advertising event is
+time the nRF52 is not scanning, so raising it buys reception on the far side and
+costs reception on this one. node-kmp holds each frame up for
+`DEFAULT_ADVERTISE_MS = 300`, which is why the radio, scanning at a 100% duty
+cycle (`BLE_MESH_SCAN_INTERVAL == BLE_MESH_SCAN_WINDOW == 160`), hears it so much
+better than the reverse.
+
+**Unresolved: 38% is still poor for two devices this close.** The loss is on the
+BlueZ side, not the radio's: an independent D-Bus scanner sees the radio's frames
+that node-kmp's own scan misses, and BlueZ reports `Discovering: yes` throughout.
+Candidate causes not yet separated: BlueZ throttling `PropertiesChanged` per
+device despite `DuplicateData: true`, the adapter's scan duty cycle (BlueZ does
+not expose interval/window through `SetDiscoveryFilter`), and contention with
+node-kmp's own advertising on the same controller. An A/B with the node idle
+versus sending moved delivery only 25 -> 21 frames, so contention is *not* the
+dominant term.
+
+Two traps cost a void experiment each, and both are now written down:
+`PLATFORMIO_BUILD_FLAGS` overrides rather than appends, so tuning one constant
+that way silently dropped `-DBLE_MESH_NRF52_CENTRAL=1` and produced a radio that
+advertises but cannot scan at all (`NRF52Bluetooth.cpp:344`) - which read as a
+clean 0% and looked like physics. And a bench run started before the radio
+finished booting from a flash reads 0% in both directions.
+
 ## Range
 
 **Nothing has been measured.** The only figure on record is `rssi=-81` from
