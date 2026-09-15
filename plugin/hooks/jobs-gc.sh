@@ -8,10 +8,13 @@
 # Measured 2026-09-15: 1789 MB of 1791 MB was tmp (one 1.6 GB scratch clone);
 # all job metadata together was 2 MB.
 #
-# Two rules, deliberately separate - a finished job's scratch is disposable long
-# before its row is:
-#   reap    terminal job older than $tmp_days -> empty tmp/, keep the row
-#   retire  terminal job older than $rm_days  -> claude rm <id>
+# Three rules, deliberately separate - a job's scratch is disposable long before
+# its row is, and a row is disposable long before its transcript:
+#   reap    terminal job older than $tmp_days  -> empty tmp/, keep the row
+#   reap    blocked job idle over $idle_days   -> empty tmp/, keep the row
+#   retire  terminal job older than $rm_days   -> claude rm <id>
+#
+# A `working` job is never touched at all: its tmp is live scratch.
 #
 # Prints nothing and always exits 0: a GC that can break a session start is
 # worse than the disk it saves. Detaches so SessionStart never waits on it.
@@ -22,6 +25,7 @@
 #
 #   NIXTASTIC_JOBS_GC=off       disable entirely
 #   NIXTASTIC_JOBS_GC_TMP_DAYS  default 1
+#   NIXTASTIC_JOBS_GC_IDLE_DAYS default 3
 #   NIXTASTIC_JOBS_GC_RM_DAYS   default 7
 #   NIXTASTIC_JOBS_GC_FG=1      run inline instead of detaching (tests)
 
@@ -33,6 +37,7 @@ jobs_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/jobs"
 
 tmp_days="${NIXTASTIC_JOBS_GC_TMP_DAYS:-1}"
 rm_days="${NIXTASTIC_JOBS_GC_RM_DAYS:-7}"
+idle_days="${NIXTASTIC_JOBS_GC_IDLE_DAYS:-3}"
 
 # The job this session is running as, so the sweep can never reap its own
 # scratch out from under it. Absent for a foreground session, which is fine.
@@ -84,34 +89,48 @@ sweep() {
     fi
 
     # One field per line: a blank field must not shift the ones after it.
-    { read -r state; read -r ts; read -r sids; } < <(jq -r '
+    # Two clocks: a job finished when it went terminal, but it fell idle when it
+    # was last touched at all, and a blocked job only ever has the second.
+    { read -r state; read -r fin; read -r seen; read -r sids; } < <(jq -r '
       .state // "",
       (.lastTerminalAt // .updatedAt // ""),
+      (.updatedAt // .lastTerminalAt // ""),
       ([.sessionId, .resumeSessionId] | map(select(. != null)) | join(" "))' \
       "$d/state.json" 2>/dev/null) || continue
-
-    case "$state" in done|failed|stopped) ;; *) continue ;; esac
-    end=$(daynum "$ts")
-    [ -n "$end" ] || continue
-    age=$((today - end))
 
     held=false
     for s in $sids; do
       case "$live" in *"$s"*) held=true ;; esac
     done
 
-    if [ "$age" -ge "$rm_days" ] && [ "$held" = false ] &&
-       claude rm "$id" >/dev/null 2>&1; then
-      printf '%s retire %s (%sd, %s)\n' "$stamp" "$id" "$age" "$state" >> "$log"
-      continue
-    fi
+    case "$state" in
+      done|failed|stopped)
+        end=$(daynum "$fin"); [ -n "$end" ] || continue
+        age=$((today - end)); due=$tmp_days
+        if [ "$age" -ge "$rm_days" ] && [ "$held" = false ] &&
+           claude rm "$id" >/dev/null 2>&1; then
+          printf '%s retire %s (%sd, %s)\n' "$stamp" "$id" "$age" "$state" >> "$log"
+          continue
+        fi
+        ;;
+      blocked)
+        # "Awaiting input" is not a promise that the answer is still wanted -
+        # in practice a blocked row is as often a dead end nobody dismissed.
+        # The row and its transcript stay either way; only scratch goes, and
+        # only after longer than a finished job gets.
+        [ "$held" = false ] || continue
+        end=$(daynum "$seen"); [ -n "$end" ] || continue
+        age=$((today - end)); due=$idle_days
+        ;;
+      *) continue ;;   # `working` is live scratch - never touched
+    esac
 
     # Reap even when the row is kept: scratch is what grows, and a row left
     # open on a PR can otherwise pin gigabytes for weeks.
-    if [ "$age" -ge "$tmp_days" ] && [ -n "$(ls -A "$d/tmp" 2>/dev/null)" ]; then
+    if [ "$age" -ge "$due" ] && [ -n "$(ls -A "$d/tmp" 2>/dev/null)" ]; then
       kb=$(du -sk "$d/tmp" 2>/dev/null | cut -f1)
       rm -rf "${d:?}/tmp" && mkdir -p "$d/tmp" &&
-        printf '%s reap %s (%sd, %s MB)\n' "$stamp" "$id" "$age" "$((kb / 1024))" >> "$log"
+        printf '%s reap %s (%s, %sd, %s MB)\n' "$stamp" "$id" "$state" "$age" "$((kb / 1024))" >> "$log"
     fi
   done
 

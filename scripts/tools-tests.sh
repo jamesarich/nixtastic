@@ -1130,20 +1130,22 @@ expect 'base +origin/feat/published'
 run "$worktree" --remove kzstd feat-published
 (cd "$root/kzstd" && git checkout -q main && git branch -D -q feat/host-side)
 
-echo "--- T40: jobs-gc - retire old rows, reap midlife scratch, spare fresh, self and non-terminal"
+echo "--- T40: jobs-gc - retire old rows, reap finished and stale-blocked scratch, spare fresh, working and self"
 gc="$root/.cache/agent-marketplace/nixtastic/hooks/jobs-gc.sh"
 [ -x "$gc" ] || { echo "T40: jobs-gc.sh not rendered"; exit 1; }
 gcf="$PWD/gcfix"; rm -rf "$gcf"; mkdir -p "$gcf/jobs" "$gcf/bin"
 gcmk() { # id state days_ago
   mkdir -p "$gcf/jobs/$1/tmp"
   jq -n --arg s "$2" --arg t "$(date -d "$3 days ago" -Is)" --arg i "$1-0000-0000-0000-000000000000" \
-    '{state:$s,lastTerminalAt:$t,sessionId:$i,resumeSessionId:$i}' > "$gcf/jobs/$1/state.json"
+    '{state:$s,lastTerminalAt:$t,updatedAt:$t,sessionId:$i,resumeSessionId:$i}' > "$gcf/jobs/$1/state.json"
   dd if=/dev/zero of="$gcf/jobs/$1/tmp/blob" bs=1024 count=64 status=none
 }
-gcmk aaaaaaaa done     10   # past rm_days       -> retired
-gcmk bbbbbbbb done      2   # past tmp_days only -> scratch reaped, row kept
-gcmk cccccccc done      0   # finished today     -> untouched
-gcmk dddddddd blocked  30   # never reached a terminal state
+gcmk aaaaaaaa done     10   # past rm_days        -> retired
+gcmk bbbbbbbb done      2   # past tmp_days only  -> scratch reaped, row kept
+gcmk cccccccc done      0   # finished today      -> untouched
+gcmk dddddddd blocked  30   # idle past idle_days -> scratch reaped, row kept
+gcmk eeeeeeee blocked   1   # blocked but recent  -> untouched
+gcmk 77777777 working  30   # live scratch, however old the row looks
 gcmk 5e1f5e1f done     99   # stands in for the session's own job
 mkdir -p "$gcf/jobs/f0f0f0f0/tmp"; touch -d "5 days ago" "$gcf/jobs/f0f0f0f0"  # abandoned mid-creation
 mkdir -p "$gcf/jobs/11111111/tmp"                                             # being created right now
@@ -1155,20 +1157,25 @@ gcrun() {
     NIXTASTIC_JOBS_GC_FG=1 bash "$gc" </dev/null
 }
 gcrun || { echo "T40: hook exited non-zero"; exit 1; }
-for id in bbbbbbbb cccccccc dddddddd 5e1f5e1f 11111111; do
+# Only a finished row is ever retired - a blocked one keeps its row and its
+# transcript however stale it is, because "awaiting input" is James's call.
+for id in bbbbbbbb cccccccc dddddddd eeeeeeee 77777777 5e1f5e1f 11111111; do
   [ -d "$gcf/jobs/$id" ] || { echo "T40: $id should have been kept"; ls "$gcf/jobs"; exit 1; }
 done
 for id in aaaaaaaa f0f0f0f0; do
   [ ! -e "$gcf/jobs/$id" ] || { echo "T40: $id should have been removed"; exit 1; }
 done
-[ -z "$(ls -A "$gcf/jobs/bbbbbbbb/tmp")" ] || { echo "T40: midlife scratch not reaped"; exit 1; }
-[ -d "$gcf/jobs/bbbbbbbb/tmp" ] || { echo "T40: tmp/ not recreated after reaping"; exit 1; }
-for id in cccccccc dddddddd 5e1f5e1f; do
+for id in bbbbbbbb dddddddd; do
+  [ -z "$(ls -A "$gcf/jobs/$id/tmp")" ] || { echo "T40: $id scratch not reaped"; exit 1; }
+  [ -d "$gcf/jobs/$id/tmp" ] || { echo "T40: $id tmp/ not recreated after reaping"; exit 1; }
+done
+for id in cccccccc eeeeeeee 77777777 5e1f5e1f; do
   [ -f "$gcf/jobs/$id/tmp/blob" ] || { echo "T40: $id scratch wrongly reaped"; exit 1; }
 done
-grep -q 'retire aaaaaaaa' "$gcf/jobs/.gc.log" || { echo "T40: retire not logged"; cat "$gcf/jobs/.gc.log"; exit 1; }
-grep -q 'reap bbbbbbbb'   "$gcf/jobs/.gc.log" || { echo "T40: reap not logged"; exit 1; }
-grep -q 'stray f0f0f0f0'  "$gcf/jobs/.gc.log" || { echo "T40: stray not logged"; exit 1; }
+grep -q 'retire aaaaaaaa'         "$gcf/jobs/.gc.log" || { echo "T40: retire not logged"; cat "$gcf/jobs/.gc.log"; exit 1; }
+grep -q 'reap bbbbbbbb (done'     "$gcf/jobs/.gc.log" || { echo "T40: finished reap not logged"; exit 1; }
+grep -q 'reap dddddddd (blocked'  "$gcf/jobs/.gc.log" || { echo "T40: blocked reap not logged"; cat "$gcf/jobs/.gc.log"; exit 1; }
+grep -q 'stray f0f0f0f0'          "$gcf/jobs/.gc.log" || { echo "T40: stray not logged"; exit 1; }
 # A second pass over an already-swept tree changes nothing.
 gcbefore=$(ls "$gcf/jobs" | sort)
 gcrun

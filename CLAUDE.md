@@ -355,9 +355,13 @@ finds - run it before diagnosing by hand.
   the sweep existed: 1791 MB, of which 1789 MB was `tmp` (one 1.6 GB scratch
   checkout) against 2 MB of job metadata. The plugin's `jobs-gc.sh` hook now
   sweeps at `SessionStart` - scratch of a job finished over a day ago is
-  emptied, the row itself is retired after seven (`NIXTASTIC_JOBS_GC_RM_DAYS`,
-  `..._TMP_DAYS`, or `NIXTASTIC_JOBS_GC=off`). It never touches a job that is
-  still running, still blocked, held open by a live session, or its own.
+  emptied, of one **blocked** and idle over three days too, and the row itself
+  is retired after seven (`NIXTASTIC_JOBS_GC_RM_DAYS`, `..._IDLE_DAYS`,
+  `..._TMP_DAYS`, or `NIXTASTIC_JOBS_GC=off`). Only a *finished* row is ever
+  retired: a blocked one keeps its row whatever its age, because "awaiting
+  input" is as often a dead end nobody dismissed as real waiting, and that
+  call is James's. It never touches a job that is still running, held open by
+  a live session, or its own.
   `doctor` reports the total. Removing a row does not touch the transcript:
   that lives in `~/.claude/projects/<slug>/<uuid>.jsonl` and stays
   `claude --resume`-able.
