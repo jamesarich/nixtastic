@@ -49,65 +49,40 @@ Three is the right number for a phone. Raising it is not the lever.
 
 ## Measured delivery, 2026-09-15
 
-Per-direction delivery for the advertisement bearer, taken with
-`nix run .#blebench` between a RAK4631 on `spike/ble-mesh-transport` and a
-node-kmp headless node on james-pc's BlueZ adapter, three inches apart, at
--51 dBm, with `BLE_MESH_ADV_EVENTS=10`.
+Per-bearer, both directions, against firmware, with `nix run .#meshbench`.
+Delivered means **decoded**, against an M5Stack Cardputer ADV on
+`m5stack-cardputer-adv_blemesh` sharing a channel name and PSK with the node.
 
-| direction | delivered |
-| --- | --- |
-| node-kmp -> radio | 90% |
-| radio -> node-kmp | 50% |
+| bearer | kmp -> radio | radio -> kmp |
+| --- | --- | --- |
+| GATT | 100% | 100% |
+| BLE advertisement | 100% | 100% |
+| LoRa | 100% | 100% |
 
-**Delivered means decoded, and the first version of this section did not.** It
-reported 20% and 38%, which were wrong in both directions. Counting ingress lines
-counts the same frame once per advertising event, counts the radio's own
-background LoRa traffic, and counts frames the receiver could not open at all.
-The two nodes were on different channels for those runs, so every frame landed as
-`opaque` and the numbers measured nothing but noise. The metric is now
-`decoded message (id=...` on the radio, which the firmware logs only after a
-channel key opens the packet, and `rx[...] text from` on node-kmp, which appears
-only for a payload it could read. Both sides must share a channel name **and**
-PSK for any of it to mean anything.
+Each measured with that bearer alone, which is the only way to get an unaided
+rate: with several enabled, a radio broadcast reaches all of them, the first copy
+decodes and the rest drop as duplicates, so the slower bearers score zero while
+their frame counters show they were carrying (`ble-adv rx=24`, `lora rx=15`).
 
-Full bidirectional interop with decode is proven: a firmware radio and a
-node-kmp node exchange text over BLE advertisements, each decrypting the other's
-traffic, dedup collapsing the repeated advertising events
-(`Ignore dupe incoming msg`), and the packets carrying `transport = 9`
-(`TRANSPORT_BLE_ADV`) end to end.
+**Every earlier figure in this section was a measurement artifact and is
+withdrawn.** 20%/38% counted ingress lines, so one frame counted once per
+advertising event and the radio's background traffic counted too - and the two
+nodes were on different channels, so nothing decoded at all. 90%/50% fixed the
+metric but attributed multi-bearer traffic to whichever bearer won the race. The
+bearers were never the problem; the instrument was. That is the argument for
+building the instrument first and pinning what it counts.
 
-The remaining asymmetry is airtime. node-kmp holds each frame up for
-`DEFAULT_ADVERTISE_MS = 300`; the radio sends `BLE_MESH_ADV_EVENTS` events at
-30 ms, so 10 events is ~300 ms and 3 (the default) is ~90 ms. The radio scans at a
-100% duty cycle (`BLE_MESH_SCAN_INTERVAL == BLE_MESH_SCAN_WINDOW == 160`), which
-is why it hears node-kmp better than the reverse. Raising the event count trades
-this node's reception for the far side's, because it is one radio: every extra
-advertising event is time the nRF52 is not scanning.
-
-**Where the remaining loss is not.** Running an independent raw D-Bus scanner
-alongside node-kmp on the same adapter, over the same window, settles it:
-
-    raw D-Bus scanner: raw_events=41  distinct_bodies=14
-    node-kmp:          rx=41          8 texts decoded
-
-node-kmp sees **exactly** what BlueZ delivers. Its receive pipeline loses
-nothing, so the earlier suspicion that frames were being dropped between BlueZ
-and the transport is wrong, and BlueZ's scan duty cycle is not worth chasing
-either: whatever the controller reports, node-kmp gets all of it. The remaining
-loss is the radio's transmission or the air, which puts every lever on the
-firmware side - `BLE_MESH_ADV_EVENTS`, TX power, and the PHY - not in Kotlin.
-
-Per-run delivery varies (8/10 here, 5/10 in the run above) on a link with no
-retransmission at the bearer layer, which is the honest characterisation: this is
-a lossy broadcast medium and the mesh's own reliable-delivery retries are what
-make it usable, exactly as on LoRa.
+Airtime still has a real trade behind it, unchanged by the above: node-kmp holds
+a frame up for `DEFAULT_ADVERTISE_MS = 300` while the radio sends
+`BLE_MESH_ADV_EVENTS` events at 30 ms, and each extra event is time the nRF52 is
+not scanning. It does not show at bench range, where everything delivers.
 
 Two traps cost a void experiment each and are written down:
 `PLATFORMIO_BUILD_FLAGS` overrides rather than appends, so tuning one constant
 that way silently dropped `-DBLE_MESH_NRF52_CENTRAL=1` and produced a radio that
-advertises but cannot scan at all (`NRF52Bluetooth.cpp:344`) - which read as a
-clean 0% and looked like physics. And a bench run started before a freshly
-flashed radio finishes booting reads 0% in both directions.
+advertises but cannot scan (`NRF52Bluetooth.cpp:344`), which read as a clean 0%
+and looked like physics. And a bench run started before a freshly flashed radio
+finishes booting reads 0% in both directions.
 
 ## Range
 
