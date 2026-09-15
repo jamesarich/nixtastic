@@ -68,7 +68,15 @@ invented; it just costs nothing on a 1500-byte MTU and costs real budget here.
 **Measured 2026-09-14** and pinned in both repos: firmware
 `test_ble_mesh` (20/20 in the Docker native runner on james-pc) and node-kmp
 `BleAdvertCeilingTest`. 219 for a locally-originated packet, 198 for a relay.
-The v2 figure is still derived, since nothing builds that branch here.
+
+**These are fixture ceilings, not production ceilings.** Both tests build a
+packet with `from`/`to`/`id`/`channel`/`hop_limit`/`hop_start` and nothing else.
+A real packet leaving `Router::send` also carries `priority` (`fixPriority` at
+`Router.cpp:562` runs before encryption and never leaves it UNSET) and
+`relay_node` (`FloodingRouter.cpp:22`, set on everything we send), and a relay
+carries `transport_mechanism` too. So production sits a few bytes below both
+numbers. The fixtures should be re-shaped to carry them. The v2 figure is
+derived, since nothing builds that branch here.
 
 ## What we proved on hardware, 2026-09-13
 
@@ -103,13 +111,19 @@ Transmit connectionless (extended advertising, >31-byte body):
 | Other Pi-class hosts | unverified | unverified |
 | ESP32-S3 / C3 | yes (NimBLE ext adv) | yes |
 | nRF52840 | yes (SoftDevice ext adv) | yes |
-| iOS / macOS | **no** | **no** (backgrounded, non-connectable) |
+| iOS / macOS | **no** | **yes, foreground only** |
 
 `CBPeripheralManager.startAdvertising` takes a local name and service UUIDs and
-nothing else, and iOS suppresses non-connectable advertising in the background.
-iOS can do **neither** connectionless direction. Whether a stock Raspberry Pi,
-the most common `meshtasticd` host, can is **unverified**: the uConsole cannot,
-and no other Pi-class adapter here has been checked.
+nothing else, so iOS cannot transmit: node-kmp's `BleMeshRadio.apple.kt:112`
+returns false unconditionally. **Correction to the first draft: it can receive.**
+`advertisements()` at `:65-108` is a real `CBCentralManager` scan. Foreground
+only, because a background iOS scan must filter on a service UUID and these
+frames are manufacturer data, which is one more reason the 128-bit service-UUID
+shape below is worth its 14 bytes. Never tested against a firmware radio.
+
+Whether a stock Raspberry Pi, the most common `meshtasticd` host, can is
+**unverified**: the uConsole cannot, and no other Pi-class adapter here has been
+checked.
 
 GATT's matrix is the whole table, both columns, every row.
 
