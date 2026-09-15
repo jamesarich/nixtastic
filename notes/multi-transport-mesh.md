@@ -66,10 +66,24 @@ the one-to-many property that chose advertisements in the first place.
 Delivery is lossy and asymmetric, characterised in
 [`ble-mesh-capacity-and-bearer-config.md`](./ble-mesh-capacity-and-bearer-config.md).
 
-Two parity defects found by running it rather than reading it: node-kmp's BlueZ
+**Multi-hop participation proven.** With `hopLimit` defaulting to `HOP_RELIABLE`,
+a RAK4631 hearing node-kmp over LoRa now relays it:
+
+    Received text msg from=0x4ed5fd6d, id=0x40bd597c, msg=RELAY-ME-1
+    Rebroadcast msg from 6d
+    Forwarding to phone (id=0x40bd597c fr=0x4ed5fd6d to=0xffffffff, transport = 1
+
+`6d` is the low byte of node-kmp's node. A third node relaying the radio's own
+traffic back (`Rx someone rebroadcasting for us`) puts this on a real mesh rather
+than a two-node link. Before the fix nothing forwarded node-kmp's traffic at all.
+
+Parity defects found by running it rather than reading it: node-kmp's BlueZ
 receive path had never worked (`ManufacturerData` arrives as `ArrayList<Byte>`,
-not `byte[]`), and `Config.hopLimit` defaulted to 0, so every packet node-kmp
-originated was unrelayable and it was invisible past its direct neighbours.
+not `byte[]`); `Config.hopLimit` defaulted to 0, so everything it originated was
+unrelayable; `rx_snr` was reported as 0 on every packet handed to a client, and
+traceroute replies appended the unknown sentinel instead of the measured value;
+and `hopLimitForResponse` could never answer a direct request directly, because
+it read a `hopsAway` that is null exactly when the branch needed it.
 
 Left standing from the parity plan: the cross-peer fan-out inside a single GATT
 send (needs three connected peers), step 0's remaining app-side adapters, and
