@@ -1276,24 +1276,24 @@
           };
           # nix run .#pins - cross-repo pin state. Python (stdlib) because it
           # merges five pin formats into one table; jq for that is pain.
-          # nix run .#blebench -- [host] - per-direction BLE mesh delivery
+          # nix run .#meshbench -- [host] - per-bearer, per-direction delivery
           # between a firmware radio and a node-kmp node on the bench.
           #
           # Two scripts, because the measurement runs where the hardware is but
-          # the logic belongs in this repo: blebench.sh ships
-          # ble-bench-remote.sh over ssh. Both are real files, so ShellCheck
+          # the logic belongs in this repo: meshbench.sh ships
+          # mesh-bench-remote.sh over ssh. Both are real files, so ShellCheck
           # gates both when `checks` builds - a /tmp script on the bench host
           # was linted by nothing and had two bugs that silently reported 0%.
-          blebench = pkgs.writeShellApplication {
-            name = "meshtastic-blebench";
+          meshbench = pkgs.writeShellApplication {
+            name = "meshtastic-meshbench";
             runtimeInputs = [
               pkgs.openssh
               pkgs.coreutils
             ];
             runtimeEnv = {
-              NIXTASTIC_BENCH_REMOTE = "${./scripts/ble-bench-remote.sh}";
+              NIXTASTIC_BENCH_REMOTE = "${./scripts/mesh-bench-remote.sh}";
             };
-            text = builtins.readFile ./scripts/blebench.sh;
+            text = builtins.readFile ./scripts/meshbench.sh;
           };
 
           pins = pkgs.writeShellApplication {
@@ -1436,7 +1436,7 @@
             doctor
             pins
             pr
-            blebench
+            meshbench
             ;
           bootstrap-sdk = bootstrapSdk;
           default = sync;
