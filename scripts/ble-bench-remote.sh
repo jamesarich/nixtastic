@@ -32,7 +32,16 @@ teardown() { reap 'meshtastic .*--listen'; reap 'meshnode-headless'; sleep 2; }
 # grep -c prints 0 AND exits 1 when there are no matches, so `|| echo 0` yields
 # two lines and poisons the arithmetic that consumes it.
 count() { grep -c "$1" "$2" 2>/dev/null | head -1; }
-ids() { grep -oE 'BLE mesh RX [^"\\]*id=0x[0-9a-f]+' "$1" 2>/dev/null | grep -oE 'id=0x[0-9a-f]+' | sort -u | wc -l; }
+
+# Delivered means DECODED, not received. Counting ingress lines counts the same
+# frame once per advertising event and counts the radio's own background traffic
+# too, which is how an earlier version of this reported 20-38% for a link that
+# was in fact passing everything. The radio logs `decoded message (id=...` only
+# after the channel key opens the packet; node-kmp logs `rx[...] text from` only
+# for a payload it could actually read. Both sides must therefore share a
+# channel: same name AND same PSK, or every frame lands as `opaque`.
+decoded_by_radio() { grep -oE 'decoded message \(id=0x[0-9a-f]+' "$1" 2>/dev/null | sort -u | wc -l; }
+decoded_by_kmp() { grep -cE 'rx\[[a-z-]+\] text from' "$1" 2>/dev/null | head -1; }
 pct() { if [ "$2" -eq 0 ]; then echo "n/a"; else awk -v a="$1" -v b="$2" 'BEGIN{printf "%.0f%%", (a/b)*100}'; fi; }
 
 kmp_start() {
@@ -54,19 +63,19 @@ for i in $(seq 1 "$SENDS"); do
   sleep "$GAP"
 done
 sleep 8
-k2r=$(ids "$RUN/radio.log")
+k2r=$(decoded_by_radio "$RUN/radio.log")
 reap 'meshtastic .*--listen'
 sleep 3
 
 # Phase 2: radio transmits, node-kmp's own counter is the witness. No listener,
 # so the port is free for --sendtext.
-before=$(count 'rx\[' "$RUN/kmp.log")
+before=$(decoded_by_kmp "$RUN/kmp.log")
 for i in $(seq 1 "$SENDS"); do
   timeout 40 meshtastic --port "$PORT" --sendtext "r2k $i" >/dev/null 2>&1
   sleep "$GAP"
 done
 sleep 8
-after=$(count 'rx\[' "$RUN/kmp.log")
+after=$(decoded_by_kmp "$RUN/kmp.log")
 r2k=$((after - before))
 
 printf '\n%-18s %5s %10s %6s\n' direction sent delivered rate
@@ -74,5 +83,6 @@ printf '%-18s %5s %10s %6s\n' "node-kmp->radio" "$SENDS" "$k2r" "$(pct "$k2r" "$
 printf '%-18s %5s %10s %6s\n' "radio->node-kmp" "$SENDS" "$r2k" "$(pct "$r2k" "$SENDS")"
 echo
 echo "-- node-kmp counters --"; grep -oE 'bearers [a-z-]+ rx=[0-9]+ tx=[0-9]+' "$RUN/kmp.log" | tail -1
-echo "-- radio ingress (distinct) --"; grep -ohE 'BLE mesh RX[^"\\]{0,60}' "$RUN/radio.log" | sed 's/id=0x[0-9a-f]*//' | sort -u | head -4
+echo "-- radio: decoded from node-kmp --"; grep -ohE 'decoded message \(id=0x[0-9a-f]+ fr=0x[0-9a-f]+[^"\\]{0,40}' "$RUN/radio.log" | sort -u | head -4
+echo "-- node-kmp: decoded from radio --"; grep -ohE 'rx\[[a-z-]+\] text from [^"\\]{0,40}' "$RUN/kmp.log" | tail -4
 teardown

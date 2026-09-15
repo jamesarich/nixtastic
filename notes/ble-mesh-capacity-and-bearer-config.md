@@ -49,41 +49,54 @@ Three is the right number for a phone. Raising it is not the lever.
 
 ## Measured delivery, 2026-09-15
 
-First per-direction numbers for the advertisement bearer, taken with
+Per-direction delivery for the advertisement bearer, taken with
 `nix run .#blebench` between a RAK4631 on `spike/ble-mesh-transport` and a
 node-kmp headless node on james-pc's BlueZ adapter, three inches apart, at
--51 dBm. "Delivered" is unique packets, not frames: node-kmp's `rx=` counter
-counts advertising events, so it reads ~10x higher than packets at
-`BLE_MESH_ADV_EVENTS=10`.
+-51 dBm, with `BLE_MESH_ADV_EVENTS=10`.
 
-| `BLE_MESH_ADV_EVENTS` | airtime/frame | node-kmp -> radio | radio -> node-kmp |
-| --- | --- | --- | --- |
-| 3 (default) | ~90 ms | 90% | 20% |
-| 10 | ~300 ms | 75% | 38% |
+| direction | delivered |
+| --- | --- |
+| node-kmp -> radio | 90% |
+| radio -> node-kmp | 50% |
 
-The trade is real and it is a single-radio trade. Each extra advertising event is
-time the nRF52 is not scanning, so raising it buys reception on the far side and
-costs reception on this one. node-kmp holds each frame up for
-`DEFAULT_ADVERTISE_MS = 300`, which is why the radio, scanning at a 100% duty
-cycle (`BLE_MESH_SCAN_INTERVAL == BLE_MESH_SCAN_WINDOW == 160`), hears it so much
-better than the reverse.
+**Delivered means decoded, and the first version of this section did not.** It
+reported 20% and 38%, which were wrong in both directions. Counting ingress lines
+counts the same frame once per advertising event, counts the radio's own
+background LoRa traffic, and counts frames the receiver could not open at all.
+The two nodes were on different channels for those runs, so every frame landed as
+`opaque` and the numbers measured nothing but noise. The metric is now
+`decoded message (id=...` on the radio, which the firmware logs only after a
+channel key opens the packet, and `rx[...] text from` on node-kmp, which appears
+only for a payload it could read. Both sides must share a channel name **and**
+PSK for any of it to mean anything.
 
-**Unresolved: 38% is still poor for two devices this close.** The loss is on the
-BlueZ side, not the radio's: an independent D-Bus scanner sees the radio's frames
-that node-kmp's own scan misses, and BlueZ reports `Discovering: yes` throughout.
-Candidate causes not yet separated: BlueZ throttling `PropertiesChanged` per
-device despite `DuplicateData: true`, the adapter's scan duty cycle (BlueZ does
-not expose interval/window through `SetDiscoveryFilter`), and contention with
-node-kmp's own advertising on the same controller. An A/B with the node idle
-versus sending moved delivery only 25 -> 21 frames, so contention is *not* the
-dominant term.
+Full bidirectional interop with decode is proven: a firmware radio and a
+node-kmp node exchange text over BLE advertisements, each decrypting the other's
+traffic, dedup collapsing the repeated advertising events
+(`Ignore dupe incoming msg`), and the packets carrying `transport = 9`
+(`TRANSPORT_BLE_ADV`) end to end.
 
-Two traps cost a void experiment each, and both are now written down:
+The remaining asymmetry is airtime. node-kmp holds each frame up for
+`DEFAULT_ADVERTISE_MS = 300`; the radio sends `BLE_MESH_ADV_EVENTS` events at
+30 ms, so 10 events is ~300 ms and 3 (the default) is ~90 ms. The radio scans at a
+100% duty cycle (`BLE_MESH_SCAN_INTERVAL == BLE_MESH_SCAN_WINDOW == 160`), which
+is why it hears node-kmp better than the reverse. Raising the event count trades
+this node's reception for the far side's, because it is one radio: every extra
+advertising event is time the nRF52 is not scanning.
+
+**Still open:** 50% into node-kmp is poor for two devices this close. An
+independent D-Bus scanner sees frames node-kmp's scan misses while BlueZ reports
+`Discovering: yes`, and an idle-versus-sending A/B moved delivery only 25 -> 21
+frames, so self-contention is not the dominant term. BlueZ does not expose scan
+interval or window through `SetDiscoveryFilter`, which is the next thing to
+check.
+
+Two traps cost a void experiment each and are written down:
 `PLATFORMIO_BUILD_FLAGS` overrides rather than appends, so tuning one constant
 that way silently dropped `-DBLE_MESH_NRF52_CENTRAL=1` and produced a radio that
 advertises but cannot scan at all (`NRF52Bluetooth.cpp:344`) - which read as a
-clean 0% and looked like physics. And a bench run started before the radio
-finished booting from a flash reads 0% in both directions.
+clean 0% and looked like physics. And a bench run started before a freshly
+flashed radio finishes booting reads 0% in both directions.
 
 ## Range
 
