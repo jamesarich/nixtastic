@@ -182,6 +182,19 @@
           shell = "webflasher";
           repo = "meshtastic/web-flasher";
         };
+
+        # Browser-side coverage prediction (site.meshtastic.org): SPLAT!'s
+        # ITM model compiled to WebAssembly, run in a Web Worker pool, with
+        # terrain tiles streamed from AWS Open Data. No server compute.
+        # Cloned here since 2026-09 but not declared until 2026-09-15, which
+        # meant `brief` answered "unknown repo" and neither sync nor doctor
+        # counted it. It is a real consumer relationship, not a bystander:
+        # the flat coverage-query contract it grew in #74 is the app hand-off
+        # (notes: geojson-coverage-roundtrip).
+        meshtastic-site-planner = {
+          shell = "siteplanner";
+          repo = "meshtastic/meshtastic-site-planner";
+        };
       };
 
       devShells = forAllSystems (
@@ -205,7 +218,7 @@
           ];
 
           #########################################################
-          # pnpm, pinned for `api` only.
+          # pnpm, pinned for `api` and `siteplanner`.
           #
           # `pkgs.pnpm` floats - it is 11.x now and moves with every flake
           # update. That is fine for docs and web-flasher (both verified to
@@ -223,6 +236,9 @@
           # disagreeing with it. pkgs.pnpm_9 is not usable - it evaluates to
           # "removed because it reached EOL on 2026-04-30" - so pin the
           # version explicitly over the 10.x derivation.
+          #
+          # siteplanner needs 9 for an unrelated reason (pnpm 11 stopped
+          # reading package.json's `pnpm.overrides`), so it shares this.
           #
           # This goes away when api regenerates its lockfile with integrity
           # hashes for the buf.build packages; that is the real fix and it
@@ -989,8 +1005,8 @@
               echo "  cd tokens && npm ci && npm run build   (style-dictionary)"
               echo "  ./bin/generate-pngs.sh                 (inkscape)"
               echo ""
-              echo "  standards/meshtastic_design_standards_latest.md is the"
-              echo "  authoritative spec - versioned copies sit beside it."
+              echo "  standards/ is the spec. Read _latest.md locally; LINK the"
+              echo "  directory - _latest.md over HTTP serves 35 bytes."
               echo ""
             '';
           };
@@ -1060,6 +1076,37 @@
               echo "  pnpm build"
               echo "  pnpm lint && pnpm lint:mdx"
               echo "  pnpm test:e2e       # playwright, browsers pre-fetched by nix"
+              echo ""
+            '';
+          };
+
+          #########################################################
+          # siteplanner - meshtastic/meshtastic-site-planner
+          #
+          # Vite + Vue 3 + TypeScript, vitest, pnpm. CI pins Node 24 and
+          # pnpm 9, and pnpm 9 is not optional: pnpm 11 stopped reading the
+          # `pnpm.overrides` block from package.json (it moved to
+          # pnpm-workspace.yaml), so an install against the committed
+          # lockfile dies on ERR_PNPM_LOCKFILE_CONFIG_MISMATCH. Verified
+          # 2026-09-15 - pnpm 9.15.9 installs in 3s, lockfile untouched.
+          #
+          # The WASM engine (engine/build.sh) needs emscripten and is NOT
+          # provided here: it builds through the repo's own Dockerfile, and
+          # a checked-in artifact means `pnpm dev` works without it - the
+          # same boundary the python shell draws around a real radio.
+          #########################################################
+          siteplanner = pkgs.mkShellNoCC {
+            name = "meshtastic-siteplanner";
+            packages = common ++ [
+              pkgs.nodejs_24
+              pnpm9
+            ];
+            shellHook = (banner "siteplanner" (reposFor "siteplanner")) + ''
+              echo "  pnpm install"
+              echo "  pnpm dev            # vite"
+              echo "  pnpm build"
+              echo "  pnpm test           # vitest"
+              echo "  pnpm build:engine   # SPLAT! -> wasm, needs docker"
               echo ""
             '';
           };

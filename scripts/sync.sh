@@ -532,13 +532,24 @@ if write_mcp_json "$root" "$root"; then
   echo ""
 fi
 if [ -s "$pending" ]; then
-  # direnv deliberately requires explicit consent per .envrc; we
-  # write the file, you approve it. Never automated.
-  echo "  direnv files written - approve each once:"
+  # We generate these files, so we approve them (allow_generated_envrc) - the
+  # consent is ours to give for our own content, and withholding it only broke
+  # `direnv exec` for whoever came next. What is left here is the residue: a
+  # file direnv could not be told about, because direnv is not installed or the
+  # approval failed. Only list those.
+  left=""
   while read -r d; do
-    echo "      direnv allow $root/$d"
+    [ -f "$root/$d/.envrc" ] || continue
+    envrc_is_generated "$root/$d/.envrc" || continue
+    envrc_allowed "$root/$d/.envrc" 2>/dev/null || left="$left $d"
   done < "$pending"
-  echo ""
+  if [ -n "$left" ]; then
+    echo "  direnv files written but NOT approved - approve each once:"
+    for d in $left; do
+      echo "      direnv allow $root/$d"
+    done
+    echo ""
+  fi
 fi
 if [ "$pull" = true ]; then
   echo "  fast-forwarded where safe; dirty/diverged repos untouched"
