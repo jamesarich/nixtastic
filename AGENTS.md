@@ -550,6 +550,87 @@ Version numbers were the rot. Renovate owns them and
 `gradle/libs.versions.toml` is the source of truth; a version in prose is a
 claim with an expiry date.
 
+### The design standards are linked by directory, never by version
+
+`meshtastic/design` carries the client design standards as versioned files,
+with `meshtastic_design_standards_latest.md` as a **symlink** to the current
+one (v1.5 as of 2026-09-14). Since #155 the repo also carries
+`standards/README.md`, an index that names the current version, and that
+index is what everything else links:
+
+```
+https://github.com/meshtastic/design/tree/master/standards
+```
+
+Linking a version file goes stale silently the moment a version is cut.
+Linking the symlink is worse, because **GitHub serves a symlink as its
+target's filename**. Both the blob view and `raw.githubusercontent.com`
+return 35 bytes and HTTP 200:
+
+```console
+$ curl -sSfL https://raw.githubusercontent.com/meshtastic/design/master/standards/meshtastic_design_standards_latest.md
+meshtastic_design_standards_v1_5.md
+```
+
+Nothing errors, so a consumer that fetches it ships the filename as if it
+were the document. Two live consumers do exactly this:
+
+- **`apple/.specify/memory/constitution.md`** cites the raw URL twice
+  (principle VIII and its reference list) under "Agents and contributors MUST
+  fetch and review this document before making UI changes. Do not rely on
+  summaries". The constitution outranks every other agent doc in `apple`, so
+  an agent obeying it fetches 35 bytes, gets no error, and proceeds with no
+  standards at all. This is the highest-impact instance.
+- **`apple/.github/workflows/sync_design_standards.yml`** `curl`s it into
+  `.standards/` and would open a PR containing those 35 bytes. It has never
+  fired, because its `repository_dispatch` trigger (`design-standards-updated`)
+  is not sent by the design repo and `apple/.standards/` still holds only
+  `.gitkeep`. The symlink is fine on a
+filesystem (`cat` it in a clone), and the contents API resolves it over HTTP:
+
+```bash
+gh api repos/meshtastic/design/contents/standards/meshtastic_design_standards_latest.md \
+  -H "Accept: application/vnd.github.raw"
+```
+
+Two more rules the repo now enforces. Superseded versions are published
+records and are never edited - `standards-version-guard.yml` (#151) fails a
+PR that touches one, and cross-checks the index's `current-version` marker
+against the symlink. And cutting a version is four edits in **one** commit:
+the new file, the symlink, the index's named version plus its marker, and the
+table row marking the previous version superseded.
+
+### Section 11 makes the design repo a prose authority too
+
+Section 11 of v1.5 governs documentation, which is wider than it sounds: the
+`meshtastic` docs site, the written material in the design repo, and
+in-product text in the clients (11.15 - labels, error messages, empty states,
+destructive confirmations). It ends with 11.16, the subset a reviewer can
+check without judgement.
+
+Two structural facts, both easy to get wrong:
+
+- **Client docs are written in the client repo** (11.1).
+  `docs/software/android/` and `docs/software/apple/` on the docs site are
+  generated. PRs go to `android`/`apple`; a docs-repo PR touching those paths
+  is failed by a CI guard and reverted by the next sync. The sync runs weekly
+  and takes each client's **latest release**, not its default branch, so a
+  merged client docs change reaches meshtastic.org only after it ships.
+- **Synced client docs are exempt from `:::` admonitions** (11.11), because
+  their source has to render in two renderers at once. The client repo's own
+  guide owns the callout form; section 11's rules on *when* to use one still
+  apply, including at most one per H2 section.
+
+Section 11 also absorbs, rather than tolerates, per-repo prose rules. #154
+upstreamed seven rules `android` had been carrying locally - contractions
+(with *do not* in warnings), American spelling, requirement words, e.g./i.e.,
+inclusive wording, number style and the ban on *above*/*below* - and reversed
+one: prose dates now spell the month (March 14, 2026), with ISO 8601 kept for
+data, which covers log excerpts, timestamps, file names and the date stamps
+on specs and audits. Spaced em dashes remain `android`-only; section 11 says
+nothing about them. So a local style rule that duplicates section 11 is a bug
+in the local guide, and the fix is to retire the rule and defer.
+
 ---
 
 ## Agent surface

@@ -48,7 +48,7 @@ been skipped in practice, which is why `.#brief` exists.
 | `labeltastic` | contact-QR nametag kiosk (Niimbot printer) | Python / uv | `.#python` | `main` | Conventional | `AGENTS.md`, `CONTRIBUTING.md`, `llms.txt` |
 | `meshtastic-python` | Python CLI + API (`meshtastic` on PyPI) | Python / **Poetry** | `.#python` | `master` | sentence-style, merged via PR | → [`notes/meshtastic-python.md`](./notes/meshtastic-python.md) |
 | `protobufs` | shared `.proto` definitions | buf · deno · gradle · cargo | `.#protobufs` | `master` | mixed | → [`notes/protobufs.md`](./notes/protobufs.md) |
-| `design` | design standards, tokens, assets | node · inkscape | `.#design` | `master` | Conventional | → [`notes/design.md`](./notes/design.md) |
+| `design` | design standards, tokens, assets | node · inkscape | `.#design` | `master` | Conventional | `AGENTS.md`, `CLAUDE.md` (writing style) → [`notes/design.md`](./notes/design.md) |
 | `api` | backend API for meshtastic.org | TypeScript / Node / pnpm / Prisma | `.#api` | `master` | mixed | none yet |
 | `meshtastic` | project website + docs (meshtastic.org) | Docusaurus 3 / TypeScript / MDX / pnpm | `.#docs` | `master` | Conventional, merged via PR | Spec Kit |
 | `Adafruit_nRF52_Bootloader_OTAFIX` | nRF52 OTAFIX bootloader (org fork of oltaco's) | C / Make | `.#otafix` | `master` | Conventional (since the fork) | `AGENTS.md` (PR #8) |
@@ -105,6 +105,13 @@ SDK).
   the shared-contact URL (`meshtastic.org/v/#…`) it prints as a QR.
 - `design` defines standards that `android`, `apple` and `web` implement;
   tracked on <https://github.com/orgs/meshtastic/projects/16>, not in the repo.
+  **Section 11 extends that to prose**, so it governs the `meshtastic` docs
+  site, the client docs written in `android` and `apple`, and in-product
+  strings - a section 11 change is a cross-repo *docs* change with the same
+  shape as a token change. Link the standards by directory
+  (`meshtastic/design/tree/master/standards`), never a version file and never
+  `..._latest.md`, which GitHub serves as 35 bytes over HTTP -
+  [`notes/design.md`](./notes/design.md).
 - `design` is also vendored as a submodule inside `meshtastic` at
   `static/design`, the same pattern as the `protobufs` submodules above.
 - `api` backs meshtastic.org and serves the small JSON resources the clients
