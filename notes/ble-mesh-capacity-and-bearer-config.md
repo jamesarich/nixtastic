@@ -84,12 +84,23 @@ is why it hears node-kmp better than the reverse. Raising the event count trades
 this node's reception for the far side's, because it is one radio: every extra
 advertising event is time the nRF52 is not scanning.
 
-**Still open:** 50% into node-kmp is poor for two devices this close. An
-independent D-Bus scanner sees frames node-kmp's scan misses while BlueZ reports
-`Discovering: yes`, and an idle-versus-sending A/B moved delivery only 25 -> 21
-frames, so self-contention is not the dominant term. BlueZ does not expose scan
-interval or window through `SetDiscoveryFilter`, which is the next thing to
-check.
+**Where the remaining loss is not.** Running an independent raw D-Bus scanner
+alongside node-kmp on the same adapter, over the same window, settles it:
+
+    raw D-Bus scanner: raw_events=41  distinct_bodies=14
+    node-kmp:          rx=41          8 texts decoded
+
+node-kmp sees **exactly** what BlueZ delivers. Its receive pipeline loses
+nothing, so the earlier suspicion that frames were being dropped between BlueZ
+and the transport is wrong, and BlueZ's scan duty cycle is not worth chasing
+either: whatever the controller reports, node-kmp gets all of it. The remaining
+loss is the radio's transmission or the air, which puts every lever on the
+firmware side - `BLE_MESH_ADV_EVENTS`, TX power, and the PHY - not in Kotlin.
+
+Per-run delivery varies (8/10 here, 5/10 in the run above) on a link with no
+retransmission at the bearer layer, which is the honest characterisation: this is
+a lossy broadcast medium and the mesh's own reliable-delivery retries are what
+make it usable, exactly as on LoRa.
 
 Two traps cost a void experiment each and are written down:
 `PLATFORMIO_BUILD_FLAGS` overrides rather than appends, so tuning one constant
