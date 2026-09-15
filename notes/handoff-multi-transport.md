@@ -924,7 +924,8 @@ Shared hardware; the USB radios are global mutable state across sessions - see
   `println` plus `--console`. `idevicesyslog` cannot see third-party app logs.
 - Xcode and devicectl need the nix env stripped, **inline**: `env -u DEVELOPER_DIR
   -u SDKROOT -u CC -u CXX -u LD -u AR -u NM -u RANLIB -u STRIP -u NIX_CC
-  PATH="/usr/bin:/bin:/usr/sbin:/sbin" …`.
+  PATH="/usr/bin:/bin:/usr/sbin:/sbin" …`. As of 2026-09-15 that is only true
+  outside `.#apple`; that shell strips them itself.
 - A failing on-device XCUITest triggers `devicectl diagnose` and a **sudo popup**
   (benign). Use `process launch`, not a test, to run the app.
 - **`@ObjCSignatureOverride`** when two delegate overrides share a Kotlin

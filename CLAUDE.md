@@ -53,6 +53,7 @@ been skipped in practice, which is why `.#brief` exists.
 | `meshtastic` | project website + docs (meshtastic.org) | Docusaurus 3 / TypeScript / MDX / pnpm | `.#docs` | `master` | Conventional, merged via PR | Spec Kit |
 | `Adafruit_nRF52_Bootloader_OTAFIX` | nRF52 OTAFIX bootloader (org fork of oltaco's) | C / Make | `.#otafix` | `master` | Conventional (since the fork) | `AGENTS.md` (PR #8) |
 | `web-flasher` | web-based device flasher (flasher.meshtastic.org) | Nuxt 3 / Vue / TypeScript / pnpm | `.#webflasher` | `main` | Conventional | `.github/copilot-instructions.md` |
+| `meshtastic-site-planner` | browser-side coverage prediction (site.meshtastic.org) | Vite / Vue 3 / TS / pnpm + SPLAT! wasm | `.#siteplanner` | `main` | Conventional | none yet |
 
 The table is orientation; `nix run .#brief -- <repo>` is truth - it reads the
 live branch, drift, and doc inventory (with sizes) every time.
@@ -234,17 +235,21 @@ finds - run it before diagnosing by hand.
   interpreter, whose loader cannot see the system `libstdc++`/`libz` that
   manylinux wheels link. numpy, opencv and torch install fine and then fail to
   import, blaming neither library.
-- **Any active Nix shell breaks `apple`'s real Xcode builds** - not just
-  `.#apple`; nixpkgs' Darwin stdenv exports `DEVELOPER_DIR`/`SDKROOT` pointing
-  at a bare Nix `apple-sdk` stub, and `CC=clang`/`CXX=clang++` resolve through
-  the polluted `PATH` to Nix's own `clang` and an ancient `xcbuild`-package
+- **Any Nix shell OTHER than `.#apple` breaks `apple`'s real Xcode builds** -
+  nixpkgs' Darwin stdenv exports `DEVELOPER_DIR`/`SDKROOT` pointing at a bare
+  Nix `apple-sdk` stub, and `CC=clang`/`CXX=clang++` resolve through the
+  polluted `PATH` to Nix's own `clang` and an ancient `xcbuild`-package
   `xcrun` - none of which is `/Applications/Xcode.app`. None of the resulting
   errors name Nix: a linker rejecting `-objc_abi_version`, `xcrun`/`simctl`
   reporting `unable to find sdk: 'macosx'` (the *versioned* SDK still resolves,
   only the bare alias breaks), and `clang` rejecting `-index-store-path` as
   `unknown argument` all look like Xcode or project bugs. `xcode-select -p`
-  itself is unaffected - only the env vars and `PATH` lookup are. Fix per
-  invocation, don't touch the persistent selection:
+  itself is unaffected - only the env vars and `PATH` lookup are.
+  **`.#apple` strips all of this in its shellHook** (2026-09-15), so
+  `just in apple xcodebuild …` and a plain `xcodebuild` inside that shell both
+  reach the real Xcode - verified with `xcrun --sdk macosx --show-sdk-path`.
+  Anywhere else on darwin - `.#kotlin`, `.#python`, the root shell - fix per
+  invocation and don't touch the persistent selection:
   `env -u DEVELOPER_DIR -u SDKROOT -u CC -u CXX -u LD -u AR -u NM -u RANLIB
   -u STRIP -u NIX_CC PATH="/usr/bin:/bin:/usr/sbin:/sbin" xcodebuild …`
   (same for bare `xcrun`/`simctl` calls). Verified 2026-08-20 against Xcode
