@@ -93,8 +93,14 @@ plugin_render() {
     plugin_write_forwarder "$tmp/$name/skills/$dir-$skill" "$root" "$dir" "$skill" "$desc"
     n=$((n + 1))
   done <<< "$(plugin_forward_pairs "$root")"
-  jq -n --arg n "$name" '{name: $n, owner: {name: "James Rich"},
-    plugins: [{name: $n, source: ("./" + $n), description: "Meshtastic workspace plugin, rendered by nix run .#sync"}]}' \
+  # Claude Code reads lspServers off the MARKETPLACE entry, not the plugin's own
+  # plugin.json (see the official pyright-lsp plugin: its directory holds only a
+  # LICENSE and a README). Keep plugin.json the single source of truth and lift
+  # the block up here, so the loader actually sees it.
+  lsp=$(jq -c '.lspServers // {}' "$tmp/$name/.claude-plugin/plugin.json")
+  jq -n --arg n "$name" --argjson lsp "$lsp" '{name: $n, owner: {name: "James Rich"},
+    plugins: [({name: $n, source: ("./" + $n), description: "Meshtastic workspace plugin, rendered by nix run .#sync"}
+      + (if ($lsp | length) > 0 then {strict: false, lspServers: $lsp} else {} end))]}' \
     > "$tmp/.claude-plugin/marketplace.json"
   hash=$(plugin_input_hash "$root")
   old=$(cat "$rd/.hash" 2>/dev/null || true)
