@@ -689,6 +689,61 @@ and prints the `just` spellings that work from there; it never says `cd`,
 because a session that is told to move loses the worktree guard's premise
 that edits belong to the tree it started in.
 
+### `lspServers` is read off the marketplace entry, not `plugin.json`
+
+`buf-lsp` gives agents real proto code intelligence - `documentSymbol`,
+`hover`, `goToDefinition`, `findReferences` over `.proto` - through the `LSP`
+tool. It ships in `nixtastic`; it is not a separate plugin, and the earlier
+standalone `~/.claude/local-plugins/buf-lsp/` is gone.
+
+Two pieces, and the first one is silent when it is wrong:
+
+1. **The declaration has to reach the marketplace entry.** `lspServers` is
+   hand-written in `plugin/.claude-plugin/plugin.json`, but Claude Code reads
+   it off the *marketplace* entry for the plugin. `scripts/plugin.sh` lifts it
+   across at render (it `jq`s `.lspServers` out of `plugin.json` and merges it
+   into the marketplace entry alongside `strict: false`). A block that sits
+   only in `plugin.json` loads nothing, reports no error, and leaves the `LSP`
+   tool answering "no server configured" for `.proto`. Confirm the render
+   actually carries it:
+
+   ```bash
+   jq '.plugins[].lspServers' .cache/agent-marketplace/.claude-plugin/marketplace.json
+   ```
+
+2. **`buf` has to be on PATH** as the `command`, with `args` `["lsp",
+   "serve"]` and `.proto` mapped to `protobuf`. `buf lsp serve` speaks LSP over
+   stdio and needs no network; the 60 s `startupTimeout` is there because it
+   resolves the whole module before it answers.
+
+**The server indexes whatever the module resolves to, and it takes no
+`--exclude-path`.** This is the same defect that made bare `buf lint` fail -
+`buf.yaml` declares its module path as `.`, so a working checkout pulls in
+agent worktrees under `.claude/worktrees/`, nixpkgs' nanopb test protos under
+`.direnv/`, and generated output under `packages/kmp/build/`. Measured on a
+live `protobufs` checkout before the fix: **456 files resolved, 16 copies of
+`nanopb.proto`**; `workspaceSymbol` for `NanoPBOptions` came back 480 symbols,
+one full set per copy, which makes it useless for the impact analysis it is
+worth having. `protobufs` `2532fc0` adds `.claude/`, `.direnv/` and `packages/`
+to the excludes and takes that to **28**, matching `git ls-files '*.proto'`.
+`buf` tolerates excludes naming directories that do not exist, so CI, which
+lints a clean checkout, is unaffected.
+
+Two consequences worth holding:
+
+- **A stale server keeps the old module.** The index is resolved at startup,
+  so after changing `buf.yaml` - or working in a worktree whose `buf.yaml`
+  predates the fix - restart the session before trusting a count.
+- **Scope-free operations were never affected.** `documentSymbol` and `hover`
+  are file-scoped and were correct throughout, including `hover` resolving
+  across an import into `telemetry.proto`. It is `workspaceSymbol` and
+  `findReferences` - the two that answer "what else touches this message" -
+  that degrade, and those are exactly the ones worth running before a proto
+  change. See `notes/cross-repo-contracts.md` for what that impact set is for.
+
+Verify the whole chain by asking for symbols in a file you have not opened:
+`documentSymbol` on `protobufs/meshtastic/mesh.proto` returns ~570 symbols.
+
 ## Git across repos
 
 ### Default branches differ

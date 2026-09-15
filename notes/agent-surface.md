@@ -99,6 +99,17 @@ Made in the brainstorm, in order, with the alternative each one rejected:
    **Stays local:** superpowers, remember, the CodeRabbit and Google skills,
    the LSP plugins, the Datadog and Firebase connectors/plugins. `doctor`
    reports extras, never writes them.
+   **Amended 2026-09-15 (`6ad1935`): `buf-lsp` is the one LSP that joined the
+   plugin.** The rest stay local because they are general-purpose and
+   per-machine - `pyright` serves any Python checkout and nothing here
+   configures it. `buf-lsp` is not like that: it exists to read *this*
+   workspace's `.proto` contracts, its usefulness is bounded by `protobufs`'
+   `buf.yaml`, and its one non-obvious requirement (the declaration has to
+   reach the marketplace entry, not just `plugin.json`) is workspace knowledge
+   that would otherwise be rediscovered per machine. It ships as an
+   `lspServers` block in `plugin/.claude-plugin/plugin.json`, lifted into the
+   marketplace entry by `scripts/plugin.sh`. `AGENTS.md` → Agent surface has
+   the mechanism and the module-exclusion caveat.
 7. **The store carries nothing for the plugin.** Every part of it is derived
    from the workspace repo plus the local checkouts, so it is rendered locally
    and never crosses machines. Rendering into `~/.nixtastic-agent` would have
