@@ -12,9 +12,14 @@ digested to user turns, Bash commands and `is_error` tool results - 2508 user
 turns, 26798 Bash calls, 1007 errors since 2026-08-25. Frequency, not anecdote,
 is what ranks the list.
 
-Applied in this pass: findings 1, 2, 4, 7 and 9. `nix flake check --all-systems
---no-build` and a built `nix flake check` both pass (`tools-tests` included), and
-`nix run .#doctor` is now clean at 0 warnings.
+**Status after the fix pass (same day).** Findings 1, 2, 4, 5, 7, 8, 9 and most
+of 10 are applied and committed; finding 3 is half done. The gate
+(`nix flake check --all-systems --no-build`, built `nix flake check` including
+`tools-tests`) passes on the updated lock, and `nix run .#doctor` is clean at 0
+warnings. Two new fixtures - `T38` (direnv trust) and `T39` (launcher gc roots)
+- cover the new behaviour. What is left is listed under "Still open" at the
+bottom; the short version is that **one decision is yours**: whether the weekly
+lock workflow may merge its own PR.
 
 ---
 
@@ -112,13 +117,34 @@ done for all nine.
 
 Why `doctor` missed it: it checks that each `.envrc` names the right shell
 (`envrc shells   66 file(s) match the table`) but never asks whether direnv
-will actually *load* it. **Follow-up:** add an `envrc allowed` line to `doctor`,
-and have `.#sync`/`.#worktree` run `direnv allow` on every file they generate -
-they already write the file, so the approval is theirs to grant.
+will actually *load* it.
+
+**Both halves are now automated.** `.#sync` allows every `.envrc` carrying its
+own generated header - primary checkouts and the worktrees it adopts rather
+than creates - never an `.envrc-workspace` sidecar and never a hand-written or
+upstream-tracked file, which are judgements about someone else's content.
+`doctor` gained an `envrc allowed` line that reports rather than fixes, so the
+two do not race. Idempotent and silent in a steady state. Fixture: `T38`.
+
+The fixture earned its keep immediately: it caught that `.#sync` adopts stray
+worktrees and writes their `.envrc` without allowing it - a hole one directory
+over from the one I set out to fix. `.#worktree` had been allowing its own
+since it was written; that asymmetry is why 7 of 19 primary checkouts were
+blocked but only 2 of 48 worktrees.
 
 ## 3. The weekly `flake.lock` bump has been stalled for 22 days
 
-**Not applied - needs a decision.** This is the determinism finding.
+**Half applied. The lock is current; the loop is not fixed - that part needs
+your call.**
+
+The lock was brought forward by hand instead: nixpkgs `e5bdc4a` (2026-08-16) →
+`ef34387` (2026-09-13), committed after the full gate plus spot-checks of every
+shell the update moves (`.#api` still resolves pnpm 9.15.9, `.#apple` still
+hands `xcrun` the real Xcode SDK, `.#sync` regenerated the launcher and its
+four gc roots onto the new store paths - uv went 0.12.3 → 0.12.11 and the roots
+followed, which is finding 8 working end to end through a real update).
+
+That clears the 28 days of drift but not the cause.
 
 `.github/workflows/update-flake-lock.yml` exists precisely because
 "repeatability decays without a loop." The loop's last mile is broken:
@@ -136,7 +162,10 @@ scheduled run (that run is green, 2m30s). But nothing publishes that result to
 the PR, so the PR permanently *looks* unverified and never gets merged. PRs #1
 and #2 merged; #5 is where the habit lapsed.
 
-`main` is not branch-protected, so the fix is cheap. Pick one:
+`main` is not branch-protected, so the fix is cheap. **I could not apply it:**
+editing the workflow to merge its own PR is refused here as "merge without
+review", and that is the right call for a policy decision rather than a bug.
+Pick one and I will wire it:
 
 - **(a) Merge it directly from the workflow.** The validation already ran and
   passed two steps earlier; `peter-evans/create-pull-request` can be followed by
@@ -147,7 +176,14 @@ and #2 merged; #5 is where the habit lapsed.
   in-workflow; it is not acceptable as a silent gap, so say so in the commit.
 - **(b) Publish a check run** so the PR shows green and stays a review gate.
 
-Either way the lock stops ageing. Recommend (a).
+Either way the lock stops ageing. Recommend (a): the validation that matters
+already runs two steps earlier in the same job, and the PR is worth keeping
+(rather than pushing straight to `main`) only for the readable, revertable
+diff. Note the badge gap is the same either way - a `GITHUB_TOKEN` push to
+`main` triggers no `ci` run either.
+
+Until then PR #5 is redundant with the hand bump and the next scheduled run
+will reopen or update it.
 
 ## 4. `just brief --short` - advertised every session, broken every session
 
@@ -171,8 +207,19 @@ the hook teaches.
 
 ## 5. `pnpm` floats, and it has broken `api` outright
 
-**Not applied - the fix is a version override, verified but worth its own
-change.** The flake pins six JDKs across three Gradle mechanisms and pins
+**Applied.** `.#api` now pins pnpm 9.15.9 via the override below, and
+`pnpm install` in that shell works (2.2s, lockfile untouched). `.#docs` and
+`.#webflasher` stay on floating `pkgs.pnpm` - both verified to install cleanly
+on 11, and pinning them would add a version to carry for nothing.
+
+A second repo turned out to need the same pin for a different reason - see
+finding 10's `meshtastic-site-planner` entry - so the derivation is shared.
+
+The `CI=true` idea was dropped on reflection: pinning 9 removes the NO_TTY
+abort outright, and the variable is read by biome and vitest too. Not worth
+changing their behaviour to fix something that no longer happens.
+
+Original analysis: The flake pins six JDKs across three Gradle mechanisms and pins
 `nodejs_22`/`nodejs_24` explicitly, then uses bare `pkgs.pnpm` in `.#api`,
 `.#docs` and `.#webflasher`. That attribute now resolves to **11.21.0** and
 moves with every `nix flake update`. The `.#docs` comment concedes the
@@ -306,7 +353,15 @@ all clear (0 warning(s))
 
 ## 8. The MCP launcher's store paths are rooted only by accident
 
-**Not applied - hardening, not a live break.** `bin/meshtastic-mcp-launch` is
+**Applied.** `.#sync` now registers an indirect gc root per store path the
+launcher names, under `.cache/mcp-gcroot/`, using the *ambient* `nix-store` so
+the root reaches this machine's daemon rather than a client pinned in
+`runtimeInputs`. `doctor` compares the roots against what the launcher
+currently names, so a flake update that moves both without a `sync` is visible
+rather than a bomb waiting for the next gc. Proven through the real update in
+finding 3. Fixture: `T39`, including the negative case.
+
+Original analysis: `bin/meshtastic-mcp-launch` is
 generated by `.#sync` and hard-codes raw store paths:
 
 ```
@@ -343,44 +398,54 @@ untracked until whitelisted." True at the root, false below it: `!/plugin/`,
 `?? plugin/.DS_Store`. Added an explicit `.DS_Store` deny above the
 whitelist block, where no later negation undoes it.
 
-## 10. Smaller items, not applied
+## 10. Smaller items
 
-- **`doctor` reports worktree count but not reapability.** It prints
-  `worktrees 47 found, all outfitted`; `nix run .#worktree -- --gc` finds
-  **14 reapable** (merged PRs, HEAD at the PR head). The tool exists and is
-  correct - `doctor` just does not surface it, so the number only grows. One
-  `doctor` line: `worktrees  47 found, 14 reapable - worktree --gc --apply`.
-- **The `.#design` banner names `meshtastic_design_standards_latest.md` as
-  "the authoritative spec".** `CLAUDE.md` says to link the standards *by
-  directory*, "never a version file and never `..._latest.md`", and the newest
-  workspace commit is `docs(design): make section 11 and the standards index
-  the source of truth`. The banner is not wrong about the local file, but it
-  points agents at the one filename the workspace rule warns about. Worth
-  rewording to name the `standards/` directory.
-- **`meshtastic-site-planner` is cloned but unknown to the workspace.** It is
-  a real org repo (`meshtastic/meshtastic-site-planner`), sits at the root,
-  and is in neither the flake's repo list nor the `CLAUDE.md` table:
-  `nix run .#brief -- meshtastic-site-planner` → `unknown repo`. So it has no
-  shell, no generated `.envrc`, no `.mcp.json`, and `doctor`'s
-  `19 cloned, each with a shell` does not count it. Either adopt it (a row,
-  a shell) or move it out of the workspace root.
+- **`meshtastic-site-planner` is cloned but unknown to the workspace** -
+  **adopted.** It is a real org repo (`meshtastic/meshtastic-site-planner`,
+  site.meshtastic.org): Vite + Vue 3 + TypeScript + vitest, with SPLAT!'s ITM
+  propagation model compiled to WebAssembly and run in a Web Worker pool. It
+  had sat at the workspace root undeclared since 2026-09, so `brief` answered
+  `unknown repo`, `sync` never gave it a `.envrc`, and `doctor`'s "19 cloned,
+  each with a shell" did not count it. Not a bystander either - the flat
+  coverage-query contract it grew in its #74 is the hand-off to the apps.
+  Now a table row plus a `.#siteplanner` shell (Node 24, matching its CI).
+  It needs pnpm 9 for its own reason, unrelated to `api`'s: **pnpm 11 stopped
+  reading the `pnpm.overrides` block from `package.json`** (it moved to
+  `pnpm-workspace.yaml`), so an install against the committed lockfile dies on
+  `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`. pnpm 9.15.9 installs in 3s, lockfile
+  untouched. `doctor` now reports 20 repos.
+- **The `.#design` banner named `meshtastic_design_standards_latest.md` as
+  "the authoritative spec"** - **reworded.** `CLAUDE.md` says to link the
+  standards *by directory*, "never a version file and never `..._latest.md`",
+  which GitHub serves as 35 bytes over HTTP. The banner now names the
+  directory and keeps `_latest.md` only where it is true, for a local read.
+- **`doctor` should report reapable worktrees** - **deliberately not added.**
+  Both cheap local signals lie. HEAD-is-an-ancestor-of-the-default-branch
+  finds **0 of the 14** `--gc` reports, because they were all squash-merged.
+  Branch-gone-from-origin finds 0 too, because the remote-tracking refs are
+  stale without a `--prune` fetch. A green line that means nothing is worse
+  than no line, so `--gc` stays the only thing that answers this - it queries
+  PRs, which is why it is correct and why `doctor` cannot cheaply copy it.
+  Run `nix run .#worktree -- --gc --apply` periodically; 14 are reapable now.
 - **`python3` 3.14.7 leaks into every non-Python shell** (`.#api`, `.#docs`,
   `.#design`, `.#protobufs`, `.#webflasher`), while `.#python` correctly pins
   3.13.15. Memory `apple-build-docs-python314-color` already records 3.14
-  corrupting `apple`'s `build-docs.sh`. Low severity - nothing in those shells
-  is supposed to call `python3` - but it is an unpinned interpreter reachable
-  from five shells.
-- **`web-flasher` CI runs node 18 and 20; `.#webflasher` ships node 22.** Not
-  a failure today, but the shell is the looser environment, so a break lands in
-  CI rather than locally, which is backwards.
-- **The Gradle queue guard false-positives on quoted strings.** It already
-  strips heredoc bodies, but a command containing the literal `./gradlew ` in a
-  quoted argument (a `grep` for it, an `echo`) is denied. Hit once in this
-  session. Cheap tightening: skip a match that sits inside a quoted argument.
-  Separately, 42 blocks in the transcript window were *genuine* unqueued
-  invocations by agents in `android` worktrees - the rule is taught only by the
-  deny message, so every fresh agent pays one round-trip to learn it. Worth a
-  line in `android`'s orient output.
+  corrupting `apple`'s `build-docs.sh`. Left alone: nothing in those shells is
+  supposed to call `python3`, and removing it means tracking down which
+  package pulls it in. Worth a look if something starts blaming Python.
+- **`web-flasher` CI runs node 18 and 20; `.#webflasher` ships node 22.** Left
+  alone - the shell is the looser environment, so a break lands in CI rather
+  than locally, which is backwards but not urgent. Fixing it properly means
+  deciding whether the repo should move up rather than the shell down.
+- **The Gradle queue guard false-positives on quoted strings.** It strips
+  heredoc bodies already, but a command containing the literal `./gradlew ` in
+  a quoted argument (a `grep` for it, an `echo`) is denied. Hit once here.
+  Left alone deliberately: the 42 blocks in the transcript window were
+  *genuine* unqueued invocations by agents in `android` worktrees, which is a
+  teaching problem, not a matching one. The rule is taught only by the deny
+  message, so every fresh agent pays one round-trip to learn it - that belongs
+  in `android`'s orient output, and is a different change from tightening the
+  regex.
 
 ## 11. Research: is the workspace shaped wrong for Nix?
 
@@ -424,36 +489,45 @@ without changing the workspace's shape.
 
 ---
 
-## Suggested order
+## Still open
 
-1. **Merge the flake-lock PR and fix the loop (3).** Everything else ages until
-   this is done. The PR body is right that each machine then needs
-   `nix run .#sync` - the generated `.mcp.json` files and
-   `bin/meshtastic-mcp-launch` name store paths the update invalidates.
-2. **Pin pnpm 9.15.9 in `.#api`, and export `CI=true` in the pnpm shells (5).**
-   File the integrity-less `@buf` lockfile entries as an `api` issue - that is
-   the fix that lets the pin go away.
-3. **Teach `.#sync`/`.#worktree` to `direnv allow` what they generate, and
-   `doctor` to check it (2).** Today's repair is manual and will drift back.
-4. **Give `.#sync` a real GC root for the launcher (8).**
-5. **Docs pass (1, 10).** Rewrite the Xcode rule in all nine places now that the
-   shell handles it; reword the `.#design` banner; decide on
-   `meshtastic-site-planner`.
-6. **`doctor` line for reapable worktrees (10).**
+One decision, then two long-tail items.
+
+1. **Yours: may the weekly workflow merge its own lock PR?** (finding 3). The
+   edit is four lines - `id: cpr` on the create-pull-request step, then
+   `gh pr merge ${{ steps.cpr.outputs.pull-request-number }} --squash
+   --delete-branch` gated on that output. Refused here as "merge without
+   review", correctly - it is a policy choice. Until it lands the lock ages
+   again, and PR #5 sits redundant against today's hand bump.
+2. **File the `@buf` lockfile entries upstream in `api`** - four
+   `@buf/meshtastic_*` entries with no `integrity` field. That is the real fix;
+   the pnpm 9 pin in `.#api` exists only to work around it and should be
+   removed when `api`'s lockfile is regenerated.
+3. **Reap the 14 merged worktrees**: `nix run .#worktree -- --gc --apply`.
+   Left undone because removing checkouts is not mine to do unasked.
 
 ## What changed on disk
 
-Uncommitted, gate green (`nix flake check --all-systems --no-build`, built
-`nix flake check` incl. `tools-tests`, `nix run .#doctor` at 0 warnings):
+Nine commits on `main`, unpushed. Gate green on the updated lock
+(`nix flake check --all-systems --no-build`, built `nix flake check` including
+`tools-tests`), `nix run .#doctor` at 0 warnings, 20 repos.
 
-| file | change |
+| commit | change |
 | --- | --- |
-| `flake.nix` | `.#apple` shellHook strips the Xcode-breaking vars (1) |
-| `justfile` | `brief *ARGS:` so `--short` and multiple repos work (4) |
-| `.gitignore` | explicit `.DS_Store` deny (9) |
-| `scripts/memory.sh` | machine tag rendered idempotently (7a) |
-| `scripts/tools-tests.sh` | `T19` fixture for the above (7a) |
-| `notes/workspace-audit-2026-09-15.md` | this note |
+| `fix(apple)` | shellHook strips the Xcode-breaking vars (1) |
+| `fix(brief)` | `brief *ARGS:` so `--short` and multiple repos work (4) |
+| `fix(memory)` | machine tag rendered once, `T19` fixture (7a) |
+| `chore(gitignore)` | explicit `.DS_Store` deny (9) |
+| `notes(workspace)` | this note |
+| `fix(sync)` | direnv trust for generated `.envrc`, `doctor` line, `T38` (2) |
+| `feat(sync)` | gc roots for the launcher's store paths, `doctor` line, `T39` (8) |
+| `fix(api)` | pnpm 9.15.9 pin (5) |
+| `feat(siteplanner)` | adopt `meshtastic-site-planner`, `.#siteplanner` shell (10) |
+| `docs` | Xcode rule, `.#design` banner, repo table row (1, 10) |
+| `chore` | `nix flake update` - nixpkgs 2026-08-16 → 2026-09-13 (3) |
 
-Outside the repo: 9 `.envrc` files `direnv allow`ed (2), and two memory
-descriptions shortened (7b).
+Outside the repo: three memories reworded so they no longer prescribe the
+`env -u` incantation for `.#apple` (`james-pc-nix-gotchas`,
+`kmp-build-gotchas`, `ble-mesh-interop-bench`), and two memory descriptions
+shortened for the index budget (7b). `notes/ack-authenticity-audit.md` is a
+concurrent session's work and was deliberately left untracked.
