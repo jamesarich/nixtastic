@@ -201,7 +201,7 @@
         { pkgs, ... }:
         let
           inherit (pkgs) lib;
-          isLinux = pkgs.stdenv.isLinux;
+          isLinux = pkgs.stdenv.hostPlatform.isLinux;
 
           #########################################################
           # Common: present in every shell.
@@ -907,7 +907,7 @@
             name = "meshtastic-apple";
             packages =
               common
-              ++ lib.optionals pkgs.stdenv.isDarwin (
+              ++ lib.optionals pkgs.stdenv.hostPlatform.isDarwin (
                 with pkgs;
                 [
                   swiftlint
