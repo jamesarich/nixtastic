@@ -133,29 +133,41 @@ with no BLE client attached. Live discovery on the bench surfaced no named
 Meshtastic node at all, including boards known to be advertising, so the scan
 path used here cannot answer it.
 
-## The ESP32 BLE-mesh envs do not currently build on james-pc
+## Why the ESP32 BLE-mesh envs stopped building
 
-Every ESP32 opt-in env fails at `ESP32BLEGattMesh.cpp:437` with
-`ble_gap_ext_adv_stop was not declared`. NimBLE hides the ext-adv API behind
-`MYNEWT_VAL(BLE_EXT_ADV)`, which resolves from the **prebuilt**
-`esp_nimble_cfg.h` in `framework-arduinoespressif32-libs` and does not reflect
-`custom_sdkconfig`. pioarduino considers that package's sdkconfig hash current,
-so it does not rebuild, and the headers stay without ext-adv.
+Two layers, and the second is the one that bites.
 
-`heltec-v3_blemesh` fails at the same file and line as a newly added
-`m5stack-cardputer-adv_blemesh`, which is what establishes that the envs are
-right and the package is stale. The documented repair is to move the package out
-of `~/.platformio/packages/`, `pio pkg install -e <env>`, then build.
+**The header half.** `esp_nimble_cfg.h` resolves `MYNEWT_VAL(BLE_EXT_ADV)` from
+`CONFIG_BT_NIMBLE_EXT_ADV` and falls back to 0 when that macro is undefined. It
+reaches the compiler only through the IDF rebuild's `sdkconfig.h`, so a build
+that skips the rebuild hides `ble_gap_ext_adv_*` and the transport silently drops
+to the legacy 31-byte path. The spike lacked `-DCONFIG_BT_NIMBLE_EXT_ADV=1` in
+`[ble_mesh_esp32]`. Ron reached the same fix on `Node-Bridging` independently;
+the spike now carries it (`942098036`).
 
-Not done here on purpose: the rebuilt libraries stay installed and silently link
-into the next ESP32 env built on that machine, which has already voided one bench
-test. It is a shared machine, and the repair wants to be somebody's deliberate act
-rather than a side effect of a test run.
+**The marker half, which is the actual cause.** pioarduino writes a hash on the
+first line of `<project>/sdkconfig.defaults` (`# TASMOTA__<md5>`) and reads it to
+decide whether the framework is already built for this env's `custom_sdkconfig`.
+Building any env **without** `custom_sdkconfig` in the same project directory
+makes `check_reinstall_frwrk()` reinstall the stock framework - reverting
+`libbt.a` to a NimBLE with no ext-adv symbols - and that path does not invalidate
+the marker. The marker then claims a framework that no longer exists, the rebuild
+is skipped, and the link fails on exactly the symbols the headers just started
+declaring.
 
-**Consequence:** GATT against firmware is unproven. It was proven between a
-JVM/BlueZ central and node-kmp's Android peripheral instead, and the nRF52 cannot
-host the role at all (one advertising set), so the S3 is the only firmware
-platform where it could be shown.
+Evidence: the shared `esp32s3/sdkconfig` read `# CONFIG_BT_NIMBLE_EXT_ADV is not
+set` with `BLE_MAX_ACT=2` (stock, not the spike's 6), `nm` found zero
+`ble_gap_ext_adv_start` in `libbt.a`, and `sdkconfig.defaults` was dated three
+weeks earlier than the failing build.
+
+**Fix: delete `<project>/sdkconfig.defaults`.** One `Reinstall Arduino framework`
+follows and the env builds. No package surgery, and nothing machine-wide is left
+behind. `m5stack-cardputer-adv_blemesh` then builds clean at RAM 41.7%, Flash
+73.5%.
+
+The failure is asymmetric and worth knowing: one stock ESP32 build disarms every
+BLE-mesh env beside it, and the only symptom is a linker complaint about NimBLE
+that reads like a toolchain fault.
 
 ## The platform matrix, updated
 
