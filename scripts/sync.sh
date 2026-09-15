@@ -188,6 +188,7 @@ while IFS=$'\t' read -r dir repo shell; do
     # own (firmware does), so route through the same check.
     if [ ! -e "$root/$dir/.envrc" ]; then
       write_envrc "$root/$dir/.envrc" "$shell"
+      allow_generated_envrc "$root/$dir/.envrc" >/dev/null
     else
       write_envrc "$root/$dir/.envrc-workspace" "$shell"
     fi
@@ -221,6 +222,14 @@ while IFS=$'\t' read -r dir repo shell; do
   else
     envrc=$(repair_envrc "$root/$dir/.envrc" "$shell" write_envrc)
   fi
+  # Unconditional, not only when this run wrote the file: the repos found
+  # blocked on 2026-09-15 all had a correct, generated .envrc already. A
+  # steady state prints nothing.
+  case "$envrc" in
+    WARN*) ;;
+    *) a=$(allow_generated_envrc "$root/$dir/.envrc")
+       [ -n "$a" ] && envrc="${envrc:+$envrc, }$a" ;;
+  esac
   case "$envrc" in
     WARN*) echo "  WARN      $dir: ${envrc#WARN }"; envrc="" ;;
     ?*) echo "$dir" >> "$pending" ;;
@@ -258,14 +267,19 @@ while IFS=$'\t' read -r dir repo shell; do
         *)
           if [ ! -e "$wt/.envrc" ]; then
             write_worktree_envrc "$wt/.envrc" "$shell"
-            got="envrc - approve once: direnv allow $wt"
+            got="envrc"
           else
             got=$(repair_envrc "$wt/.envrc" "$shell" write_worktree_envrc)
-            [ -n "$got" ] && got="$got - approve again: direnv allow $wt"
           fi
           ;;
       esac
     fi
+    # Trust what we just wrote, or what an earlier run wrote and never
+    # approved. .#worktree has always done this for worktrees it creates;
+    # an adopted stray is no different, and a blocked .envrc makes
+    # `direnv exec` / `just wt` fail with nothing to run `direnv allow` in.
+    a=$(allow_generated_envrc "$wt/.envrc")
+    [ -n "$a" ] && got="${got:+$got, }$a"
     case "$got" in
       WARN*) echo "  WARN      $dir/${wt##*/}: ${got#WARN }"; got="" ;;
     esac

@@ -1018,6 +1018,52 @@ git -C "$root/kzstd" worktree remove --force "$HOME/parked-elsewhere"; git -C "$
 run "$sync"
 expect 'worktrees [0-9]+ open - nix run .#worktree -- --gc'
 
+echo "--- T38: sync tells direnv to trust the .envrc files it generated - and only those"
+# direnv is not in the sandbox, so stub it. `status` answers "blocked" until
+# `allow` has been called for that directory, which is the state machine the
+# real thing has and the only part these helpers read.
+mkdir -p "$PWD/fakebin" "$HOME/allowed"
+cat > "$PWD/fakebin/direnv" <<'EOF'
+#!/bin/sh
+key=$(printf '%s' "$PWD" | sed 's|/|_|g')
+case "$1" in
+  status) if [ -f "$HOME/allowed/$key" ]; then echo "Found RC allowed 0"; else echo "Found RC allowed 1"; fi ;;
+  allow)  d=$(cd "$(dirname "${2:-$PWD}")" && pwd); k=$(printf '%s' "$d" | sed 's|/|_|g')
+          : > "$HOME/allowed/$k"; echo "$2" >> "$HOME/allow.log" ;;
+esac
+EOF
+chmod +x "$PWD/fakebin/direnv"
+oldpath="$PATH"; PATH="$PWD/fakebin:$PATH"; export PATH
+rm -f "$HOME/allow.log"; rm -f "$HOME"/allowed/*
+
+# A hand-written .envrc must never be trusted on our say-so: it is someone
+# else's content, the same rule as never editing a tracked one.
+printf 'use flake "%s#kotlin"\n' "$root" > "$root/kzstd/.envrc"
+run "$sync"
+grep -q "kzstd/.envrc" "$HOME/allow.log" 2>/dev/null && { echo "T38: allowed a hand-written .envrc"; exit 1; }
+# firmware tracks its own .envrc and gets the sidecar - also never allowed.
+grep -q ".envrc-workspace" "$HOME/allow.log" 2>/dev/null && { echo "T38: allowed a sidecar"; exit 1; }
+# Everything sync generated, though, is sync's to approve.
+grep -q "api/.envrc" "$HOME/allow.log" || { echo "T38: generated .envrc not allowed"; cat "$HOME/allow.log" 2>/dev/null; exit 1; }
+expect 'api .*envrc allowed'
+
+# Idempotent: a second run re-allows nothing and says nothing.
+: > "$HOME/allow.log"
+run "$sync"
+[ -s "$HOME/allow.log" ] && { echo "T38: re-allowed an already-trusted file"; cat "$HOME/allow.log"; exit 1; }
+refuse 'envrc allowed'
+
+# doctor reports the same thing rather than fixing it.
+rm -f "$HOME"/allowed/*
+run_lax "$doctor"
+expect 'envrc allowed .*has not been told to trust'
+run "$sync" >/dev/null 2>&1 || true
+run_lax "$doctor"
+expect 'ok .*envrc allowed'
+git -C "$root/kzstd" checkout -q -- . 2>/dev/null || true
+rm -f "$root/kzstd/.envrc"; run "$sync" >/dev/null 2>&1 || true
+PATH="$oldpath"; export PATH; rm -f "$PWD/fakebin/direnv"
+
 echo "--- T37: create bases a NEW branch on origin's default, not the primary checkout's HEAD"
 # The regression this pins: `git worktree add -b` with no start point uses the
 # HOST checkout's HEAD, so a worktree made while the primary sat on a feature

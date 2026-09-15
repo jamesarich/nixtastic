@@ -38,6 +38,7 @@ default_ref() {
   echo "$d"
 }
 
+
 # Explicit if/else rather than `A && B || C`: with the latter,
 # C also runs when A succeeds but B fails.
 targets() {

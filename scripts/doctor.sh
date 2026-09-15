@@ -149,17 +149,32 @@ check_envrc_shell() { # $1 = file, $2 = wanted shell, $3 = label
     foreign="$foreign $3($why)"
   fi
 }
+
+# A correct .envrc direnv has not been told to trust is inert: `direnv exec`,
+# `just in` and `just wt` fail with "is blocked", and an interactive shell
+# there silently gets no repo environment. Generated files only - trusting a
+# hand-written or upstream-tracked one is the human's call.
+blocked=""
+check_envrc_allowed() {
+  [ -f "$1" ] || return 0
+  [ "${1##*/}" = .envrc ] || return 0
+  envrc_is_generated "$1" || return 0
+  command -v direnv >/dev/null 2>&1 || return 0
+  envrc_allowed "$1" || blocked="$blocked $2"
+}
 while IFS=$'\t' read -r dir _ shell; do
   [ -d "$root/$dir/.git" ] || continue
   for f in .envrc .envrc-workspace; do
     git -C "$root/$dir" ls-files --error-unmatch "$f" >/dev/null 2>&1 && continue
     check_envrc_shell "$root/$dir/$f" "$shell" "$dir/$f"
+    check_envrc_allowed "$root/$dir/$f" "$dir"
   done
   while read -r wt; do
     [ -d "$wt" ] || continue
     for f in .envrc .envrc-workspace; do
       git -C "$wt" ls-files --error-unmatch "$f" >/dev/null 2>&1 && continue
       check_envrc_shell "$wt/$f" "$shell" "$dir/${wt##*/}/$f"
+      check_envrc_allowed "$wt/$f" "$dir/${wt##*/}"
     done
   done <<< "$(git -C "$root/$dir" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' | tail -n +2)"
 done < "$NIXTASTIC_REPOS_TSV"
@@ -173,6 +188,12 @@ if [ -n "$foreign" ]; then
 fi
 if [ -z "$drift" ] && [ -z "$foreign" ]; then
   ok "envrc shells" "$nenvrc file(s) match the table"
+fi
+if [ -n "$blocked" ]; then
+  warn "envrc allowed" "direnv has not been told to trust:$blocked"
+  fix "nix run .#sync   (allows the files it generated)"
+else
+  ok "envrc allowed" "direnv trusts every generated file"
 fi
 
 # --- worktrees ------------------------------------------
