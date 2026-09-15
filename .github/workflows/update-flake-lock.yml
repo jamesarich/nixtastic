@@ -44,6 +44,7 @@ jobs:
       - run: nix flake check --print-build-logs
       # No-op (no PR, no branch) when flake.lock is already current.
       - uses: peter-evans/create-pull-request@v8.1.1
+        id: cpr
         with:
           branch: update-flake-lock
           title: "chore: nix flake update (weekly)"
@@ -64,3 +65,19 @@ jobs:
             invalidates; `sync` regenerates them (root and adopted worktrees).
             Entering a dev shell refreshes the pinned JDK list in
             `gradle.properties` on its own.
+
+      # Close the loop. Without this the PR is opened and then sits: the ci
+      # workflow shows as `action_required` and never starts, for the same
+      # GITHUB_TOKEN rule the comment above explains, so the PR reports NO
+      # checks at all and reads as an unverified bump forever. PR #5 sat open
+      # that way for 22 days while main's lock aged 28.
+      #
+      # What gates the merge is the two `nix flake check` steps above, in this
+      # job, before the PR existed. The squashed commit on main carries no ci
+      # badge either - same rule, and accepted for the same reason. The PR is
+      # kept rather than pushing straight to main so the bump stays a readable,
+      # revertable diff.
+      - if: steps.cpr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge ${{ steps.cpr.outputs.pull-request-number }} --squash --delete-branch
