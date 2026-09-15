@@ -862,6 +862,18 @@
                 ]
               );
             shellHook = (banner "apple" "Meshtastic-Apple - iOS · macOS · watchOS · visionOS") + ''
+              # nixpkgs' apple-sdk setup hook exports DEVELOPER_DIR/SDKROOT and
+              # the compiler vars into every darwin shell, pointing at a Nix SDK
+              # stub instead of Xcode (NixOS/nixpkgs#355486). Real xcodebuild,
+              # xcrun and simctl then fail, and none of the errors name Nix.
+              # Strip them here so the shell needs no `env -u` incantation.
+              unset DEVELOPER_DIR SDKROOT CC CXX LD AR NM RANLIB STRIP NIX_CC
+              # The same hook puts xcbuild's 2019 `xcrun` stub ahead of Xcode's.
+              # Drop only that entry - keeping Nix's git/gh/jq/rg ahead of the
+              # system ones, which a blanket /usr/bin prepend would shadow.
+              PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v 'xcbuild.*xcrun' | paste -sd: -)
+              export PATH
+
               if [ "$(uname)" != "Darwin" ]; then
                 echo "  !  This repo builds only on macOS with Xcode."
                 echo "     On Linux this shell gives you git/gh for review work."
