@@ -250,11 +250,19 @@ property flip.
 1. **GATT is the primary BLE bearer.** It is the only BLE medium every platform
    in the fleet has, in both directions. Position the advertisement bearer as
    the BT5 fast path, not the baseline.
-2. **Fragment, or document the ceiling.** The advertisement bearer drops large
-   packets silently. Either add fragmentation (bitchat's ~469-byte scheme is the
-   reference, and `node-transport-ble-gatt` already has `MeshFragment.split`) or
-   state the cutoff in the protocol doc and log it as a counter, not a
-   `LOG_WARN`.
+2. **Document and count the ceiling. Chaining is not available.**
+   *Superseded 2026-09-15:* the first draft offered fragmentation as the
+   alternative. It is not one. The nRF52 SoftDevice caps an advertising set's
+   data at 255 bytes (`BLE_GAP_ADV_SET_DATA_SIZE_EXTENDED_MAX_SUPPORTED`,
+   `ble_gap.h:293`), so the S140 cannot **transmit** a chained extended
+   advertisement at all. Reception is not the constraint: the scan buffer goes to
+   1650 (`BLE_GAP_SCAN_BUFFER_EXTENDED_MAX`, `:402`), so the adversarial audit's
+   "capped at 255 in both directions" was wrong in the receive column.
+   An application-level scheme across several independent advertisements is still
+   theoretically open, but it needs reassembly state, ordering and a timeout over
+   a lossy connectionless medium with no acknowledgements, and nothing has been
+   built. So: state the cutoff and count it. Done in firmware `8d85416fc`, which
+   also recovered the 21 bytes a relay was wasting on reception metadata.
 3. **Ask Ron before taking anything from `Node-Bridging`.** It is not a
    packaging change: it compiles the advertisement bearer into every S3/C3/C6
    build, gives back the spike's 8 KB of nRF52840 RAM, and leaves
