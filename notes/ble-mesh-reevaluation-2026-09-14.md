@@ -133,6 +133,30 @@ with no BLE client attached. Live discovery on the bench surfaced no named
 Meshtastic node at all, including boards known to be advertising, so the scan
 path used here cannot answer it.
 
+## The ESP32 BLE-mesh envs do not currently build on james-pc
+
+Every ESP32 opt-in env fails at `ESP32BLEGattMesh.cpp:437` with
+`ble_gap_ext_adv_stop was not declared`. NimBLE hides the ext-adv API behind
+`MYNEWT_VAL(BLE_EXT_ADV)`, which resolves from the **prebuilt**
+`esp_nimble_cfg.h` in `framework-arduinoespressif32-libs` and does not reflect
+`custom_sdkconfig`. pioarduino considers that package's sdkconfig hash current,
+so it does not rebuild, and the headers stay without ext-adv.
+
+`heltec-v3_blemesh` fails at the same file and line as a newly added
+`m5stack-cardputer-adv_blemesh`, which is what establishes that the envs are
+right and the package is stale. The documented repair is to move the package out
+of `~/.platformio/packages/`, `pio pkg install -e <env>`, then build.
+
+Not done here on purpose: the rebuilt libraries stay installed and silently link
+into the next ESP32 env built on that machine, which has already voided one bench
+test. It is a shared machine, and the repair wants to be somebody's deliberate act
+rather than a side effect of a test run.
+
+**Consequence:** GATT against firmware is unproven. It was proven between a
+JVM/BlueZ central and node-kmp's Android peripheral instead, and the nRF52 cannot
+host the role at all (one advertising set), so the S3 is the only firmware
+platform where it could be shown.
+
 ## The platform matrix, updated
 
 Transmit connectionless (extended advertising, >31-byte body):
