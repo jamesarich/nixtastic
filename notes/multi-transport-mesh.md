@@ -62,6 +62,10 @@ the one-to-many property that chose advertisements in the first place.
 - **Cross-bearer dedup.** One packet from the radio arrives over BLE and again
   over LoRa 3.6 s later; it is delivered once and the LoRa copy is dropped
   `DUPLICATE`. This is the premise of the whole plan and it holds.
+- **UDP carries decoded traffic**, 4/4 between two node-kmp nodes over multicast
+  on one host. Node to node rather than against firmware: no board on this bench
+  has a network config, so the UDP bearer is the one proven between our own
+  implementations only.
 - **GATT, against firmware and cross-platform.** Against an M5Stack Cardputer ADV
   on `m5stack-cardputer-adv_blemesh`, a BlueZ central reaches `ready` and the
   firmware decodes what it is sent with `transport = 10`
