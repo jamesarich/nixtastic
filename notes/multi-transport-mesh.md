@@ -55,8 +55,15 @@ which is the LoRa bearer's radio, a BT5 adapter for both BLE bearers, a RAK4631
 on `rak4631_blemesh` and an M5Stack Cardputer ADV on
 `m5stack-cardputer-adv_blemesh`. The Cardputer is the only board here that can
 host the GATT proxy beside the advertisement bearer; an nRF52 cannot. A Pixel 6a
-runs the Android monitor. Not exercised: the uConsole (off the network) and an
-iPad whose MeshMonitor build is not trusted on the device.
+runs the Android monitor, and an A16 iPad runs the iOS one. Not exercised: the
+uConsole, which is off the network.
+
+The iPad's MeshMonitor would not launch - "invalid code signature, inadequate
+entitlements or its profile has not been explicitly trusted". Nothing needed
+trusting: the provisioning profile had expired, and a rebuild through
+`tools/monitor-ios`'s documented recipe with `-allowProvisioningUpdates`
+regenerated it. Worth knowing because the error names trust first and expiry not
+at all, and Settings shows no entry to trust when the profile is simply gone.
 
 Both radios were returned to the private `olm3sh` channel afterwards, so a node
 on default LongFast now reads their traffic as `opaque` - which is the check that
@@ -79,6 +86,10 @@ the restore took.
   on one host. Node to node rather than against firmware: no board on this bench
   has a network config, so the UDP bearer is the one proven between our own
   implementations only.
+- **GATT on iOS**, the platform that needs it most: iOS cannot transmit an
+  advertisement at all, so GATT is the only BLE bearer an Apple client can fully
+  join. An A16 iPad decoded 4/4 texts, with `notify=enabled` and the chunk size
+  negotiating 20 -> 512 on both links, and dedup dropping the repeat.
 - **GATT, against firmware and cross-platform.** Against an M5Stack Cardputer ADV
   on `m5stack-cardputer-adv_blemesh`, a BlueZ central reaches `ready` and the
   firmware decodes what it is sent with `transport = 10`
