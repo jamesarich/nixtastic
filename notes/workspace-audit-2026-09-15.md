@@ -17,9 +17,9 @@ of 10 are applied and committed; finding 3 is half done. The gate
 (`nix flake check --all-systems --no-build`, built `nix flake check` including
 `tools-tests`) passes on the updated lock, and `nix run .#doctor` is clean at 0
 warnings. Two new fixtures - `T38` (direnv trust) and `T39` (launcher gc roots)
-- cover the new behaviour. What is left is listed under "Still open" at the
-bottom; the short version is that **one decision is yours**: whether the weekly
-lock workflow may merge its own PR.
+- cover the new behaviour. Everything in the audit is now applied, filed
+upstream, or explicitly declined with a reason; "Still open" at the bottom is
+the residue, and the only item not in this repo's hands is meshtastic/api#143.
 
 ---
 
@@ -265,9 +265,34 @@ pnpm9 = pkgs.pnpm_10.overrideAttrs (o: rec {
 ```
 
 **Recommendation:** use that in `.#api` only, with a comment saying it tracks
-`api`'s CI pin and can go away when `api` regenerates its lockfile without the
-integrity-less `@buf` entries (which is the real upstream fix, and worth an
-`api` issue). Leave `.#webflasher` and `.#docs` on `pkgs.pnpm` - both work
+`api`'s CI pin and can go away when meshtastic/api#143 merges.
+
+**The cause is not what this note first said.** "api should regenerate its
+lockfile with integrity hashes" was wrong about where the hashes come from.
+buf.build's npm registry generates tarballs on demand and its packument carries
+only a tarball URL - `dist` has no `integrity` and no `shasum`:
+
+    $ curl -s 'https://buf.build/gen/npm/v1/@buf%2Fmeshtastic_api.bufbuild_es' \
+      | jq '.versions["1.7.2-...").dist | keys'
+    [ "tarball" ]
+
+So no pnpm can *read* a hash for these. pnpm 8, which wrote the entries,
+recorded none; pnpm 10 made that a hard error. Newer pnpm computes the hash
+from the downloaded tarball, but only on a fresh resolution - it will not reuse
+an entry it has already rejected, so `--no-frozen-lockfile` does not repair it
+and deleting the lockfile does but moves every unrelated dependency with it.
+
+Filed as meshtastic/api#142 with a draft fix in #143: write the four sha512s
+into the existing entries and change nothing else, an 8-line diff. Verified
+installing on pnpm 9.15.9, 10.34.4 and 11.25.0 (only 9 worked before), then
+through api's own CI steps - `pnpm install --ignore-scripts=false`,
+`pnpm build`, `pnpm validate:maintenance-uf2`.
+
+One thing the issue records that is easy to miss: **dependabot's api#101
+("Bump pnpm from 8.15.3 to 10.34.4") is green for a misleading reason.** It
+bumps the `pnpm` *devDependency*; the pnpm that resolves the install is set by
+`pnpm/action-setup`, pinned to `version: 9`. So #101 never exercises pnpm 10,
+and moving `action-setup` up would break `build` and `quality` at once. Leave `.#webflasher` and `.#docs` on `pkgs.pnpm` - both work
 today, and pinning them buys nothing but another version to carry. Not applied
 here because it is a third change to `flake.nix` in one pass and deserves its
 own `just check`.
@@ -439,6 +464,10 @@ whitelist block, where no later negation undoes it.
   alone - the shell is the looser environment, so a break lands in CI rather
   than locally, which is backwards but not urgent. Fixing it properly means
   deciding whether the repo should move up rather than the shell down.
+- **A Homebrew `pnpm` 10.34.4 sits at `/opt/homebrew/bin/pnpm`** and wins in
+  any shell that is not a Nix one. Noticed while testing; harmless inside the
+  dev shells, which put their own pnpm first, but it means a bare terminal in
+  `api/` resolves a pnpm that cannot install it. Not worth acting on.
 - **The Gradle queue guard false-positives on quoted strings.** It strips
   heredoc bodies already, but a command containing the literal `./gradlew ` in
   a quoted argument (a `grep` for it, an `echo`) is denied. Hit once here.
@@ -495,18 +524,16 @@ without changing the workspace's shape.
 
 One decision, then two long-tail items.
 
-1. **Yours: may the weekly workflow merge its own lock PR?** (finding 3). The
-   edit is four lines - `id: cpr` on the create-pull-request step, then
-   `gh pr merge ${{ steps.cpr.outputs.pull-request-number }} --squash
-   --delete-branch` gated on that output. Refused here as "merge without
-   review", correctly - it is a policy choice. Until it lands the lock ages
-   again. PR #5 itself needs nothing: its lock now matches `main` exactly.
-2. **File the `@buf` lockfile entries upstream in `api`** - four
-   `@buf/meshtastic_*` entries with no `integrity` field. That is the real fix;
-   the pnpm 9 pin in `.#api` exists only to work around it and should be
-   removed when `api`'s lockfile is regenerated.
-3. **Reap the 14 merged worktrees**: `nix run .#worktree -- --gc --apply`.
-   Left undone because removing checkouts is not mine to do unasked.
+1. ~~May the weekly workflow merge its own lock PR?~~ - approved and applied
+   (`ci: let the weekly flake-lock bump merge its own PR`). PR #5 needs
+   nothing: its lock already matches `main` exactly, so the next scheduled run
+   finds no delta and it closes itself.
+2. **meshtastic/api#143** (draft) carries the real fix - the four sha512s
+   written into the lockfile, filed with meshtastic/api#142. When it merges,
+   drop the `pnpm9` pin from `.#api` in `flake.nix`; `.#siteplanner` still
+   needs it for its own unrelated reason. api#101 is worth a comment too: it
+   is green only because it bumps a devDependency, not the pnpm CI runs.
+3. ~~Reap the merged worktrees~~ - done: 16 reaped, 32 kept.
 
 ## What changed on disk
 
