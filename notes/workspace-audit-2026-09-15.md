@@ -182,8 +182,10 @@ already runs two steps earlier in the same job, and the PR is worth keeping
 diff. Note the badge gap is the same either way - a `GITHUB_TOKEN` push to
 `main` triggers no `ci` run either.
 
-Until then PR #5 is redundant with the hand bump and the next scheduled run
-will reopen or update it.
+PR #5 needs no action: its branch lock is now byte-identical to `main`'s
+(nixpkgs `ef34387`, verified with `git diff origin/update-flake-lock main --
+flake.lock`), so the branch carries no delta and the next scheduled run has
+nothing to push. It closes itself.
 
 ## 4. `just brief --short` - advertised every session, broken every session
 
@@ -498,7 +500,7 @@ One decision, then two long-tail items.
    `gh pr merge ${{ steps.cpr.outputs.pull-request-number }} --squash
    --delete-branch` gated on that output. Refused here as "merge without
    review", correctly - it is a policy choice. Until it lands the lock ages
-   again, and PR #5 sits redundant against today's hand bump.
+   again. PR #5 itself needs nothing: its lock now matches `main` exactly.
 2. **File the `@buf` lockfile entries upstream in `api`** - four
    `@buf/meshtastic_*` entries with no `integrity` field. That is the real fix;
    the pnpm 9 pin in `.#api` exists only to work around it and should be
