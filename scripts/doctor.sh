@@ -298,6 +298,31 @@ else
   fi
 fi
 
+# The launcher is a stable path holding store paths - uv, the python, the
+# manylinux libs - and nothing in the workspace rooted them until .#sync
+# started doing it. Unrooted, a `nix store gc` reaps them and the stable path
+# fails on a store path that no longer exists. Check the roots exist AND still
+# match what the launcher names: a flake update moves both.
+if [ -x "$launcher" ]; then
+  # grep exits 1 on no match, and pipefail would take the whole script down
+  # with it - every stage here is allowed to find nothing.
+  verdicts=$( { grep -o '/nix/store/[^"'"'"':]*' "$launcher" || true; } |
+    sed 's|\(/nix/store/[^/]*\).*|\1|' | sort -u |
+    while read -r p; do
+      if [ -e "$root/.cache/mcp-gcroot/${p##*/}" ]; then echo rooted; else echo missing; fi
+    done )
+  total=$(printf '%s' "$verdicts" | grep -c . || true)
+  missing=$(printf '%s' "$verdicts" | grep -c missing || true)
+  if [ "$total" = 0 ]; then
+    ok "mcp gc root" "launcher names no store paths"
+  elif [ "$missing" -gt 0 ]; then
+    warn "mcp gc root" "$missing of $total store path(s) unrooted - a nix store gc would break the launcher"
+    fix "nix run .#sync"
+  else
+    ok "mcp gc root" "$total store path(s) pinned in .cache/mcp-gcroot"
+  fi
+fi
+
 # --- MCP user scope -----------------------------------------
 # Project scope cannot follow you into android/, firmware/ or their
 # worktrees - upstream tracks its own .mcp.json there, and ours is

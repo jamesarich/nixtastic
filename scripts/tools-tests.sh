@@ -1018,6 +1018,47 @@ git -C "$root/kzstd" worktree remove --force "$HOME/parked-elsewhere"; git -C "$
 run "$sync"
 expect 'worktrees [0-9]+ open - nix run .#worktree -- --gc'
 
+echo "--- T39: sync roots the launcher's store paths; doctor notices when they go"
+# nix-store is deliberately the ambient one (the root must reach this
+# machine's daemon), so there is none in the sandbox - stub the one call.
+mkdir -p "$PWD/fakebin"
+cat > "$PWD/fakebin/nix-store" <<'EOF'
+#!/bin/sh
+# --add-root <link> --indirect --realise <store-path>
+link=""; target=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --add-root) link="$2"; shift 2 ;;
+    --indirect|--realise) shift ;;
+    *) target="$1"; shift ;;
+  esac
+done
+[ -n "$link" ] && ln -sfn "$target" "$link"
+EOF
+chmod +x "$PWD/fakebin/nix-store"
+oldpath="$PATH"; PATH="$PWD/fakebin:$PATH"; export PATH
+
+run "$sync"
+roots="$root/.cache/mcp-gcroot"
+[ -d "$roots" ] || { echo "T39: no gcroot dir"; exit 1; }
+# One root per DISTINCT store path the launcher names, keyed by its basename.
+for p in $(grep -o '/nix/store/[^"'"'"':]*' "$root/bin/meshtastic-mcp-launch" |
+           sed 's|\(/nix/store/[^/]*\).*|\1|' | sort -u); do
+  [ -L "$roots/${p##*/}" ] || { echo "T39: ${p##*/} not rooted"; ls -la "$roots"; exit 1; }
+  [ "$(readlink "$roots/${p##*/}")" = "$p" ] || { echo "T39: ${p##*/} points elsewhere"; exit 1; }
+done
+run_lax "$doctor"
+expect 'ok +mcp gc root +[0-9]+ store path'
+
+# A gc that took them must be visible, not silent - this is the whole point.
+rm -rf "$roots"
+run_lax "$doctor"
+expect 'mcp gc root .*unrooted'
+run "$sync"
+run_lax "$doctor"
+expect 'ok +mcp gc root'
+PATH="$oldpath"; export PATH; rm -f "$PWD/fakebin/nix-store"
+
 echo "--- T38: sync tells direnv to trust the .envrc files it generated - and only those"
 # direnv is not in the sandbox, so stub it. `status` answers "blocked" until
 # `allow` has been called for that directory, which is the state machine the

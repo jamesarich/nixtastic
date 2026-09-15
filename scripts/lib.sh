@@ -69,6 +69,41 @@ write_mcp_launcher() {
     printf 'exec "%s" run --directory "%s/meshtastic-mcp" meshtastic-mcp "$@"\n' "$NIXTASTIC_UV" "$1"
   } > "$1/bin/meshtastic-mcp-launch"
   chmod +x "$1/bin/meshtastic-mcp-launch"
+  pin_launcher_store_paths "$1"
+}
+
+# The launcher is a stable path holding UNSTABLE ones: uv, the python and the
+# manylinux libraries are named by raw /nix/store paths, and nothing else
+# roots them. Today they survive only because some .direnv profile in
+# meshtastic-mcp/ or meshtastic-python/ happens to reference the same
+# derivations - delete that .direnv, run `direnv prune`, or regenerate that
+# .envrc, and the next `nix store gc` takes uv with it. The failure then lands
+# on the one path the whole design exists to keep stable, as a store path that
+# is simply gone.
+#
+# So root them here, where they are written. Indirect roots: the symlinks live
+# in .cache/ (gitignored, and relocatable with the workspace), and nix follows
+# them from /nix/var/nix/gcroots/auto.
+#
+# Deliberately the AMBIENT nix-store, not one pinned in runtimeInputs: the
+# root has to be registered with the daemon this machine actually runs, and
+# writeShellApplication prepends to PATH rather than replacing it.
+#
+# Best-effort. No nix-store on PATH is a report line, not a failure - the
+# launcher is still correct, just unrooted, and doctor says so.
+pin_launcher_store_paths() {
+  command -v nix-store >/dev/null 2>&1 || return 0
+  d="$1/.cache/mcp-gcroot"
+  rm -rf "$d"
+  mkdir -p "$d"
+  # NIXTASTIC_LIB is a colon-separated library path; the other two are files
+  # inside a store path. Reduce each to the /nix/store/<hash>-<name> root.
+  printf '%s\n' "$NIXTASTIC_UV" "$NIXTASTIC_PY" ${NIXTASTIC_LIB:+$(printf '%s' "$NIXTASTIC_LIB" | tr ':' ' ')} |
+  while read -r p; do
+    case "$p" in /nix/store/*) ;; *) continue ;; esac
+    sp=/nix/store/$(printf '%s' "${p#/nix/store/}" | cut -d/ -f1)
+    nix-store --add-root "$d/${sp##*/}" --indirect --realise "$sp" >/dev/null 2>&1 || true
+  done
 }
 
 # Ignore the generated files via .git/info/exclude (local, never
