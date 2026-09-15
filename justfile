@@ -26,8 +26,8 @@ pull:
 # caller's cwd then costs the short `.#` ref (it cannot cross a git-repo
 # boundary), so name the flake by its absolute path.
 [no-cd]
-brief repo:
-    nix run {{ justfile_directory() }}#brief -- {{ repo }}
+brief *ARGS:
+    nix run {{ justfile_directory() }}#brief -- {{ ARGS }}
 
 # Worktrees: `just worktree android fix/thing`, `--list`, `--remove`, `--prune`, `--gc [--apply]`.
 worktree *ARGS:
