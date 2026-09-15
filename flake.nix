@@ -205,6 +205,44 @@
           ];
 
           #########################################################
+          # pnpm, pinned for `api` only.
+          #
+          # `pkgs.pnpm` floats - it is 11.x now and moves with every flake
+          # update. That is fine for docs and web-flasher (both verified to
+          # install cleanly on 11), and NOT fine for api: four
+          # @buf/meshtastic_* entries in its lockfile carry no `integrity`
+          # field, and pnpm 10 turned that into a hard error. Measured
+          # 2026-09-15 against api's own lockfile, with CI's flags:
+          #
+          #   pnpm 11.21.0  ERR  "lockfile contains entries that the active
+          #                       policies reject"
+          #   pnpm 10.34.5  ERR  ERR_PNPM_MISSING_TARBALL_INTEGRITY
+          #   pnpm  9.15.9  ok   12s, lockfile untouched
+          #
+          # api's CI pins 9 and is green, so the shell was the only thing
+          # disagreeing with it. pkgs.pnpm_9 is not usable - it evaluates to
+          # "removed because it reached EOL on 2026-04-30" - so pin the
+          # version explicitly over the 10.x derivation.
+          #
+          # This goes away when api regenerates its lockfile with integrity
+          # hashes for the buf.build packages; that is the real fix and it
+          # belongs upstream.
+          #
+          # No CI=true here. pnpm 11 also aborts a node_modules purge without
+          # a TTY (every agent tool call), and CI=true is the usual answer -
+          # but pinning 9 removes that failure outright, and the variable is
+          # read by biome and vitest too. Not worth changing their behaviour
+          # to fix something that no longer happens.
+          #########################################################
+          pnpm9 = pkgs.pnpm_10.overrideAttrs (_: rec {
+            version = "9.15.9";
+            src = pkgs.fetchurl {
+              url = "https://registry.npmjs.org/pnpm/-/pnpm-${version}.tgz";
+              hash = "sha256-z4anrXZEBjldQoam0J1zBxFyCsxtk+nc6ax6xNxKKKc=";
+            };
+          });
+
+          #########################################################
           # JVM / Kotlin
           #
           # Gradle itself is NOT installed - every repo pins its own
@@ -978,7 +1016,7 @@
             name = "meshtastic-api";
             packages = common ++ [
               pkgs.nodejs_22
-              pkgs.pnpm
+              pnpm9
             ];
             shellHook = (banner "api" (reposFor "api")) + ''
               echo "  pnpm install"
