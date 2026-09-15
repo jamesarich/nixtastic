@@ -49,6 +49,19 @@ primary bearer; the advertisement bearer has never carried a full-size packet
 suppression is not actually active on BLE; and Ron's per-peer encryption gives up
 the one-to-many property that chose advertisements in the first place.
 
+**The bench fleet, 2026-09-15.** james-pc carries the CH341/SX1262 stick (the
+"meshtadpole", `1a86:5512`, EPP/MEM/I2C mode for SPI rather than a serial port)
+which is the LoRa bearer's radio, a BT5 adapter for both BLE bearers, a RAK4631
+on `rak4631_blemesh` and an M5Stack Cardputer ADV on
+`m5stack-cardputer-adv_blemesh`. The Cardputer is the only board here that can
+host the GATT proxy beside the advertisement bearer; an nRF52 cannot. A Pixel 6a
+runs the Android monitor. Not exercised: the uConsole (off the network) and an
+iPad whose MeshMonitor build is not trusted on the device.
+
+Both radios were returned to the private `olm3sh` channel afterwards, so a node
+on default LongFast now reads their traffic as `opaque` - which is the check that
+the restore took.
+
 **Bench-proven across all four bearers against firmware, 2026-09-15.** A node-kmp headless node ran
 `ble-adv`, `udp` and `lora` simultaneously, all Active, against a RAK4631 on
 `spike/ble-mesh-transport`:
