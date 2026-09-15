@@ -691,12 +691,14 @@ that edits belong to the tree it started in.
 
 ### `lspServers` is read off the marketplace entry, not `plugin.json`
 
-Two servers give agents real code intelligence through the `LSP` tool -
-`documentSymbol`, `hover`, `goToDefinition`, `findReferences` - over the two
-languages this workspace actually turns on: `buf-lsp` for `.proto` and
-`kotlin-language-server` for `.kt`/`.kts`. Both ship in `nixtastic`; neither is
-a separate plugin, and the earlier standalone `~/.claude/local-plugins/buf-lsp/`
-is gone.
+Four servers give agents real code intelligence through the `LSP` tool -
+`documentSymbol`, `hover`, `goToDefinition`, `findReferences` - over the
+languages this workspace actually turns on: `buf-lsp` for `.proto`,
+`kotlin-language-server` for `.kt`/`.kts`, `clangd-pio` for C/C++ and
+`sourcekit-lsp` for `.swift`. All four ship in `nixtastic`; none is a separate
+plugin, and the earlier standalone `~/.claude/local-plugins/buf-lsp/` is gone.
+Python is the deliberate exception - it is covered by the stock
+`pyright-lsp@claude-plugins-official`, which is installed and works.
 
 Two pieces, and the first one is silent when it is wrong:
 
@@ -713,11 +715,14 @@ Two pieces, and the first one is silent when it is wrong:
    jq '.plugins[].lspServers' .cache/agent-marketplace/.claude-plugin/marketplace.json
    ```
 
-2. **The binary has to be on PATH.** Both `command` values are bare names, so
-   the plugin carries the declaration and each machine supplies the tool: `buf`
-   (`args` `["lsp", "serve"]`) and `kotlin-language-server` (`args` `[]`, from
-   Linuxbrew on this box). A machine missing either gets a block that loads and
-   then answers nothing. Both speak LSP over stdio and need no network.
+2. **The binary has to be on PATH.** Every `command` is a bare name, so the
+   plugin carries the declaration and each machine supplies the tool: `buf`
+   (`args` `["lsp", "serve"]`), `kotlin-language-server` (`args` `[]`, from
+   Linuxbrew on this box), `clangd-pio` (below) and `xcrun` (`args`
+   `["sourcekit-lsp"]`, macOS only). A machine missing one gets a block that
+   loads and then answers nothing - which is why `sourcekit-lsp` is harmless on
+   Linux and `clangd-pio` is harmless on the Mac. All speak LSP over stdio and
+   need no network.
 
    **The startup budgets are measured, not guessed.** `buf` gets 60 s because
    it resolves the whole module before it answers. Kotlin gets **300 s**:
@@ -764,6 +769,60 @@ Android specifically" predates that and is wrong. `kotlin-language-server`
 `feature/messaging`'s `commonMain`, it returned 19 symbols across functions, a
 class and constants. It is the weaker server in the abstract and the working
 one here.
+
+**C/C++ goes through `clangd-pio`, and the name is deliberate.** The bare
+`clangd` on this host is Homebrew's, and pointing the plugin at it would have
+been worse than shipping nothing: it loads, then dies on the first firmware
+translation unit at `'machine/endian.h' file not found`, exactly as the clangd
+section above predicts. The working binary is the `--query-driver` wrapper that
+only sits on PATH inside `.#firmware`. `~/.local/bin/clangd-pio` bridges the
+two; it is named apart from `clangd` so whatever your editor already resolves
+is untouched.
+
+**The shim resolves the wrapper, then execs it - it does not run clangd under
+`nix develop`.** That distinction is load-bearing and cost an hour to find.
+`nix develop <flake> --command clangd` does not keep stdin open as a clean
+pipe: the server accepts `initialize`, logs `--> reply:initialize(1) 0 ms`, and
+the client then reads EOF, so it looks like a server that starts and instantly
+dies. Resolving the path once and `exec`ing it leaves clangd on direct stdio.
+Measured after the fix: `documentSymbol` on `firmware/src/mesh/NodeDB.cpp`
+returns **130 symbols in 9.5 s**, most of which is the one nix eval; hence the
+120 s budget. One server covers `firmware`, `device-ui` and
+`meshtastic-sniffer` - the xtensa `--query-driver` glob is inert for the other
+two, and clangd picks each project's own `compile_commands.json` by walking up
+from the file. **That database is a prerequisite, not a detail:** without
+`pio run -e heltec-v3 -t compiledb` there is nothing to index, and a stale one
+silently omits files added since it was written.
+
+**Swift runs on the Mac only, and it is verified there, not here.** `apple`
+cannot build on Linux - `notes/apple.md` is explicit - so the block is inert on
+this host and live on the laptop. Checked over ssh (`macbook`): macOS 26,
+Xcode's Swift 6.3.3, `xcrun --find sourcekit-lsp` resolving into
+`XcodeDefault.xctoolchain`, and `documentSymbol` on
+`apple/Meshtastic/AppState.swift` returning 3 symbols in 0.8 s. `command` is
+`xcrun` rather than a bare `sourcekit-lsp` so it follows the active developer
+directory instead of whatever a PATH edit last won.
+
+It maps **`.swift` only**. `.h` belongs to `clangd-pio` above, and two servers
+claiming one extension is not a conflict worth discovering at runtime.
+
+**That 0.8 s is the caveat, not the reassurance.** `apple` is an `.xcodeproj` /
+`.xcworkspace`, not a SwiftPM root, so sourcekit-lsp has no build settings to
+read and answered from a single-file parse. It starts, it answers, and it has
+no cross-file index - the failure that looks like success. For real
+`findReferences` across the app, generate a `buildServer.json` first:
+
+```bash
+xcode-build-server config -project Meshtastic.xcodeproj -scheme <scheme>
+```
+
+The nested `MeshtasticProtobufs/Package.swift` is the one part that works
+unaided.
+
+**The workspace is not at the same path on both machines** - `~/meshtastic` on
+the Linux box, `~/nixtastic` on the Mac - and `MESHTASTIC_WORKSPACE` is not
+exported into a non-interactive ssh shell there. `clangd-pio` probes
+`MESHTASTIC_WORKSPACE`, then both names, and fails loudly rather than guessing.
 
 There was also a decoy: `android/.github/lsp.json` declared a `kotlin` server
 and did nothing, because it used the key `fileExtensions` rather than

@@ -1,7 +1,7 @@
 {
   "name": "nixtastic",
   "version": "0.0.0",
-  "description": "Meshtastic workspace: cross-repo process skill, forwarders to each repo's skills, worktree and Gradle guards, shared memory hooks, GitHub read-only MCP, protobuf and Kotlin LSPs. Rendered by nix run .#sync - edit plugin/ in the workspace, never the render.",
+  "description": "Meshtastic workspace: cross-repo process skill, forwarders to each repo's skills, worktree and Gradle guards, shared memory hooks, GitHub read-only MCP, LSPs for proto, Kotlin, C/C++ and Swift. Rendered by nix run .#sync - edit plugin/ in the workspace, never the render.",
   "author": {
     "name": "James Rich"
   },
@@ -24,6 +24,29 @@
       "extensionToLanguage": {
         ".kt": "kotlin",
         ".kts": "kotlin"
+      },
+      "startupTimeout": 300000
+    },
+    "clangd-pio": {
+      "command": "clangd-pio",
+      "args": [],
+      "extensionToLanguage": {
+        ".c": "c",
+        ".h": "c",
+        ".cpp": "cpp",
+        ".hpp": "cpp",
+        ".cc": "cpp",
+        ".ino": "cpp"
+      },
+      "startupTimeout": 120000
+    },
+    "sourcekit-lsp": {
+      "command": "xcrun",
+      "args": [
+        "sourcekit-lsp"
+      ],
+      "extensionToLanguage": {
+        ".swift": "swift"
       },
       "startupTimeout": 300000
     }

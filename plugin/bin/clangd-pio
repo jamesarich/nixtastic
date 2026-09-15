@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# clangd for the Meshtastic C/C++ repos (firmware, device-ui, meshtastic-sniffer).
+#
+# Named apart from `clangd` on purpose: whatever plain clangd your editor
+# already resolves stays untouched. This one exists for the nixtastic plugin's
+# lspServers block.
+#
+# Why the indirection: firmware's compile database records
+# xtensa-esp32s3-elf-g++ invocations, and clangd cannot guess that driver's
+# builtin system include paths. Without --query-driver every translation unit
+# dies at 'machine/endian.h' file not found. --query-driver is a command-line
+# flag that .clangd cannot set, so the flake wraps the binary (clangdPio) and
+# puts it first on PATH inside .#firmware.
+#
+# Why resolve-then-exec rather than `nix develop --command clangd`: that form
+# does not keep stdin open as a clean pipe. The server accepts initialize,
+# replies, and the client then reads EOF - a server that appears to start and
+# instantly die. Resolving the path once costs one nix eval and leaves clangd
+# on direct stdio.
+#
+# See AGENTS.md -> "clangd needs three things, not one" and -> Agent surface.
+set -euo pipefail
+
+# MESHTASTIC_WORKSPACE is the documented answer but is not always exported to a
+# non-interactive shell, and the checkout is not named the same on both
+# machines: ~/meshtastic on the Linux box, ~/nixtastic on the Mac. Probe.
+ws=""
+for cand in "${MESHTASTIC_WORKSPACE:-}" "$HOME/meshtastic" "$HOME/nixtastic"; do
+  if [ -n "$cand" ] && [ -e "$cand/flake.nix" ]; then ws="$cand"; break; fi
+done
+if [ -z "$ws" ]; then
+  echo "clangd-pio: no workspace flake found (set MESHTASTIC_WORKSPACE)" >&2
+  exit 127
+fi
+
+bin=$(nix develop "$ws#firmware" --command sh -c 'command -v clangd' 2>/dev/null | tail -1)
+if [ -z "${bin:-}" ] || [ ! -x "$bin" ]; then
+  echo "clangd-pio: could not resolve clangd from $ws#firmware" >&2
+  exit 127
+fi
+
+exec "$bin" "$@"
