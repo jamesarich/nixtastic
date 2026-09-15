@@ -137,7 +137,9 @@ memory_render_index() {
       function emit(  stem, rank, tag) {
         stem = FILENAME; sub(/.*\//, "", stem); sub(/\.md$/, "", stem)
         rank = (type == "user") ? 0 : (type == "feedback") ? 1 : (type == "reference") ? 2 : (type == "project") ? 3 : 4
-        tag = (mach != "") ? "[" mach "] " : ""
+        # Idempotent: a description that already opens with its own machine
+        # tag (hand-written that way) must not get a second one prepended.
+        tag = (mach != "" && index(desc, "[" mach "] ") != 1) ? "[" mach "] " : ""
         printf "%d\t%s\t- [%s](%s.md) - %s%s\n", rank, stem, title(stem), stem, tag, desc
       }
       BEGINFILE { inFm = 0; done = 0; type = ""; desc = ""; mach = "" }
