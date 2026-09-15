@@ -49,7 +49,7 @@ primary bearer; the advertisement bearer has never carried a full-size packet
 suppression is not actually active on BLE; and Ron's per-peer encryption gives up
 the one-to-many property that chose advertisements in the first place.
 
-**Bench-proven across three bearers, 2026-09-15.** A node-kmp headless node ran
+**Bench-proven across all four bearers, 2026-09-15.** A node-kmp headless node ran
 `ble-adv`, `udp` and `lora` simultaneously, all Active, against a RAK4631 on
 `spike/ble-mesh-transport`:
 
@@ -62,6 +62,13 @@ the one-to-many property that chose advertisements in the first place.
 - **Cross-bearer dedup.** One packet from the radio arrives over BLE and again
   over LoRa 3.6 s later; it is delivered once and the LoRa copy is dropped
   `DUPLICATE`. This is the premise of the whole plan and it holds.
+- **GATT, cross-platform, carrying traffic.** node-kmp on james-pc as a BlueZ
+  central against node-kmp's Android monitor as peripheral: the link reaches
+  `ready`, the peripheral reports `subscribers=[E8:48:B8:C8:20:00]` (the central's
+  adapter) and **18 frames crossed**. Proven between JVM/BlueZ and Android rather
+  than against firmware, because the nRF52 cannot host the GATT proxy alongside
+  the advertisement bearer - it has one advertising set. See
+  [`ble-mesh-reevaluation-2026-09-14.md`](./ble-mesh-reevaluation-2026-09-14.md).
 
 Delivery is lossy and asymmetric, characterised in
 [`ble-mesh-capacity-and-bearer-config.md`](./ble-mesh-capacity-and-bearer-config.md).
