@@ -49,6 +49,28 @@ primary bearer; the advertisement bearer has never carried a full-size packet
 suppression is not actually active on BLE; and Ron's per-peer encryption gives up
 the one-to-many property that chose advertisements in the first place.
 
+**Bench-proven across three bearers, 2026-09-15.** A node-kmp headless node ran
+`ble-adv`, `udp` and `lora` simultaneously, all Active, against a RAK4631 on
+`spike/ble-mesh-transport`:
+
+- **BLE advertisements, both directions, decoded.** Text crosses each way with
+  matching channel name and PSK, dedup collapsing the repeated advertising
+  events, packets carrying `transport = 9` end to end.
+- **LoRa, both directions, decoded**, over a CH341/SX1262 stick, `transport = 1`.
+  node-kmp also discovered real fleet nodes (`uconsole`, `olm3sh seeed Solar`)
+  unprompted.
+- **Cross-bearer dedup.** One packet from the radio arrives over BLE and again
+  over LoRa 3.6 s later; it is delivered once and the LoRa copy is dropped
+  `DUPLICATE`. This is the premise of the whole plan and it holds.
+
+Delivery is lossy and asymmetric, characterised in
+[`ble-mesh-capacity-and-bearer-config.md`](./ble-mesh-capacity-and-bearer-config.md).
+
+Two parity defects found by running it rather than reading it: node-kmp's BlueZ
+receive path had never worked (`ManufacturerData` arrives as `ArrayList<Byte>`,
+not `byte[]`), and `Config.hopLimit` defaulted to 0, so every packet node-kmp
+originated was unrelayable and it was invisible past its direct neighbours.
+
 Left standing from the parity plan: the cross-peer fan-out inside a single GATT
 send (needs three connected peers), step 0's remaining app-side adapters, and
 per-bearer rates over time in the monitor. The commonization pass and the
