@@ -9,6 +9,11 @@
 # NOTE: a new file is invisible to git until whitelisted below.
 /*
 
+# Finder droppings. The un-ignored directories below (plugin/, notes/,
+# scripts/) re-include everything under them, this included, so it needs
+# an explicit deny that no later negation undoes.
+.DS_Store
+
 # --- workspace definition -------------------------------------------------
 !/.gitignore
 !/LICENSE
