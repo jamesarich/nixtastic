@@ -99,6 +99,40 @@ Proven:
 Never proven: **a firmware radio hearing a node-kmp advertisement.** Both bench
 boards run release firmware; nothing is flashed with the BLE-mesh spike.
 
+## nRF52 has one advertising set, and three customers
+
+`BLE_GAP_ADV_SET_COUNT_MAX` is **1** on the S140 (`ble_gap.h:286`). The phone-API
+advertisement, the mesh advertisement bearer, and the GATT proxy's connectable
+advertisement all need one. The firmware already knows: `NRF52BLEMesh.cpp:107`
+falls back to `no spare adv set (0x%x), sharing the phone's`.
+
+Measured on a RAK4631 running the spike, that is the branch it takes. Every burst
+logs `BLE mesh adv set 0 terminated: reason 1 after 0 events (ours=1)` - set 0 is
+the only set, `ours=1` says the mesh handler owns it, and it is the set Bluefruit
+uses for the phone.
+
+Two consequences:
+
+- The advertisement bearer and the phone API contend for one radio resource on
+  nRF52. A node with BLE mesh on was not discoverable by a scanner throughout
+  this bench session.
+- **The GATT proxy role cannot be exercised on nRF52 alongside the bearer**, which
+  is why no GATT mesh traffic was proven here. `HAS_BLE_GATT_MESH` compiles, and
+  its connectable advertisement has no set to live on.
+
+ESP32 does not have this problem: `CONFIG_BT_NIMBLE_MAX_EXT_ADV_INSTANCES` is 2
+in the spike's shared block, with the activity budget raised to match.
+
+This sharpens the recommendation below rather than changing it. GATT is still the
+only medium every platform has in both directions, but on nRF52 "run both" is not
+free, and which of the three advertisements wins is a scheduling decision nobody
+has made yet.
+
+**Unproven:** whether the phone advertisement recovers between bursts on a node
+with no BLE client attached. Live discovery on the bench surfaced no named
+Meshtastic node at all, including boards known to be advertising, so the scan
+path used here cannot answer it.
+
 ## The platform matrix, updated
 
 Transmit connectionless (extended advertising, >31-byte body):
