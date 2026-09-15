@@ -1,0 +1,46 @@
+#!/bin/sh
+# Install Google's official Android agent skills for Claude Code.
+#
+# The skills ship with the `android` CLI and are refreshed from
+# developer.android.com (etag-tracked under ~/.android/cli/skills). We install
+# them rather than vendoring copies into this repo, so they never go stale and
+# their provenance stays with Google. This script only records WHICH ones the
+# workspace wants; `android` fetches the current text.
+#
+#   android-skills            install the workspace set
+#   android-skills --list     print the set and exit
+#
+# User-level on purpose (no --project): Meshtastic-Android is checked out in
+# more than one place, and that repo tracks .claude/skills/ for team-wide
+# config, so a project install would stage vendor files into it.
+#
+# Chosen against the android app's actual catalog, not a generic list:
+#   r8-analyzer              androidApp/proguard-rules.pro, proguardReleaseJars
+#   camerax                  androidx.camera:camera-compose
+#   navigation-3             navigation3 1.2.0-beta01
+#   edge-to-edge             Compose app
+#   adaptive                 phone + desktop + multiple form factors
+#   android-intent-security  22 intent-filter entries in the manifest
+#   android-cli              teaches the agent the CLI itself, incl. android docs
+#
+# Deliberately NOT included: agp-9-upgrade. The app is already on AGP 9.4.0 and
+# that skill says not to use it on Kotlin Multiplatform projects.
+
+set -eu
+
+SKILLS="android-cli r8-analyzer camerax navigation-3 edge-to-edge adaptive android-intent-security"
+
+if [ "${1:-}" = "--list" ]; then
+  for s in $SKILLS; do echo "$s"; done
+  exit 0
+fi
+
+command -v android >/dev/null 2>&1 || {
+  echo "android-skills: the 'android' CLI is not on PATH; skipping." >&2
+  exit 0
+}
+
+for s in $SKILLS; do
+  android skills add "$s" --agent=claude-code || \
+    echo "android-skills: could not install $s" >&2
+done
