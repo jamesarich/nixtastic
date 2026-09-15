@@ -1130,5 +1130,53 @@ expect 'base +origin/feat/published'
 run "$worktree" --remove kzstd feat-published
 (cd "$root/kzstd" && git checkout -q main && git branch -D -q feat/host-side)
 
+echo "--- T40: jobs-gc - retire old rows, reap midlife scratch, spare fresh, self and non-terminal"
+gc="$root/.cache/agent-marketplace/nixtastic/hooks/jobs-gc.sh"
+[ -x "$gc" ] || { echo "T40: jobs-gc.sh not rendered"; exit 1; }
+gcf="$PWD/gcfix"; rm -rf "$gcf"; mkdir -p "$gcf/jobs" "$gcf/bin"
+gcmk() { # id state days_ago
+  mkdir -p "$gcf/jobs/$1/tmp"
+  jq -n --arg s "$2" --arg t "$(date -d "$3 days ago" -Is)" --arg i "$1-0000-0000-0000-000000000000" \
+    '{state:$s,lastTerminalAt:$t,sessionId:$i,resumeSessionId:$i}' > "$gcf/jobs/$1/state.json"
+  dd if=/dev/zero of="$gcf/jobs/$1/tmp/blob" bs=1024 count=64 status=none
+}
+gcmk aaaaaaaa done     10   # past rm_days       -> retired
+gcmk bbbbbbbb done      2   # past tmp_days only -> scratch reaped, row kept
+gcmk cccccccc done      0   # finished today     -> untouched
+gcmk dddddddd blocked  30   # never reached a terminal state
+gcmk 5e1f5e1f done     99   # stands in for the session's own job
+mkdir -p "$gcf/jobs/f0f0f0f0/tmp"; touch -d "5 days ago" "$gcf/jobs/f0f0f0f0"  # abandoned mid-creation
+mkdir -p "$gcf/jobs/11111111/tmp"                                             # being created right now
+# `claude rm` owns deletion; the fixture has no daemon, so stub that one call.
+printf '#!/bin/sh\n[ "$1" = rm ] || exit 1\nrm -rf "%s/jobs/$2"\n' "$gcf" > "$gcf/bin/claude"
+chmod +x "$gcf/bin/claude"
+gcrun() {
+  PATH="$gcf/bin:$PATH" CLAUDE_CONFIG_DIR="$gcf" CLAUDE_JOB_DIR="$gcf/jobs/5e1f5e1f" \
+    NIXTASTIC_JOBS_GC_FG=1 bash "$gc" </dev/null
+}
+gcrun || { echo "T40: hook exited non-zero"; exit 1; }
+for id in bbbbbbbb cccccccc dddddddd 5e1f5e1f 11111111; do
+  [ -d "$gcf/jobs/$id" ] || { echo "T40: $id should have been kept"; ls "$gcf/jobs"; exit 1; }
+done
+for id in aaaaaaaa f0f0f0f0; do
+  [ ! -e "$gcf/jobs/$id" ] || { echo "T40: $id should have been removed"; exit 1; }
+done
+[ -z "$(ls -A "$gcf/jobs/bbbbbbbb/tmp")" ] || { echo "T40: midlife scratch not reaped"; exit 1; }
+[ -d "$gcf/jobs/bbbbbbbb/tmp" ] || { echo "T40: tmp/ not recreated after reaping"; exit 1; }
+for id in cccccccc dddddddd 5e1f5e1f; do
+  [ -f "$gcf/jobs/$id/tmp/blob" ] || { echo "T40: $id scratch wrongly reaped"; exit 1; }
+done
+grep -q 'retire aaaaaaaa' "$gcf/jobs/.gc.log" || { echo "T40: retire not logged"; cat "$gcf/jobs/.gc.log"; exit 1; }
+grep -q 'reap bbbbbbbb'   "$gcf/jobs/.gc.log" || { echo "T40: reap not logged"; exit 1; }
+grep -q 'stray f0f0f0f0'  "$gcf/jobs/.gc.log" || { echo "T40: stray not logged"; exit 1; }
+# A second pass over an already-swept tree changes nothing.
+gcbefore=$(ls "$gcf/jobs" | sort)
+gcrun
+[ "$gcbefore" = "$(ls "$gcf/jobs" | sort)" ] || { echo "T40: not idempotent"; exit 1; }
+# Off is off, and a machine that has never run a background session has no jobs dir.
+NIXTASTIC_JOBS_GC=off CLAUDE_CONFIG_DIR="$gcf" bash "$gc" </dev/null || { echo "T40: off should exit 0"; exit 1; }
+CLAUDE_CONFIG_DIR="$PWD/nosuchconfig" bash "$gc" </dev/null || { echo "T40: should fail open with no jobs dir"; exit 1; }
+rm -rf "$gcf"
+
 echo "all tests passed"
 touch "$out"

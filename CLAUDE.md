@@ -349,3 +349,15 @@ finds - run it before diagnosing by hand.
   `/dev/serial`, Xcode) gets `machine: james-pc` or `machine: darwin` under
   its `metadata:`; `sync` renders that into the index line, where selection
   happens. Design: [`notes/agent-memory-sync.md`](./notes/agent-memory-sync.md).
+- **A background job's `tmp/` lives until `claude rm`, which nothing calls by
+  itself** - so `~/.claude/jobs/<id>/tmp` keeps every scratch clone, jar and
+  build log forever, and FleetView keeps the row. Measured 2026-09-15 before
+  the sweep existed: 1791 MB, of which 1789 MB was `tmp` (one 1.6 GB scratch
+  checkout) against 2 MB of job metadata. The plugin's `jobs-gc.sh` hook now
+  sweeps at `SessionStart` - scratch of a job finished over a day ago is
+  emptied, the row itself is retired after seven (`NIXTASTIC_JOBS_GC_RM_DAYS`,
+  `..._TMP_DAYS`, or `NIXTASTIC_JOBS_GC=off`). It never touches a job that is
+  still running, still blocked, held open by a live session, or its own.
+  `doctor` reports the total. Removing a row does not touch the transcript:
+  that lives in `~/.claude/projects/<slug>/<uuid>.jsonl` and stays
+  `claude --resume`-able.

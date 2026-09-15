@@ -390,6 +390,28 @@ if [ -n "$dup" ]; then
 else
   ok "plugin hooks" "plugin only, no user-scope duplicate"
 fi
+# Background-job scratch is invisible until it is gigabytes: a job dir lives
+# until `claude rm`, and only the GC hook ever calls that. Report the total so
+# a hook that has stopped firing shows up as a number, not as a full disk.
+jd="$(plugin_config_dir)/jobs"
+if [ -d "$jd" ]; then
+  jn=$(find "$jd" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
+  jmb=$(($(du -sk "$jd" 2>/dev/null | cut -f1) / 1024))
+  # Only a job the sweep would have taken counts as overdue. A blocked one is
+  # waiting on James and is skipped by design, however old it gets.
+  jold=0
+  for j in "$jd"/*/; do
+    [ -n "$(find "$j" -maxdepth 0 -mtime +14 2>/dev/null)" ] || continue
+    jq -e '.state | . == "done" or . == "failed" or . == "stopped"' \
+      "$j/state.json" >/dev/null 2>&1 && jold=$((jold + 1))
+  done
+  if [ "$jmb" -ge 500 ] || [ "$jold" -gt 0 ]; then
+    warn "job scratch" "$jn job(s), $jmb MB, $jold finished over 14d ago - the GC hook is not keeping up"
+    fix "NIXTASTIC_JOBS_GC_FG=1 bash $rd/$pname/hooks/jobs-gc.sh   (sweeps now; check NIXTASTIC_JOBS_GC is not off)"
+  else
+    ok "job scratch" "$jn job(s), $jmb MB"
+  fi
+fi
 q="$(plugin_config_dir)/bin/gradle-queue"
 if [ -L "$q" ] && [ -x "$(readlink "$q")" ]; then
   ok "gradle queue" "$q"
