@@ -59,8 +59,15 @@ Delivered means **decoded**, against an M5Stack Cardputer ADV on
 | BLE advertisement | 100% | 100% |
 | LoRa | 100% | 100% |
 
-Each measured with that bearer alone, which is the only way to get an unaided
-rate: with several enabled, a radio broadcast reaches all of them, the first copy
+**The BLE bearers contend.** The advertisement bearer delivers 100% alone and
+75% with GATT enabled beside it on the same S3: both want the controller's BLE
+radio and its advertising instances, so the second bearer is not free. It is the
+same constraint the nRF52 shows as an outright inability to host the GATT proxy
+beside the bearer (one advertising set), just visible as a rate rather than a
+refusal. LoRa is unaffected, being a different radio.
+
+Each rate above measured with that bearer alone, which is the only way to get an
+unaided figure: with several enabled, a radio broadcast reaches all of them, the first copy
 decodes and the rest drop as duplicates, so the slower bearers score zero while
 their frame counters show they were carrying (`ble-adv rx=24`, `lora rx=15`).
 
