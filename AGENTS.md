@@ -691,10 +691,12 @@ that edits belong to the tree it started in.
 
 ### `lspServers` is read off the marketplace entry, not `plugin.json`
 
-`buf-lsp` gives agents real proto code intelligence - `documentSymbol`,
-`hover`, `goToDefinition`, `findReferences` over `.proto` - through the `LSP`
-tool. It ships in `nixtastic`; it is not a separate plugin, and the earlier
-standalone `~/.claude/local-plugins/buf-lsp/` is gone.
+Two servers give agents real code intelligence through the `LSP` tool -
+`documentSymbol`, `hover`, `goToDefinition`, `findReferences` - over the two
+languages this workspace actually turns on: `buf-lsp` for `.proto` and
+`kotlin-language-server` for `.kt`/`.kts`. Both ship in `nixtastic`; neither is
+a separate plugin, and the earlier standalone `~/.claude/local-plugins/buf-lsp/`
+is gone.
 
 Two pieces, and the first one is silent when it is wrong:
 
@@ -711,10 +713,18 @@ Two pieces, and the first one is silent when it is wrong:
    jq '.plugins[].lspServers' .cache/agent-marketplace/.claude-plugin/marketplace.json
    ```
 
-2. **`buf` has to be on PATH** as the `command`, with `args` `["lsp",
-   "serve"]` and `.proto` mapped to `protobuf`. `buf lsp serve` speaks LSP over
-   stdio and needs no network; the 60 s `startupTimeout` is there because it
-   resolves the whole module before it answers.
+2. **The binary has to be on PATH.** Both `command` values are bare names, so
+   the plugin carries the declaration and each machine supplies the tool: `buf`
+   (`args` `["lsp", "serve"]`) and `kotlin-language-server` (`args` `[]`, from
+   Linuxbrew on this box). A machine missing either gets a block that loads and
+   then answers nothing. Both speak LSP over stdio and need no network.
+
+   **The startup budgets are measured, not guessed.** `buf` gets 60 s because
+   it resolves the whole module before it answers. Kotlin gets **300 s**:
+   driving `kotlin-language-server` against `android` and asking for
+   `documentSymbol` on one `commonMain` file took **166 s** to first response,
+   because it resolves the Gradle build first. The Anthropic `kotlin-lsp`
+   plugin's stock 120 s would time out here.
 
 **The server indexes whatever the module resolves to, and it takes no
 `--exclude-path`.** This is the same defect that made bare `buf lint` fail -
@@ -741,8 +751,29 @@ Two consequences worth holding:
   that degrade, and those are exactly the ones worth running before a proto
   change. See `notes/cross-repo-contracts.md` for what that impact set is for.
 
+**On Kotlin, the community server is the right one, and the reasoning that
+says otherwise is stale.** JetBrains' `kotlin-lsp` looks like the obvious
+choice - first-party, an official Anthropic plugin wraps it - but it states
+plainly that KMP support is "coming in future releases", and **every Kotlin
+repo here is KMP, `android` included**: `android`'s
+`build-logic/convention/src/main/kotlin/KmpLibraryConventionPlugin.kt` applies
+the `kotlin-multiplatform` plugin and `commonMain` source sets run throughout
+the feature modules. Any evaluation that waves `kotlin-lsp` through "for
+Android specifically" predates that and is wrong. `kotlin-language-server`
+(fwcd, on PATH from Linuxbrew) has no such restriction - driven against
+`feature/messaging`'s `commonMain`, it returned 19 symbols across functions, a
+class and constants. It is the weaker server in the abstract and the working
+one here.
+
+There was also a decoy: `android/.github/lsp.json` declared a `kotlin` server
+and did nothing, because it used the key `fileExtensions` rather than
+`extensionToLanguage` and sat in a path the harness does not read for LSP
+config. It is removed; the plugin is the only place this is declared.
+
 Verify the whole chain by asking for symbols in a file you have not opened:
-`documentSymbol` on `protobufs/meshtastic/mesh.proto` returns ~570 symbols.
+`documentSymbol` on `protobufs/meshtastic/mesh.proto` returns ~570 symbols, and
+on any `.kt` under `android/feature/` a non-empty list. A bare "No LSP server
+available for file type" means the marketplace entry, not the server.
 
 ## Git across repos
 

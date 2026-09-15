@@ -1,7 +1,7 @@
 {
   "name": "nixtastic",
   "version": "0.0.0",
-  "description": "Meshtastic workspace: cross-repo process skill, forwarders to each repo's skills, worktree and Gradle guards, shared memory hooks, GitHub read-only MCP, protobuf LSP. Rendered by nix run .#sync - edit plugin/ in the workspace, never the render.",
+  "description": "Meshtastic workspace: cross-repo process skill, forwarders to each repo's skills, worktree and Gradle guards, shared memory hooks, GitHub read-only MCP, protobuf and Kotlin LSPs. Rendered by nix run .#sync - edit plugin/ in the workspace, never the render.",
   "author": {
     "name": "James Rich"
   },
@@ -17,6 +17,15 @@
         ".proto": "protobuf"
       },
       "startupTimeout": 60000
+    },
+    "kotlin-language-server": {
+      "command": "kotlin-language-server",
+      "args": [],
+      "extensionToLanguage": {
+        ".kt": "kotlin",
+        ".kts": "kotlin"
+      },
+      "startupTimeout": 300000
     }
   }
 }

@@ -99,17 +99,23 @@ Made in the brainstorm, in order, with the alternative each one rejected:
    **Stays local:** superpowers, remember, the CodeRabbit and Google skills,
    the LSP plugins, the Datadog and Firebase connectors/plugins. `doctor`
    reports extras, never writes them.
-   **Amended 2026-09-15 (`6ad1935`): `buf-lsp` is the one LSP that joined the
-   plugin.** The rest stay local because they are general-purpose and
-   per-machine - `pyright` serves any Python checkout and nothing here
-   configures it. `buf-lsp` is not like that: it exists to read *this*
-   workspace's `.proto` contracts, its usefulness is bounded by `protobufs`'
-   `buf.yaml`, and its one non-obvious requirement (the declaration has to
-   reach the marketplace entry, not just `plugin.json`) is workspace knowledge
-   that would otherwise be rediscovered per machine. It ships as an
-   `lspServers` block in `plugin/.claude-plugin/plugin.json`, lifted into the
-   marketplace entry by `scripts/plugin.sh`. `AGENTS.md` → Agent surface has
-   the mechanism and the module-exclusion caveat.
+   **Amended 2026-09-15: the LSPs for this workspace's own languages join the
+   plugin; the rest stay local.** `buf-lsp` joined at `6ad1935` and
+   `kotlin-language-server` with it. The dividing line is not "general-purpose
+   vs bespoke" - both servers are off-the-shelf - it is whether the language is
+   load-bearing *here*. `.proto` is the contract every repo builds against and
+   Kotlin is ~2,800 files across seven repos; `pyright` stays local because
+   Python is a handful of scripts and nothing in this workspace configures it.
+   What actually has to cross machines is not the binary but the **knowledge**:
+   that the declaration must reach the marketplace entry rather than
+   `plugin.json`, that buf's module resolution decides what gets indexed, and
+   that Kotlin needs a 300 s startup budget. Rediscovering that per machine is
+   the cost the plugin removes. Both ship as `lspServers` blocks in
+   `plugin/.claude-plugin/plugin.json`, lifted into the marketplace entry by
+   `scripts/plugin.sh`. **The binaries stay a per-machine prerequisite** - the
+   `command` is a bare name resolved on PATH, so a machine without `buf` or
+   `kotlin-language-server` gets a block that silently does nothing.
+   `AGENTS.md` → Agent surface has the mechanism and both caveats.
 7. **The store carries nothing for the plugin.** Every part of it is derived
    from the workspace repo plus the local checkouts, so it is rendered locally
    and never crosses machines. Rendering into `~/.nixtastic-agent` would have
