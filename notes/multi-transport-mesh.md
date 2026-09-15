@@ -49,7 +49,7 @@ primary bearer; the advertisement bearer has never carried a full-size packet
 suppression is not actually active on BLE; and Ron's per-peer encryption gives up
 the one-to-many property that chose advertisements in the first place.
 
-**Bench-proven across all four bearers, 2026-09-15.** A node-kmp headless node ran
+**Bench-proven across all four bearers against firmware, 2026-09-15.** A node-kmp headless node ran
 `ble-adv`, `udp` and `lora` simultaneously, all Active, against a RAK4631 on
 `spike/ble-mesh-transport`:
 
@@ -62,13 +62,24 @@ the one-to-many property that chose advertisements in the first place.
 - **Cross-bearer dedup.** One packet from the radio arrives over BLE and again
   over LoRa 3.6 s later; it is delivered once and the LoRa copy is dropped
   `DUPLICATE`. This is the premise of the whole plan and it holds.
-- **GATT, cross-platform, carrying traffic.** node-kmp on james-pc as a BlueZ
-  central against node-kmp's Android monitor as peripheral: the link reaches
-  `ready`, the peripheral reports `subscribers=[E8:48:B8:C8:20:00]` (the central's
-  adapter) and **18 frames crossed**. Proven between JVM/BlueZ and Android rather
-  than against firmware, because the nRF52 cannot host the GATT proxy alongside
-  the advertisement bearer - it has one advertising set. See
-  [`ble-mesh-reevaluation-2026-09-14.md`](./ble-mesh-reevaluation-2026-09-14.md).
+- **GATT, against firmware and cross-platform.** Against an M5Stack Cardputer ADV
+  on `m5stack-cardputer-adv_blemesh`, a BlueZ central reaches `ready` and the
+  firmware decodes what it is sent with `transport = 10`
+  (`TRANSPORT_BLE_GATT`). And cross-platform, JVM/BlueZ central to node-kmp's
+  Android monitor as peripheral: the peripheral reports
+  `subscribers=[E8:48:B8:C8:20:00]`, the central's adapter, with 18 frames across.
+  The S3 is the firmware platform for this: an nRF52 has one advertising set and
+  cannot host the proxy beside the bearer.
+- **One packet over three bearers, through firmware.** The same id arrives at the
+  Cardputer over GATT and is then seen on LoRa and on the advertisement bearer:
+
+      decoded message (id=0x071591c5 fr=0x3477845b to=0xffffffff, transport = 10
+      decoded message (id=0x071591c5 fr=0x3477845b to=0xffffffff, transport = 1
+      decoded message (id=0x071591c5 fr=0x3477845b to=0xffffffff, transport = 9
+
+  node-kmp hands a packet to firmware over GATT and firmware carries it onto the
+  other two media. That is the plan's premise running through the firmware rather
+  than beside it.
 
 Delivery is lossy and asymmetric, characterised in
 [`ble-mesh-capacity-and-bearer-config.md`](./ble-mesh-capacity-and-bearer-config.md).
