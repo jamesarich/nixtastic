@@ -1297,6 +1297,19 @@
             text = builtins.readFile ./scripts/meshbench.sh;
           };
 
+          # nix run .#fleet - what the bench is made of, and whether each host
+          # runs the current node-kmp. Both probes it makes were got wrong by
+          # hand first: the CH341 LoRa stick is not a tty and is not in
+          # /dev/serial/by-id, and jars agreeing with each other is not the same
+          # as agreeing with HEAD.
+          fleet = pkgs.writeShellApplication {
+            name = "meshtastic-fleet";
+            # No pkgs.openssh: a Nix ssh cannot parse this Mac's ~/.ssh/config and
+            # every host reads as unreachable. The host's own ssh is on PATH.
+            runtimeInputs = [ pkgs.coreutils pkgs.git ];
+            text = builtins.readFile ./scripts/fleet.sh;
+          };
+
           # nix run .#iosdeploy -- [UDID] - build and install the iOS app,
           # linking the framework first. xcodebuild alone links whatever Gradle
           # last produced and says nothing when that is stale - one was nine days
@@ -1468,6 +1481,7 @@
             pins
             pr
             meshbench
+            fleet
             meshprobe
             iosdeploy
             ;
