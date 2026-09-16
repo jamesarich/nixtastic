@@ -8,9 +8,9 @@ Reviewed 2026-09-16. Kotlin 2.4.20, Gradle 9.7.1, AGP 9.4.0.
 | --- | --- |
 | No `expect class` - they are Beta, and functions or interfaces are preferred | **None.** Six `expect fun`/`object`/`val` across the tree and no expect classes at all, so `-Xexpect-actual-classes` is never needed |
 | Explicit API mode on a published library | `explicitApi()` in `library-conventions`, so every published module has it |
-| klib ABI guarded, and guarded by KGP rather than the legacy plugin | KGP's own `abiValidation`; `checkKotlinAbi` is wired into `check`, and **all nine** published modules have a committed dump |
+| klib ABI guarded, and guarded by KGP rather than the legacy plugin | KGP's own `abiValidation`; `checkKotlinAbi` is wired into `check`, and **all ten** published modules have a committed dump |
 | No platform types in a common public API | None found |
-| No experimental opt-in leaking into published API | None; `@OptIn(ExperimentalForeignApi)` stays internal |
+| No experimental opt-in leaking into published API | None; `@OptIn(ExperimentalForeignApi)` stays internal. The one `@RequiresOptIn` in the tree is ours, not Kotlin's - see below |
 | Default hierarchy template, with explicit re-application where a manual edge disables it | Applied; the three modules with a hand-wired JVM+Android edge call it explicitly, which is required |
 | Intermediate source sets declared once | `build-logic`'s `jvmAndroidMain()`; was three hand-wirings under two names |
 
@@ -28,6 +28,29 @@ Apple consumers an API that reads like Swift.
 Worth doing **before** the first consumer builds against it, because changing
 exported names afterwards is a source break for them. Not urgent while the only
 Apple consumer is the monitor app in this repo.
+
+## Added since: a tenth module, and the tree's first opt-in marker
+
+`:node-bluez` took the D-Bus session and adapter probe out of the two Linux BLE
+bearers, which had carried them as verbatim copies. Three structural points fall
+out, and they are the interesting part of this review now:
+
+- **Its surface is public but gated.** Cross-module visibility forced `internal`
+  to `public`, so every declaration carries `@InternalBluezApi`, a
+  `RequiresOptIn(ERROR)` marker - the first in the tree. This is the kotlinx
+  pattern for plumbing that must cross a module boundary without joining the
+  compatibility promise, and the committed ABI dump is what makes the boundary
+  reviewable rather than a claim.
+- **It depends on no other module here**, which is deliberate and load-bearing:
+  it speaks `BluezProbe`, and each bearer maps that to `TransportAvailability`
+  itself. That is what keeps it offerable to Kable - see
+  [`kable-donation-inventory.md`](./kable-donation-inventory.md) - and it is why
+  `MESH_BLUEZ_ADAPTER` was moved back out to the callers.
+- **It is single-target.** A `jvm()`-only published module, which the conventions
+  already supported (`node-desktop-ble-macos` is the precedent) and which
+  Isolated Projects tolerated without change.
+
+The module count is now ten published, eight of them carrying a committed ABI.
 
 ## Two things to know rather than fix
 
