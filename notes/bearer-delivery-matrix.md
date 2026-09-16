@@ -182,3 +182,32 @@ relayed[gatt] !3235af1d hops=6
 relay went **back to it** with no `excluding` clause - which is the change. Three
 consecutive relays, all the same. Before it the line would have named that peer
 as excluded and reached only the RAK.
+
+## ble-adv's 67-86% is mostly the measurement, not the bearer
+
+`radiolog` can now ask the radio directly, which the LogRecord stream never could.
+Driving 14 sends through a node-kmp `ble-adv` node (`!9318e67b`) and reading the
+radio's own log for ~260 s:
+
+| | |
+| --- | --- |
+| frames node-kmp transmitted | 22 |
+| `BLE mesh RX from=0x9318e67b` decoded at the radio | **60** |
+
+More receptions than sends, because a burst is `BLE_MESH_ADV_EVENTS 3` - one
+frame is three advertising events. So 22 × 3 = 66 expected, **60 arrived (91% of
+events)**, and a frame needs only one of its three, which makes frame-level
+arrival effectively complete.
+
+The radio's own transmit side measured separately in the same window: 24 of 25
+bursts sent all three events, one timed out having sent none. **96%.**
+
+So neither end is losing 14-33%. The `kmp->radio (min)` column that reads 67-86%
+is what its name says - a floor off the sparse LogRecord stream, the same one
+this table already warns under-reports every time, and the same artefact that
+once had a working link reading 20-38%.
+
+**What this does not settle:** the inbound direction, and whether decode or dedup
+drops anything after ingress. Both are now reachable the same way - count
+`BLE mesh RX` at the radio against what the sender says it sent - and neither has
+been run.
