@@ -37,7 +37,38 @@ the capture window. In practice the only mesh line that can appear is the
 queue-full warning - so **zero mesh lines means zero drops, not a broken log
 stream**, which is what an earlier version of this note wrongly concluded.
 
-## What is actually unexplained
+## Answered: the writes never reach `onWrite`
+
+An arrival log was added to `onWrite` - every write, logged after the lock -
+and the next run measured:
+
+```
+decoded message lines : 24     (so the log stream is flowing)
+BLE GATT mesh lines   :  0     (so onWrite never fired, not once)
+node counters         : tx=31  rx=38
+```
+
+`LOG_DEBUG` reaches the host - the `decoded message` lines are the same level -
+so zero arrivals is not a logging artefact. **The central's writes never arrive at
+the firmware's characteristic write callback.** Inbound is unaffected: the same
+characteristic notifies at 15/15.
+
+That also retires the queue as a suspect for good. Nothing can overflow a ring
+that is never written to.
+
+## The leading suspect, untested
+
+Every central writes **without response** - BlueZ `type=command`, Android
+`WRITE_TYPE_NO_RESPONSE`, Apple `CBCharacteristicWriteWithoutResponse` - and the
+nRF52 characteristic declares `CHR_PROPS_WRITE | CHR_PROPS_WRITE_WO_RESP` with
+`setWriteCallback(onWrite, true)`. If Bluefruit delivers only write-with-response
+to that callback, every fragment this bearer sends is discarded by the stack
+before any of our code sees it, which fits every measurement here.
+
+Testing it is one line at the central: write with response once and see whether
+`onWrite` fires. That has not been done.
+
+## Previously unexplained, now superseded
 
 The node reports the writes going out (`tx=41` for 15 messages, fragments
 included), the firmware drops none of them, and the firmware decodes none of them
