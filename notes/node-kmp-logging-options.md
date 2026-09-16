@@ -21,45 +21,61 @@ several rounds of failed captures.
 The same shape applies elsewhere: `println` on Android does not reach Logcat's
 structured stream, and on the JVM it bypasses whatever the host app uses.
 
-## What was built, and what was measured
+## What was built
 
-`MeshLog` now sits in `node-core`, backed by Kermit (an `implementation`
-dependency, so no consumer is made to depend on its types). It offers `d/i/w/e`
-with lambda messages and a `MeshLogSink` a host can add - an on-screen log, a file
-on a headless node, a test's recorder. `gattLog` routes through it.
+`MeshLog` sits in `node-core` with **no logging dependency**: levels, lambda
+messages, a `println`, and a `MeshLogSink` a host can attach - an on-screen log, a
+file on a headless node, a test's recorder. The sink is the part worth having.
 
-Kermit 2.2.0 covers every target this library has, the two Linux ones included.
+## Kermit was tried and cannot be used here
 
-### Three things measured on the iPad, in order
+`co.touchlab:kermit:2.2.0` covers every target this library has, and its
+`OSLogWriter` is a real `os_log_with_type` through a cinterop shim. It still had
+to be removed: **that cinterop klib fails the Kotlin/Native compiler cache**, and
+`linkDebugFrameworkIosArm64` dies with
 
-1. **`println` reaches stdout only.** A `devicectl … --console
-   --terminate-existing` launch showed eight `MNGATT` lines; `pymobiledevice3
-   syslog live` showed none of them. Attaching to an already-running instance
-   captures nothing at all - it foregrounds rather than spawns.
-2. **Kermit's iOS default is not os_log.** `platformLogWriter()` there is the
-   Xcode writer, which is a `println`, so routing through Kermit changed nothing:
-   still eight lines on the console, still zero in `syslog`.
-3. **`OSLogWriter` did not help either.** Named explicitly through an
-   `expect/actual`, rebuilt and installed: still zero in `pymobiledevice3 syslog`,
-   and no `MeshMonitor{…}` subsystem of ours appears there at all - the only
-   subsystems present are Apple's own frameworks.
+```
+e: Failed to build cache for …/kermit-core-iosArm64Cinterop-os_logMain-2.2.0.klib
+```
 
-Whether that third one is os_log's default redaction of dynamic strings, subsystem
-filtering, or the relay simply not carrying third-party os_log, is **not
-isolated**. What is settled is the practical part.
+so the iOS app cannot be built at all. `kotlin.native.cacheKind=none` - JetBrains'
+own workaround - did not clear it, and `--no-configuration-cache` is refused
+because Isolated Projects requires the configuration cache.
 
-### So, for capturing Apple-side logs today
+Worth knowing if it is revisited: Kermit's `OSLogWriter()` defaults are
+`subsystem=""`, `category=""`, `publicLogging=false`, which emit a `%s` body the
+unified log redacts to `<private>` under no subsystem at all. A grep for the app
+or tag name can never match those - which is exactly why an earlier reading of
+"nothing appears" here was wrong. `OSLogWriter(subsystem = …, category = …,
+publicLogging = true)` is the usable form, and `pymobiledevice3 syslog live -s
+<subsystem>` the matching capture.
 
-Use `xcrun devicectl device process launch --console --terminate-existing`. It is
-the only method measured to work, and the `--terminate-existing` is not optional.
+`XcodeSeverityWriter` is **not** a `println`: it extends `OSLogWriter` and only its
+throwable path uses one. An earlier note here said otherwise.
 
-`MeshLogSink` is the path that does not depend on any of this: have the monitor
-app write its own log to a file or the screen, and read that.
+## Capturing Apple-side logs today
 
-## Why it was worth doing anyway
+`xcrun devicectl device process launch --console --terminate-existing` is the only
+method measured to work. `--terminate-existing` is not optional: attaching to a
+running instance foregrounds it rather than spawning it, and captures nothing.
 
-Every bearer measurement this session was read from one of two places, and where
-a third view existed - both ends of a BLE link traced at once - the conclusions
-held. Where only one did, eight of them were wrong. `MeshLog` is the seam that
-makes a second view possible on every platform; the Apple *transport* for it is
-still open.
+`MeshLogSink` is the route that avoids the question entirely.
+
+## The trap that cost more than any of this
+
+**The Xcode project has no build phase that runs Gradle.** It links a prebuilt
+framework from `monitor/build/bin/iosArm64/debugFramework`, so `xcodebuild`
+happily builds an app around a framework that is weeks old - it was nine days
+stale here, and several "verified on device" results were measured against a
+binary that did not contain the change under test.
+
+Build the framework first, and check its mtime:
+
+```
+env -u DEVELOPER_DIR -u SDKROOT -u NIX_CC -u CC -u CXX PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH" \
+  ./gradlew :monitor:linkDebugFrameworkIosArm64
+ls -la monitor/build/bin/iosArm64/debugFramework/Monitor.framework/Monitor
+```
+
+The stripped environment is required for the same reason every other Apple tool
+needs it here - see `CLAUDE.md` on the Nix `DEVELOPER_DIR` pollution.
