@@ -148,20 +148,42 @@ measured, not cited.
 
 ## What it did not fix: the link does not last
 
-Eight texts sent after the subscribe did not arrive, and the reason is not the
-subscribe. The link flaps:
+Re-measured with a framework built from current source - the earlier figures were
+taken against a nine-day-stale one, see
+[`node-kmp-logging-options.md`](./node-kmp-logging-options.md):
 
 ```
-ready 17:09:47 -> gone 17:09:54    7 s
-ready 17:11:18 -> gone 17:11:41   23 s
+ready 19:01:29 -> gone 19:01:37    8 s
+ready 19:02:59 -> gone 19:03:22   23 s
+ready 19:03:42 -> gone 19:04:26   44 s
 ```
 
-The HELLO and the subscribe land in the first seconds; anything later falls in a
-gap. Seven and twenty-three seconds is not cleanly the ~30 s pairing timeout from
-[`bluez-mesh-link-torn-down-by-profile-probes.md`](./bluez-mesh-link-torn-down-by-profile-probes.md),
-so that mechanism is a candidate rather than the answer. The iPad's address
-rotation is the other - `4E:1E:…`, `57:AC:…`, `7A:E1:…`, `54:00:…`, `74:74:…`
-over one session, and a rotation invalidates the connection.
+Over that 220-second run the central reached `ready` three times and the iPad
+logged **one** `central subscribed` and **one** `didReceiveWrite`. The central's
+faults for it:
 
-Separating them needs the link lifetime measured against a peer that does **not**
-rotate, and against one whose bluetoothd has the probe profiles disabled.
+```
+4 x BlueZ refused StartNotify (No reply within specified time)
+1 x subscription refused, reconnecting (1/2)
+1 x subscription refused, reconnecting (2/2)
+```
+
+So the first subscribe succeeds and later ones time out.
+
+### Both earlier candidates are eliminated
+
+- **Not address rotation.** The peer held `7E:76:C9:40:BA:B9` for the whole run,
+  across all three connections.
+- **Not the profile-probe teardown.** `journalctl -u bluetooth` over that window
+  carries no midi, battery, deviceinfo, pairing or encryption line at all.
+
+### What is left
+
+`StartNotify (No reply within specified time)` is a D-Bus timeout: BlueZ did not
+answer within the call's deadline, which means the peer did not answer the CCCD
+write. The one that worked was the first of the run.
+
+So the question narrows to why a **re**-subscribe from the same central identity
+goes unanswered when the first did not - CoreBluetooth reports the same central as
+`4931417D` across reconnects, and the peripheral may consider it still subscribed
+while BlueZ, which has torn its own state down, asks again.
