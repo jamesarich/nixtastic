@@ -17,17 +17,39 @@ Reviewed 2026-09-16. Kotlin 2.4.20, Gradle 9.7.1, AGP 9.4.0.
 That is a stronger baseline than most KMP libraries carry, and nothing here needs
 changing.
 
-## The one real gap: no `@ObjCName`
+## The one real gap: no `@ObjCName`, and what it would actually buy
 
-Nothing in the tree uses `@ObjCName`. The `MeshNodeGatt` framework exports
-`node-core`, so a Swift consumer sees Kotlin names mangled by the default
-Objective-C export rules - `MeshNodeGattMeshNode`, `doInit…`, `companion`, and
-name collisions resolved by prefixing. `@ObjCName` is how a KMP library gives
-Apple consumers an API that reads like Swift.
+Nothing in the tree uses `@ObjCName`. **Corrected 2026-09-16 against the
+generated header** - an earlier draft of this claimed a Swift consumer sees
+`MeshNodeGattMeshNode`, and that is wrong. Kotlin/Native derives a short prefix
+from the framework `baseName`, so the header is `MNG`-prefixed:
 
-Worth doing **before** the first consumer builds against it, because changing
-exported names afterwards is a source break for them. Not urgent while the only
-Apple consumer is the monitor app in this repo.
+```
+@interface MNGDecodedPacketAck
+@interface MNGDecodedPacketNodeInfo
+@interface MNGBroadcastPolicyCompanion
+@interface MNGAppleGattTransportKt
+```
+
+So the real cost is smaller and differently shaped than stated. Three things
+`@ObjCName` would fix, in descending order of how much they matter:
+
+1. **Nested types are flattened with the parent concatenated.** `DecodedPacket.Ack`
+   exports as `MNGDecodedPacketAck`, so Swift cannot write `DecodedPacket.Ack`.
+   This is the one a consumer actually feels.
+2. **The `MNG` prefix is on every type**, including ones a caller names often.
+3. **Companions and file facades leak** - `…Companion`, `…Kt`.
+
+`MeshNodeGatt` does `export(project(":node-core"))`, so all of node-core is in
+that surface. **Nothing in this repo links that framework**: the iPad app links
+`Monitor`, which deliberately exports nothing and whose Swift side touches only
+`MainViewControllerKt.MainViewController()`. So there is still no consumer to
+break, and the window stated below is genuinely open.
+
+Doing it means annotating every public sealed subclass, companion and facade in
+node-core - a large mechanical rename of the published Apple surface. Worth a
+decision rather than a drive-by: cosmetic for Swift ergonomics, free today, a
+source break for any external consumer once one exists.
 
 ## Added since: a tenth module, and the tree's first opt-in marker
 
