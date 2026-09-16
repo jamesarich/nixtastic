@@ -207,7 +207,17 @@ is what its name says - a floor off the sparse LogRecord stream, the same one
 this table already warns under-reports every time, and the same artefact that
 once had a working link reading 20-38%.
 
-**What this does not settle:** the inbound direction, and whether decode or dedup
-drops anything after ingress. Both are now reachable the same way - count
-`BLE mesh RX` at the radio against what the sender says it sent - and neither has
-been run.
+**The inbound direction was already settled, higher up this page.** The isolated
+ble-adv run earlier the same day read **15/15 (100%)** inbound on the current
+build. There is no inbound loss to account for, and writing that it "has not been
+run" was an oversight, not a gap.
+
+So with the outbound floor understood as a floor, **every bearer measures
+effectively complete**: udp 15/15 both ways, lora 15/15 out and 13-14/15 in,
+gatt 15/15 both ways over three runs, ble-adv 15/15 in with ingress at 60 of 66
+advertising events and frame arrival effectively complete.
+
+The one row that still reads as weak, `ble-adv` outbound, is the sparse
+`LogRecord` floor and nothing else. Worth rewriting the top table in those terms
+rather than leaving a number that has now misled twice - including me, for most
+of a session.
