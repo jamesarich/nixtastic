@@ -1297,6 +1297,16 @@
             text = builtins.readFile ./scripts/meshbench.sh;
           };
 
+          # nix run .#radiolog -- [host] [port] [seconds] - a radio's own log in
+          # plain text. `meshtastic --listen` asks for config, which sets
+          # pauseBluetoothLogging and silences the firmware logs it is being used
+          # to read; a reader that speaks no protobuf gets them all.
+          radiolog = pkgs.writeShellApplication {
+            name = "meshtastic-radiolog";
+            runtimeInputs = [ pkgs.coreutils ];
+            text = builtins.readFile ./scripts/radiolog.sh;
+          };
+
           # nix run .#fleet - what the bench is made of, and whether each host
           # runs the current node-kmp. Both probes it makes were got wrong by
           # hand first: the CH341 LoRa stick is not a tty and is not in
@@ -1482,6 +1492,7 @@
             pr
             meshbench
             fleet
+            radiolog
             meshprobe
             iosdeploy
             ;
