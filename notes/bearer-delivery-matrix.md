@@ -7,9 +7,9 @@ earlier one that was an artefact of the measurement rather than the bearer.
 
 | bearer | outbound | inbound | n | notes |
 | --- | --- | --- | --- | --- |
+| udp | **15/15 (100%)** | **15/15 (100%)** | 15 | vs meshtasticd, on its own group |
 | lora | **15/15 (100%)** | 14/15 (93%) | 15 | meshtadpole (CH341 + SX1262) |
 | ble-adv | 10/15 (67%) | 12/15 (80%) | 15 | connectionless; see compounding |
-| udp | 3/3 | 6/6 | small | vs meshtasticd, old multicast group |
 | gatt | 4/6 | 3/6 | 6 | needs a central; not yet re-run at n=15 |
 
 ## How to read the two outbound numbers
@@ -40,6 +40,9 @@ is already 100%, so nothing is hidden there.
   off, and then a fixed 25-second settle against a link that took 93 s to come up.
 - **udp** read `0%` both ways for the whole session until the group mismatch
   surfaced - see [`udp-group-and-preset-parity.md`](./udp-group-and-preset-parity.md).
+  On a named channel and the peer's own group it is the cleanest bearer here:
+  15/15 each way, no loss at all. It is also the only one whose peer is firmware
+  code rather than a radio, so nothing on that path is over the air.
 
 Every one of those was the rig, not the bearer. Check `enabled_protocols`, the
 channel, and what holds `tcp 4403` before reading anything into a zero.
