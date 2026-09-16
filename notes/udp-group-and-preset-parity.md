@@ -50,10 +50,27 @@ the name from the URL looks right. It was tried and **reverted**:
   `rx[udp] opaque`.
 
 **This peer hashes its blank channel name as `LongFast` while running
-SHORT_TURBO.** Whether that is `use_preset`, the sim module, or a substitution
-that happens once at channel creation is not established, and guessing it wrong
-costs the case that works today. It needs reading `Channels::getName` against the
-firmware this image was built from, not inference from the URL.
+SHORT_TURBO** - and the firmware source says it should not:
+
+- `Channels::getName` substitutes `DisplayFormatters::getModemPresetDisplayName`
+  for a blank name, gated on `config.lora.use_preset`.
+- That peer reported `lora.use_preset: True`.
+- `getModemPresetDisplayName(SHORT_TURBO, false, true)` returns `"ShortTurbo"`.
+  It returns `"Custom"` only when `usePreset` is false.
+
+So the contradiction is real, not a misreading of the source. Two measurements
+cannot both be explained: the peer decoded 6/6 while the node assumed `LongFast`
+and the URL said preset 8, and decoded 0/6 once the node used `ShortTurbo`.
+
+The one uncontrolled variable is **when the container finished rebooting**. A
+config write reboots it, and the URL was read 35 s later; if the device was still
+serving its old config at that moment, the device may have been LongFast during
+the good run and the URL simply stale *for that read*. Settling it needs the
+preset verified with `--get` immediately before **and** after a run, and the
+node's computed channel hash logged.
+
+Not worth chasing further for bench purposes: naming the channel removes the
+substitution entirely and measures 15/15 each way.
 
 ## Proven, on a channel with a name
 
