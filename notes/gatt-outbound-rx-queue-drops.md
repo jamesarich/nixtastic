@@ -1,4 +1,15 @@
-# GATT outbound loses writes, and the RX queue is not why
+# GATT outbound, and how much of its loss was the harness
+
+**Headline, corrected twice:** with a jar that is actually current, GATT outbound
+measures **8/15 acknowledged (53%)**, not the 4/15 and 0/15 this note previously
+carried. Several runs here were measured against a jar at `$KMP` built before the
+fixes under test, because meshbench uses whatever sits there and a hand-driven
+test ships its own elsewhere. meshbench now prints the jar's timestamp and hash.
+
+A hand-driven run on the same pair decodes freely - 76 packets tagged
+`transport = 10` from the node, 48 arrivals at the firmware's `onWrite` - so the
+bearer carries. What remains is a gap between that and 53%, not a bearer that
+delivers a quarter.
 
 Measured 2026-09-16, node-kmp as `CENTRAL_ONLY` on `james-pc` against a RAK4631
 on `rak4631_blemesh`, 15 messages each way.
