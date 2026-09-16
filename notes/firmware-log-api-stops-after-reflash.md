@@ -36,8 +36,28 @@ Anything counted from this stream is a floor, and when the stream is dead it is
 a floor of zero. Check `grep -cE "(DEBUG|INFO|WARN) *\|"` on the capture before
 reading a zero as a bearer fault.
 
-## Not established
+## Not the unit, and not a stuck state
 
-Whether the trigger is the reflash itself, a count of reflashes, or something
-else that happened alongside. A power cycle has not been tried, and neither has a
-different board - the Cardputer would say whether it is this unit.
+Both ruled out by measurement:
+
+- **A `uhubctl` power cycle does not restore it.** Hub `1-2.3` port 2, board
+  re-enumerates, stream still carries no `LogRecord`.
+- **A second board behaves the same.** The Cardputer
+  (`m5stack-cardputer-adv_blemesh`, a different MCU family) reports
+  `security.debug_log_api_enabled: True` and streams zero firmware lines too.
+
+So it is not this RAK and not a transient. What is left is the firmware on this
+branch, the CLI, or something about how `--listen` requests the stream - and the
+awkward fact that it demonstrably worked earlier the same day on the RAK, which
+is what makes it a regression rather than a thing that never worked.
+
+Whether the Cardputer ever streamed is unknown; its flag was set by some earlier
+session, not by this one.
+
+## Where to start next time
+
+Compare a capture that worked (`/tmp/meshbench-3768276/radio.log` on `james-pc`,
+which has `decoded message (id=…)` lines in it) against one that does not. The
+CLI is the same, the flag is the same, the board is the same - so the difference
+is in what happened between, and four reflashes and a `network.enabled_protocols`
+change are the candidates.
