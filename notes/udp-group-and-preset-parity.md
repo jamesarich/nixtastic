@@ -32,13 +32,28 @@ display name for a blank name before hashing it - so a peer on `SHORT_TURBO`
 hashes as `ShortTurbo` while a node that assumes `LongFast` computes a different
 channel hash and opens nothing.
 
-`ChannelSetUrl.decode(url)` takes a `defaultName` for exactly this and
-`node-headless` does not pass one, so it always assumes the default preset.
-`ChannelSetUrl.loraConfig(url)` returns the sharer's `LoRaConfig`, modem preset
-included, so the URL already carries what is needed. **Parity gap, open.**
-
 Setting the peer back to `LONG_FAST` gave **6/6 decoded, meshtasticd to node** -
 the UDP bearer working against real firmware code.
+
+### The obvious fix is wrong, measured
+
+`ChannelSetUrl.decode(url)` takes a `defaultName` for exactly this, and
+`ChannelSetUrl.loraConfig(url)` returns the sharer's modem preset, so deriving
+the name from the URL looks right. It was tried and **reverted**:
+
+- The URL does track the preset. `EhYIARAIGPQD…` carries `10 08` (SHORT_TURBO);
+  on LONG_FAST the field is absent, proto3 omitting the zero. Not stale.
+- So during the run that decoded **6/6**, the peer was on SHORT_TURBO - and the
+  node, assuming `LongFast`, opened every packet.
+- With the preset read from the URL the node logged
+  `channel 'ShortTurbo' from MESH_CHANNEL_URL` and every frame arrived
+  `rx[udp] opaque`.
+
+**This peer hashes its blank channel name as `LongFast` while running
+SHORT_TURBO.** Whether that is `use_preset`, the sim module, or a substitution
+that happens once at channel creation is not established, and guessing it wrong
+costs the case that works today. It needs reading `Channels::getName` against the
+firmware this image was built from, not inference from the URL.
 
 ## Bench recipe
 
