@@ -191,11 +191,16 @@ sleep 10
 # `via=` is the bearer the ACK came back on, not the one the message went out on,
 # so this is a total rather than a per-bearer figure. Run one bearer to attribute it.
 #
-# It is itself a floor when the RETURN path is lossy: a GATT run measured 4/6
-# outbound in the firmware's log and 0/6 acknowledged, because the delivery
-# succeeded and the acknowledgement did not. The two numbers bound the truth from
-# opposite sides - trust the higher one, and treat a gap between them as a
-# statement about the return path.
+# It is itself a floor when the RETURN path is lossy, and on a connection-oriented
+# bearer alone it is not a measurement at all. These sends are broadcasts, for
+# which firmware raises no routing ack, so every Delivered here comes from
+# MeshNode.implicitAck - our own packet heard back with hop_limit decremented.
+# BLEGattMeshHandler::onSend sets `slot.exclude = arrivalPeer(...)`, so the radio
+# deliberately never relays a packet back to the peer that handed it over. With
+# gatt as the only bearer the relay cannot reach us and the figure reads near
+# zero for a link passing everything: measured 1/15 and 3/15 against 15/15 and
+# 13/15 decoded at the firmware in the same runs. Suppressed below rather than
+# printed, because it was read as a fault twice.
 acked=$(grep -oE "Delivered\(from=[0-9]+, requestId=[0-9]+" "$RUN/kmp.log" | sort -u | wc -l | tr -d ' ')
 
 decoded_total=0
@@ -221,7 +226,18 @@ echo "-- bearer counters --"; echo "$counters"
 # Printed beside the matrix, not inside it: it is a total across the bearers that
 # were enabled, and it counts what the radio acknowledged rather than what any one
 # bearer carried.
-echo "-- acknowledged by the radio: $acked/$SENDS outbound (all bearers together) --"
+# Only meaningful where some enabled bearer can carry the radio's relay back to
+# us. gatt cannot - see the split-horizon note above - so gatt-only runs say why
+# instead of printing a number that reads as loss.
+case ",$BEARERS," in
+  ,gatt,)
+    echo "-- acknowledged by the radio: n/a on gatt alone --"
+    echo "   Broadcasts get no routing ack, and the radio never relays a packet back to the"
+    echo "   peer that delivered it, so the implicit ack cannot return. ($acked/$SENDS seen,"
+    echo "   which is noise, not delivery.) Add a second bearer for an ack figure." ;;
+  *)
+    echo "-- acknowledged by the radio: $acked/$SENDS outbound (all bearers together) --" ;;
+esac
 
 # A row of zeros beside non-zero rx counters is the signature of a channel
 # mismatch, not a dead link: the bearer carried the frames and no key opened

@@ -63,23 +63,32 @@ checked on the bench against the one built here - `de2a3394ea71` both ends.
 
 Both bearers are at or above where they were. Nothing regressed.
 
-### The ACK column and the data column disagree on GATT
+### Why the ack column reads near zero on a gatt-only run - settled
 
-Worth separating from the numbers above, because it is not a delivery figure.
+These sends are **broadcasts**, and firmware raises no routing ack for a
+broadcast. So every `Delivered` the bench counts comes from
+`MeshNode.implicitAck`: our own packet heard back with `hop_limit` decremented,
+which means some neighbour relayed it.
 
-With **both** bearers on, the radio acknowledged 15/15. With **gatt alone** it
-acknowledged 1/15, then 3/15 on a repeat - while the firmware's own log recorded
-decoding 15/15 and 13/15 of those same sends, and inbound ran 93-100%. With
-**ble-adv alone** it acknowledged 10/15.
+`BLEGattMeshHandler::onSend` sets
 
-So this is not the data path. Frames arrive: the firmware logs them, and the
-return direction is near-perfect in the same run. What is thin is the
-*confirmation* getting back over GATT, and with ble-adv also enabled the
-confirmations arrive - which is consistent with them returning by the other
-bearer rather than by the one that carried the request.
+```cpp
+// A relay must never go back to the peer that delivered it; an origination matches nothing.
+slot.exclude = arrivalPeer(mp->from, mp->id);
+```
 
-**Not a theory of why.** Two samples say it reproduces and say where it is not.
-What would settle it is capturing the ACK itself: run gatt alone with the node's
-frame logging on and the radio's `debug_log_api_enabled` set, and check whether
-the radio *emits* an ACK that never arrives, or never emits one. Those are
-different bugs and nothing measured so far tells them apart.
+so the radio deliberately never relays a packet back to the peer that handed it
+over. Split-horizon. With gatt as the only bearer the relay cannot reach us,
+`implicitAck` cannot fire, and the figure reads near zero for a link passing
+everything: 1/15 and 3/15 against 15/15 and 13/15 decoded at the firmware in the
+same runs, with the return direction at 93-100%.
+
+**Correct firmware behaviour, and a defective metric.** It had been read as a
+fault twice, once by the script's own comments. `mesh-bench-remote.sh` now
+suppresses the number on a gatt-only run and says why. Verified live: a 4-send
+gatt-only run printed `n/a on gatt alone` beside `4/4 (100%)` both directions.
+
+What remains open is not a measurement problem: on a connection-oriented bearer
+this node has **no delivery evidence at all**, because the only mechanism it has
+is the implicit ack that split-horizon forecloses. Link-level acceptance by the
+peer is evidence GATT actually has and the mesh layer currently discards.
