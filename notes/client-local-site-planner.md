@@ -540,20 +540,61 @@ Two consequences worth planning for:
 Recoverable performance, if 33 % ever matters: vendor only the hot functions,
 or use a faster fixed-source libm. Not worth doing speculatively.
 
-### Why not KMP
+### Why not a Kotlin/KMP or Swift reimplementation
 
-- **Kotlin/Native** would reach the engine through cinterop — the C++ still
-  has to be there, because `itwom3.0.cpp` must stay frozen — and
-  `kotlin.math` maps to the platform's libm, so it inherits the same
-  divergence with an extra layer on top.
-- **A pure-Kotlin port** would mean re-deriving the ITM model in Kotlin. That
-  is the one thing this document says not to do: it discards the frozen
-  oracle and every golden with it.
-- A curiosity that does not rescue it: the JVM's `StrictMath` *is* specified
-  to be bit-reproducible (it reproduces fdlibm exactly), so a pure-Kotlin/JVM
-  port would be deterministic on the JVM. `kotlin.math` on Kotlin/Native is
-  not, so KMP common code still would not agree across targets — and it costs
-  a reimplementation of the model to find that out.
+Not because of the maths. Once the divergence is measured at 31 pixels of
+contour change, "a port would compute slightly different numbers" stops being
+an objection — the tolerance is wide enough that a careful port could sit
+inside it.
+
+The real objection is that **the golden corpus is a pinhole**, so passing it
+proves almost nothing about a reimplementation. All four cases:
+
+| Parameter | Corpus covers | Engine / UI accepts |
+| --- | --- | --- |
+| Frequency | 868, 907, 915 MHz — a 47 MHz window | **20 – 20,000 MHz** |
+| Radio climate | 3 of 7 | 1–7 (no equatorial, subtropical, desert) |
+| Polarization | both | both |
+| Radius | 15 – 30 km | up to **150 km** (70 km HD) |
+| Resolution | **standard only** — all four are `high_resolution: false` | 1200 and **3600 ippd** |
+| rx height | **one value** (1.0 m) | free |
+| Ground dielectric | **one value** (15.0) | free |
+| Ground conductivity | **one value** (0.005) | free |
+| Atmospheric bending | **one value** (301.0) | free |
+| tx gain | **one value** (2.0) | free |
+
+ITM is a regime-switching model — line-of-sight, diffraction and troposcatter
+are selected by distance, frequency and terrain, and the climate constant
+feeds the troposcatter branch. Four cases clustered in one ISM band, at one
+resolution, with four of the environment inputs pinned to a single value each,
+exercise a narrow slice of that. A port that passes them could be wrong across
+whole branches and nothing here would notice.
+
+That objection also applies, more weakly, to the C++ rewrite of `driver.cpp`
+— but that code is structural (page enumeration, radial order, rasterising),
+so the four cases genuinely do exercise it.
+
+**And it is a cheap blocker to remove.** The native CLI computes Calgary in
+1.83 s. Sweeping frequency, climate, polarization, resolution, distance and
+the environment inputs into a corpus of a few thousand cases is hours of CPU
+against the existing C++ oracle, not a project. Do that and a reimplementation
+becomes a bounded, testable piece of work rather than a leap.
+
+If the corpus existed, KMP would be genuinely attractive: one implementation
+covering android, desktop, iOS (Kotlin/Native) and web (wasmJs) — no NDK, no
+JNI shim, no XCFramework, no `.so` per ABI, which is most of the packaging
+cost in this document. Two things would still need answering, both measurable:
+
+- **Kotlin/Native performance on a tight numeric loop.** 9,600 radials of
+  double maths is the worst case for a GC'd runtime. Reference: 1.83 s in
+  C++, 91 s under a JVM wasm runtime.
+- **apple consumes no KMP today** — `project.yml` has no KMP artifact, and
+  `TAKPacket-SDK` ships Apple a hand-written Swift implementation instead.
+  That is an org decision, not a technical one, but it is not free.
+
+And one non-technical cost worth naming: *"we run the same code SPLAT! runs"*
+is itself a claim users of an RF tool trust. *"We reimplemented SPLAT! and it
+passes our tests"* is a weaker one, however good the tests are.
 
 ### Does any of this matter? Measured: no.
 
@@ -693,7 +734,7 @@ publish artifacts from there — worse ergonomics, no blocker.
 
 | # | Work | Output |
 | --- | --- | --- |
-| **0** | ~~UBSan + ASan over the native build~~ **done — both clean**. Remaining: commit the `.s16` terrain so the CLI reproduces goldens from a clean checkout (finding 5); widen the corpus — HD, antimeridian, high latitude. | A corpus wide enough to port against. ~1 day. |
+| **0** | ~~UBSan + ASan over the native build~~ **done — both clean**. Remaining: commit the `.s16` terrain so the CLI reproduces goldens from a clean checkout (finding 5); widen the corpus — HD, antimeridian, high latitude, and a generated sweep over frequency / climate / resolution / environment (see "Why not a Kotlin/KMP or Swift reimplementation"). | A corpus wide enough to port against. ~1 day. |
 | **1** | New `core/` + `abi/` + CMake presets; golden gate green on x86_64 **and** arm64, reporting the difference *distribution*, not just pass/fail. | The engine, measured, on two architectures. |
 | **2** | Terrain transform into `core/`; web app calls it via wasm; `srtm.ts`'s transform deleted. | One terrain implementation. |
 | **3** | Android: prefab AAR, JNI shim, Kotlin API, on-disk page cache, in-app golden parity test. `SitePlannerRunner.kt` deleted. | Coverage on-device, both flavours. |
