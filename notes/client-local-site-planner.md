@@ -396,10 +396,12 @@ Verified rather than assumed — Calgary, same `.wasm`, two unrelated engines:
 | Runtime | Engine | Result |
 | --- | --- | --- |
 | Node 22 | V8, JIT | baseline |
-| wasmtime 48 | Cranelift, AOT | **byte-identical**, signal and mask, 5,760,000 bytes each |
+| wasmtime 48 | Cranelift, AOT | **byte-identical** |
+| Chicory 1.4.0 | pure-JVM bytecode compiler | **byte-identical** |
 
-Both also land on exactly the same figures against the native golden
-(mask 0.0000 %, 99.9973 % within ±1, max Δ 3).
+Three unrelated engines, 5,760,000 bytes of signal and mask each, all
+identical, and all landing on exactly the same figures against the native
+golden (mask 0.0000 %, 99.9973 % within ±1, max Δ 3).
 
 That collapses the entire risk section of this document:
 
@@ -421,29 +423,59 @@ single-artifact packaging are the arguments that stand on their own.
 
 ### How each platform runs it
 
+A pure-JVM runtime on Android was the attractive version of this — no NDK, no
+JNI, no per-ABI binaries. **It was measured and it does not work.**
+
+### Chicory: correct, and ~50× too slow
+
+Calgary 30 km, same `.wasm`, Chicory 1.4.0 on JDK 21, arm64:
+
+| Runtime | Sweep | vs native |
+| --- | --- | --- |
+| Native arm64, `clang -O2` | **1.83 s** | 1.0× |
+| wasm under Node 22 / V8 | **2.29 s** | 1.25× |
+| wasm under wasmtime 48 / Cranelift | (byte-identical output) | — |
+| **wasm under Chicory 1.4.0, AOT** | **91.1 s** | **~50×** |
+
+Not a misconfiguration: re-run with `InterpreterFallback.FAIL`, which throws
+rather than silently interpreting any function the compiler cannot handle, it
+completes in **91.45 s** — so every function really was compiled to JVM
+bytecode and 91 s *is* compiled speed. Instantiation is only 0.10 s, so the
+cost is all in execution. Upstream is explicit that "be the fastest runtime"
+is a non-goal.
+
+A minute and a half for a 30 km estimate on a desktop-class M-series core is
+several minutes and a flat battery on a phone. Chicory is out for this
+workload. (It would be a fine choice for a small, cold, occasional module —
+this is a tight numeric loop over 9,600 radials, the worst case for it.)
+
+Chicory's output is nonetheless **byte-identical to Node/V8**, which is
+what makes the determinism claim above as strong as it is.
+
+### So: wasm2c on both platforms
+
 | Platform | Execution | Native code shipped |
 | --- | --- | --- |
 | Web | as today | none |
-| Android | **Chicory** — a pure-JVM wasm runtime, no JNI, no NDK, no per-ABI binaries | **none** |
-| Desktop (JVM) | Chicory, the same code path as Android | none |
-| iOS | **wasm2c** → generated C → static lib in an XCFramework | one static lib |
+| Android | **wasm2c** → generated C → NDK build, `.so` per ABI | one library |
+| iOS | **wasm2c** → generated C → static lib in an XCFramework | one library |
+| Desktop (JVM) | JNI to the same library, or Panama on JDK 22+ | one library |
 
-iOS cannot JIT, so a JIT runtime is out. `wasm2c` (from wabt) compiles the
-module to portable C at *build* time, preserving wasm semantics — including
-the bundled musl and the bounds checks — at native speed with no runtime
-dependency. **Verify that its output keeps bit-exact FP** (it is designed to,
-but that is the one claim here worth testing before committing).
+`wasm2c` (from wabt) compiles the module to portable C at *build* time,
+preserving wasm semantics — the bundled musl, the bounds checks — at native
+speed with no runtime dependency, and no JIT, which iOS forbids anyway.
 
-Two things to measure before this is settled, both cheap:
+The wasm module therefore stays the **source of truth and the portable
+intermediate representation** — the thing that is specified, tested and
+byte-reproducible across runtimes — but it is compiled to native code at
+build time rather than executed on device. That is still better than
+compiling the C++ per platform, because the C++ route lets libm and codegen
+vary and the wasm route provably does not. It just does not get you out of
+shipping a native library.
 
-1. **Chicory's speed on a real case.** Upstream lists "be the fastest
-   runtime" as an explicit non-goal, and it has an AOT bytecode compiler
-   that is comparatively new. Reference points: Calgary 30 km is **1.83 s**
-   native arm64 and **2.29 s** under Node/V8 — so wasm costs ~1.25× native.
-   If Chicory lands within ~3×, ship it and Android carries no native code at
-   all. If not, fall back to `wasm2c` + NDK on Android too — still one
-   artifact, still one golden, just with a `.so` again.
-2. **`wasm2c` FP fidelity**, per above.
+**One thing left to verify:** that `wasm2c` output keeps bit-exact FP. It is
+designed to, and the golden gate will prove it immediately — build the
+generated C on one platform and diff against the wasm run.
 
 ### What this changes about the ABI
 
