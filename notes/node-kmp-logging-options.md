@@ -21,44 +21,45 @@ several rounds of failed captures.
 The same shape applies elsewhere: `println` on Android does not reach Logcat's
 structured stream, and on the JVM it bypasses whatever the host app uses.
 
-## What to use instead
+## What was built, and what was measured
 
-**Kermit** (Touchlab), the KMP logging library, ships a `LogWriter` per platform
-and routes to each one's native sink:
+`MeshLog` now sits in `node-core`, backed by Kermit (an `implementation`
+dependency, so no consumer is made to depend on its types). It offers `d/i/w/e`
+with lambda messages and a `MeshLogSink` a host can add - an on-screen log, a file
+on a headless node, a test's recorder. `gattLog` routes through it.
 
-| platform | default writer | reaches |
-| --- | --- | --- |
-| Apple | `OSLogWriter` | `os_log`, so the **unified log** |
-| Android | `LogcatWriter` | Logcat |
-| JS | `ConsoleWriter` | browser console |
-| other | `CommonWriter` | `println` |
+Kermit 2.2.0 covers every target this library has, the two Linux ones included.
 
-`OSLogWriter` is the whole point: os_log is readable by `pymobiledevice3 syslog`,
-Console.app and a sysdiagnose, from a device that is merely connected - no
-foreground console attach, no owning stdout, and it keeps working when the app is
-backgrounded.
+### Three things measured on the iPad, in order
 
-A custom sink is one method:
+1. **`println` reaches stdout only.** A `devicectl … --console
+   --terminate-existing` launch showed eight `MNGATT` lines; `pymobiledevice3
+   syslog live` showed none of them. Attaching to an already-running instance
+   captures nothing at all - it foregrounds rather than spawns.
+2. **Kermit's iOS default is not os_log.** `platformLogWriter()` there is the
+   Xcode writer, which is a `println`, so routing through Kermit changed nothing:
+   still eight lines on the console, still zero in `syslog`.
+3. **`OSLogWriter` did not help either.** Named explicitly through an
+   `expect/actual`, rebuilt and installed: still zero in `pymobiledevice3 syslog`,
+   and no `MeshMonitor{…}` subsystem of ours appears there at all - the only
+   subsystems present are Apple's own frameworks.
 
-```kotlin
-class YourCustomWriter : LogWriter() {
-    override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) { }
-}
-```
+Whether that third one is os_log's default redaction of dynamic strings, subsystem
+filtering, or the relay simply not carrying third-party os_log, is **not
+isolated**. What is settled is the practical part.
 
-which is the seam for feeding the monitor app's own on-screen log, or a file on
-the headless node, from the same call sites.
+### So, for capturing Apple-side logs today
 
-**One caveat worth carrying:** Kermit's own `XcodeSeverityWriter` writes
-throwables with `println` specifically *to avoid os_log truncating long strings*.
-So os_log is right for the stream and wrong for a 500-byte packet dump - keep
-frame hexdumps on a writer that does not truncate.
+Use `xcrun devicectl device process launch --console --terminate-existing`. It is
+the only method measured to work, and the `--terminate-existing` is not optional.
 
-## Why this is worth doing rather than noting
+`MeshLogSink` is the path that does not depend on any of this: have the monitor
+app write its own log to a file or the screen, and read that.
 
-Every bearer measurement this session was read from one of two places: the node's
-own stdout, or the firmware's log over the phone API. Where a third view existed -
-both ends of a BLE link traced at once - the conclusions held. Where only one
-existed, six of them were wrong. Making the Apple side's logs visible without a
-console attach is the cheapest way to get a second view on the platform that has
-none today.
+## Why it was worth doing anyway
+
+Every bearer measurement this session was read from one of two places, and where
+a third view existed - both ends of a BLE link traced at once - the conclusions
+held. Where only one did, eight of them were wrong. `MeshLog` is the seam that
+makes a second view possible on every platform; the Apple *transport* for it is
+still open.
