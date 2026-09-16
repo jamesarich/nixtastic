@@ -39,6 +39,21 @@ went out. `reason=1 after 0 events` is a timeout with nothing sent, and it
 appears on an **idle** radio as well as under iPad load, so it is not caused by
 connection pressure.
 
-Seen 1 in 4 bursts in one 170 s window. **Not a rate** - n=4 - but it is a real
-loss path on the advertisement bearer, which measures 67-86% where the others
-reach 100%, and it is the first mechanism found that could account for that.
+**Quantified under load, and the first reading was wrong.** "1 in 4" counted
+terminations with `ours=0`, which are the phone's advertising set, not ours.
+Filtering to `ours=1` and driving 14 sends through a node-kmp `ble-adv` node over
+~260 s, with 60 mesh frames decoded at the radio:
+
+| our advertisement bursts | count |
+| --- | --- |
+| `reason=2 after 3 events` - all three went out | **24** |
+| `reason=1 after 0 events` - timeout, nothing sent | **1** |
+
+**24 of 25, 96%.** So the radio's own advertising is not the main loss: it is a
+few percent, not the 14-33% gap the bearer shows. Whatever accounts for the rest
+is elsewhere - in reception, or in node-kmp's own transmit path, neither of which
+this measures.
+
+Note the load had to come from node-kmp, not `meshtastic --port`: anything that
+speaks the radio's phone API latches `usingProtobufs` and silences this log, so
+the bench script and this tool cannot observe the same radio at the same time.
