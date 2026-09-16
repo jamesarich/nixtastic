@@ -63,7 +63,7 @@ is in what happened between, and four reflashes and a `network.enabled_protocols
 change are the candidates.
 
 
-## A latent bug in the gate, and the leading candidate
+## The gate is sound - checked, and it is not the explanation
 
 `RedirectablePrint.cpp:232` and `SerialConsole.cpp:283` both gate emission on
 
@@ -71,24 +71,26 @@ change are the candidates.
 config.security.debug_log_api_enabled && !pauseBluetoothLogging
 ```
 
-`pauseBluetoothLogging` is a plain global in `main.cpp`, set **true** in
-`PhoneAPI.cpp:311` when a client begins a config download, and cleared in three
-places that all sit on the *completion* path - `STATE_SEND_PACKETS` (1027),
-`onConfigComplete` (1174) and the close/reset path (409).
+`pauseBluetoothLogging` is set true in `handleStartConfig` when a client begins a
+config download. It looked like a flag cleared only on the happy path, which
+would mean any abandoned `meshtastic --get/--set` left logging silenced for
+everyone - and this session made hundreds of those.
 
-So **a client that starts a config download and goes away before finishing it
-leaves logging paused for everyone**, indefinitely, until some later client
-completes a full handshake. Every short-lived `meshtastic --get/--set/--info`
-call is a config download, and a `timeout` that fires mid-handshake is exactly
-that shape. This session made hundreds of them against both boards.
+**That was wrong.** The three clears are `STATE_SEND_PACKETS` (1027),
+`onConfigComplete` (1174), and one at 409 that sits inside **`PhoneAPI::close()`**
+(from 357). So an abandoned client clears it on disconnect, and the working
+capture's `Lost phone connection` / `PhoneAPI::close()` pair shows close really
+does run for a serial client. A power cycle would clear it in any case - it is a
+RAM global initialised false - and did not fix anything.
 
-It is the leading candidate and **not proven to be today's cause**: the close
-path at 409 also clears the flag, and the working capture shows
-`FromRadio=STATE_SEND_PACKETS` followed by `Lost phone connection`, so that run
-did reach a clearing state. A power cycle should also have cleared it, being a
-RAM global initialised false, and did not.
+So the gate is not the explanation, and the cause is still open.
 
-Worth fixing on its own merits regardless of this session: a global that silences
-diagnostics and is only cleared on the happy path is a bad shape, and the obvious
-repair is to clear it whenever a phone connection ends, not only when it ends
-well.
+## Where to start next time
+
+Diff a capture that worked against one that does not:
+`/tmp/meshbench-3768276/radio.log` on `james-pc` still has `decoded message
+(id=…)` lines in it. Same CLI, same flag, same board, so the difference lies in
+what happened between - four reflashes and a `network.enabled_protocols` change
+are the candidates. Two boards on different MCU families behave identically now,
+and a `uhubctl` power cycle does not help, so it is neither the unit nor a stuck
+RAM state.
