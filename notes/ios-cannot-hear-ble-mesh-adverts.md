@@ -50,3 +50,11 @@ same way for a different reason (legacy-only, `MaxAdvLen 31`), so
 
 Measured on iPadOS 26.6 only. `appleMain` is shared with macOS, and whether
 macOS CoreBluetooth receives extended advertisements is untested.
+
+## Confirmed on the wire
+
+An HCI capture on the uConsole 2026-09-16 shows the other half of this:
+the iPad subscribing to the mesh characteristic on a **legacy** `ADV_IND`
+peripheral and exchanging frames both ways, three connections in a row -
+[`bluez-battery-client-raises-ios-pairing.md`](./bluez-battery-client-raises-ios-pairing.md).
+Legacy advertising is the discriminator, not the GATT bearer.

@@ -42,3 +42,9 @@ service restarted. Both are sudo, so this is where an unprivileged session ends.
 
 Worth capturing on the peripheral rather than the central: the error is
 generated there.
+
+A `btmon` capture was taken on the peripheral 2026-09-16, but with the iPad as
+the central rather than `james-pc` - no 0x0e appears in it, and that subscribe
+succeeds. See
+[`bluez-battery-client-raises-ios-pairing.md`](./bluez-battery-client-raises-ios-pairing.md)
+for what that capture did settle. The `james-pc` pairing still needs its own.
