@@ -76,6 +76,15 @@ four cases exactly, including the London prime-meridian wrap
 (`51:52:359:0` + `51:52:0:1`) and Cape Town's southern-hemisphere
 west-positive conversion.
 
+**The committed goldens are exactly reproducible.** Built `splat_cli` from
+source (clang 21.1.8, arm64 Darwin), converted the committed `.sdf.gz`
+fixtures to the `.s16` pages the CLI reads, and ran Calgary: 4 pages loaded,
+9,600 radials, output **byte-identical** to
+`golden-engine/calgary_30km.{signal,mask}.u8.gz` — 5,760,000 bytes each.
+That validates the goldens, the fixtures, and the conversion in one shot, and
+it means a *per-architecture* golden gate can assert exact equality rather
+than a tolerance.
+
 **The slice-invariance test is real.** `test/engine/slices.test.ts` runs a
 full sweep, runs four slices, merges first-touch, and byte-compares both mask
 and signal buffers. Not a smoke test.
@@ -95,21 +104,55 @@ repo**. Nothing re-checks it and nothing can, without resurrecting an old
 commit and a Docker image. Treat "100.000 % mask agreement" as a historical
 measurement, not a standing guarantee.
 
-**2. The ±1 dB tolerance hides more than it looks like it does.** The gate is
-99.9 % within ±1 dB, so up to 0.1 % of pixels may be arbitrarily wrong — and
-they are, up to **7 dB** on Monterey. More importantly **London sits at
-99.9630 %, which is 0.063 percentage points of headroom** over the floor.
-That margin exists between two libm implementations (macOS and
-emscripten/musl). A third — bionic on Android, Apple's on iOS — is a coin
-flip against that margin. This converts the ARM64 port's biggest risk from
-speculative to quantified, and it is the single most important number in
-this document.
+**2. The ±1 dB tolerance hides more than it looks like it does — but the
+risk is libm, not the ISA.** The gate is 99.9 % within ±1 dB, so up to 0.1 %
+of pixels may be arbitrarily wrong, and they are: up to **7 dB** on Monterey,
+with London at **99.9630 %** — 0.063 points of headroom.
 
-**3. The build suppresses every warning.** Both `engine/build.sh` and
-`engine/build_native.sh` pass `-std=gnu++11 -w`. Not "a few warnings
-disabled" — all of them, on a 2011 FORTRAN translation, for the entire life
-of the project. No sanitizer has ever been run over it (a UBSan/ASan build
-was started this session; result appended below when it lands).
+This looked like the port's biggest risk. It was measured this session
+instead of assumed. Calgary, built from source and run three ways:
+
+| Comparison | Mask mismatch | Within ±1 dB | Bytes differing | Max Δ |
+| --- | --- | --- | --- | --- |
+| arm64 vs committed golden | — | — | **0 — byte-identical** | 0 |
+| x86_64 vs arm64 | 0.0000 % | 99.9981 % | 1,272 / 5,760,000 | 3 |
+| wasm vs native (London, Tier B) | 0.0000 % | 99.9630 % | — | 4 |
+
+Two conclusions, and they point opposite ways to the obvious guess:
+
+- **Cross-ISA divergence is small.** arm64 and x86_64 disagree on 0.022 % of
+  bytes, max 3 dB, and the coverage **mask — the most user-visible output —
+  is bit-identical**. At 99.9981 % it has ~30× the headroom the wasm build
+  already ships with.
+- **The variable that matters is the libm implementation, not the
+  instruction set.** Both builds above use Apple's libm; only codegen
+  differed. The 99.963 % figure is what happens when the *implementation*
+  changes (emscripten/musl). So iOS, on Apple's libm, should land near
+  byte-identical; **Android on bionic is the real unknown** and should be
+  expected to behave like the wasm case — passing, with modest margin.
+
+*Caveat:* the x86_64 run was under Rosetta 2 on Apple silicon, so it isolates
+ISA and codegen, not native Intel hardware plus a third libm. Phase 1 still
+has to measure bionic directly.
+
+**3. The build suppresses every warning — but the code is UBSan-clean.**
+Both `engine/build.sh` and `engine/build_native.sh` pass `-std=gnu++11 -w`.
+Not "a few warnings disabled" — all of them, on a 2011 FORTRAN translation,
+for the life of the project.
+
+Run this session: a `-fsanitize=undefined` build over Calgary with real
+terrain (4 pages, relief to 3,145 m, 9,600 radials) reports **zero findings**.
+Verified non-vacuous with a control program that does fire. This is the best
+possible phase-0 result and it de-risks the port considerably.
+
+Two caveats. It is **UBSan only** — the ASan build is still outstanding. And
+building it exposed a workspace trap worth its own line: **the Nix clang
+21.1.8 produces a silently non-functional sanitizer binary on darwin.** It
+compiles and links, then runs nothing at all — no output even on the
+missing-argument path, and a 25-minute run that ended in a timeout with a
+0-byte log. Apple's `/usr/bin/clang++` works. Same class as the `.#apple`
+shell problem in `CLAUDE.md`: build sanitizer targets with the system
+toolchain, or you will "measure" a program that never executed.
 
 **4. `driver.cpp` carries avoidable C-isms.** `Page` holds raw
 `short*`/`unsigned char*` from `calloc`; constants are `#define`; the
@@ -342,7 +385,7 @@ publish artifacts from there — worse ergonomics, no blocker.
 
 | # | Work | Output |
 | --- | --- | --- |
-| **0** | UBSan/ASan over the existing native build; FP-flag audit; restore a runnable Tier A (fix finding 5, commit the terrain the CLI needs); widen the corpus — HD, antimeridian, high latitude. | A finding, and a corpus wide enough to port against. ~1–2 days. |
+| **0** | ~~UBSan over the native build~~ **done — clean**. Remaining: ASan; commit the `.s16` terrain so the CLI reproduces goldens from a clean checkout (finding 5); widen the corpus — HD, antimeridian, high latitude. | A corpus wide enough to port against. ~1 day. |
 | **1** | New `core/` + `abi/` + CMake presets; golden gate green on x86_64 **and** arm64, reporting the difference *distribution*, not just pass/fail. | The engine, measured, on two architectures. |
 | **2** | Terrain transform into `core/`; web app calls it via wasm; `srtm.ts`'s transform deleted. | One terrain implementation. |
 | **3** | Android: prefab AAR, JNI shim, Kotlin API, on-disk page cache, in-app golden parity test. `SitePlannerRunner.kt` deleted. | Coverage on-device, both flavours. |
@@ -372,9 +415,13 @@ Phase 1 ships nothing to a user. Phase 3 is the first release that does.
 
 ## Risks
 
-- **FP/libm divergence exceeds tolerance on ARM64.** No longer speculative:
-  London has 0.063 points of margin. Mitigation: measure in phases 0–1,
-  before any app integration, and report distributions.
+- **libm divergence on Android (bionic).** Measured down from "biggest
+  risk": cross-ISA codegen costs only 0.002 points, but a different libm
+  *implementation* costs ~0.04 (the wasm figure). iOS shares Apple's libm and
+  should be near-exact; bionic is the one genuine unknown. Mitigation:
+  measure it in phase 1, on-device or in an emulator, before any integration
+  work — and report the difference distribution, not a pass fraction. If it
+  lands under 99.9 %, understand which pixels moved; do not lower the gate.
 - **Tier A is unrecoverable if nobody resurrects the backend soon.** Every
   month makes the old commit harder to build (Docker base images, Python
   deps). Mitigation: decide now, in phase 0.
@@ -398,9 +445,14 @@ diff splat-1.4.2/itwom3.0.cpp splat/itwom3.0.cpp   # expect: no output
 # Tier B, with the real numbers printed per case
 pnpm exec vitest run test/golden --reporter=verbose
 
-# sanitizers (phase 0)
-clang++ -O1 -g -std=gnu++11 -w -fsanitize=undefined,address \
-  -o engine/build/splat_cli_san engine/driver.cpp engine/native/main.cpp splat/itwom3.0.cpp
+# sanitizers (phase 0) — NOTE: system clang, not the Nix one (see finding 3)
+env -u DEVELOPER_DIR -u SDKROOT -u CC -u CXX -u NIX_CC PATH="/usr/bin:/bin" \
+  clang++ -O1 -g -std=gnu++11 -w -fsanitize=undefined \
+  -o engine/build/splat_cli_ubsan engine/driver.cpp engine/native/main.cpp splat/itwom3.0.cpp
+
+# cross-ISA check: same source, two architectures, diff the rasters
+clang++ -arch x86_64 -O2 -std=gnu++11 -w -o splat_cli_x86 engine/driver.cpp \
+  engine/native/main.cpp splat/itwom3.0.cpp
 ```
 
 ## Related
