@@ -60,3 +60,42 @@ MNGATT sent 7 chunk(s) to []
 The first finding stands and is the whole problem. `to []` was still worth having:
 it is what showed the send had gone nowhere, which is why the silence could be
 chased to its cause rather than guessed at.
+
+## Re-measured with the bench quiet - it is not the iPad, and not a radio crash
+
+The first run had `:node-headless` on james-pc scanning and dialling the same
+radios throughout. Repeated with those stopped and nothing else changed:
+
+| | first run | bench quiet |
+| --- | --- | --- |
+| peers ready | 12 | 4 |
+| disconnects | 20 | 4 |
+| frames carried | **0** | **1** |
+
+```
+MNGATT sent 1 chunk(s) to [3FD7485B-0281-5300-C1CB-DFB2BD71A9EA]
+```
+
+So the iPad links, subscribes and **writes**. "Non-functional" was wrong; the
+catastrophic run was contention between two centrals dialling the same
+peripherals.
+
+**Not a radio crash either.** `rebootCount` read before and after the run on both
+radios: `/dev/ttyACM1` 1 → 1, `/dev/ttyACM2` 0 → 0. That eliminates the blocker
+the README records for Apple centrals against this firmware - the controller
+asserting ~200 ms in - as the cause here. Nothing rebooted.
+
+## What is left is one peer, not the bearer
+
+Every disconnect in the quiet run was the same peer, `9D91F3F2`, always
+`The connection has timed out unexpectedly.` The other peer stayed up.
+
+The two negotiate differently: `chunk=512` for the one that works, `chunk=244`
+for the one that times out. 512 is the nRF52 asking 517; 244 is the ESP32 shape.
+And [[esp32-demands-pairing-on-mesh-links]] records that ESP32 pulls every BLE
+mesh peer into MITM pairing where nRF52 does not - an iOS central meeting that
+would sit out its SMP timeout and drop, which is exactly what this looks like.
+
+**Corroborated, not established.** iOS gives peripheral UUIDs, not addresses, so
+the mapping is inferred from MTU. Powering the Cardputer down and re-running is
+what would settle it, and has not been done.
