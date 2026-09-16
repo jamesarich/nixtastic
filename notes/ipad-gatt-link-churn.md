@@ -112,6 +112,15 @@ firmware. It is not a reboot - `rebootCount` on the RAK has read 0 before, durin
 and after every run today - so whatever the controller does, it does not restart
 the device. The failure is a connection that times out, not a crash.
 
-**Next, and not done:** capture the nRF52 side while an iOS central connects.
-Its serial log during the attempt is what says whether the link is refused, hung,
-or dropped, and nothing measured so far distinguishes those.
+**Attempted, and the observable does not exist.** Capturing the nRF52 side while
+an iOS central connected produced 1537 lines with `debug_log_api_enabled` set and
+**not one BLE or GATT firmware line** - only the Python client's own debug output
+and nodeinfo. The Cardputer behaved the same way earlier. The LogRecord stream
+does not carry this subsystem, and the run also ended with
+`Meshtastic serial port disconnected ... (multiple access on port?)`, so the API
+port cannot be held open for a capture while anything else touches the radio.
+
+What would actually work, none of it done: a second UART on the nRF52, or a build
+with the BLE subsystem's log level raised and read over that UART, or a BLE
+sniffer capturing the SMP exchange - which is what would show whether the iOS
+central is being asked to pair and timing out.
