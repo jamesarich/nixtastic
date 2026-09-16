@@ -1,5 +1,9 @@
 # Ack authenticity: what is actually protectable
 
+Followed by [`ack-proof-pr1094.md`](./ack-proof-pr1094.md), the review of
+protobufs #1094, which implements the `ack_proof` half with all four changes
+below applied.
+
 Context: #11422 signs explicit acks under Strict and binds `request_id`/`reply_id` into the XEdDSA signing buffer. Separately Jonathan sketched a cheaper shared-key alternative, `ack_proof = truncate(SHA256(shared_key || request_id || "ack"), 8)`. I went through both against develop @ 3468af94a. The short version is that the retransmission threat both of them are aimed at cannot be fixed from the ack side at all, and there is a smaller property that is worth having and that only the ack-side work buys.
 
 ## The retry loop already stops without a key

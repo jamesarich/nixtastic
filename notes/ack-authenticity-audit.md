@@ -6,6 +6,9 @@ passes. Claims I made earlier and had to withdraw are marked at the end.
 
 PR #11422 is a draft, DIRTY, last touched 2026-08-12.
 
+Followed by [`ack-proof-pr1094.md`](./ack-proof-pr1094.md), the review of
+protobufs #1094, where Jonathan took all four `ack_proof` corrections below.
+
 ## State of play
 
 XEdDSA signing shipped in `v2.8.0.47db0e3` (alpha pre-release, 2026-09-01) with the
