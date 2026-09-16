@@ -51,10 +51,33 @@ peer waits behind it.
   cannot starve the *callbacks*; it does starve the other *connects*. A peer that
   accepts and then goes silent is the worst case and is now known to exist.
 
-## Not yet established
+## The database is right, so it is the response that is missing
 
-Whether the Apple peripheral has no mesh service in its GATT database at all - a
-`CBPeripheralManager` advertisement can name a service the database does not serve -
-or serves it with a characteristic that has no notify property, or only fails while
-backgrounded. Reading the iPad's GATT tree from `james-pc` once connected would
-separate those, and none of it needs the iPad on USB.
+Read from `james-pc` over a live connection, on `org.meshtastic.node.monitor`
+(MeshMonitor) on iPadOS 26.6.1:
+
+```
+MESH SERVICE  4d657368-4e6f-6465-4741-545400000001
+   char       4d657368-4e6f-6465-4741-545400000002
+   flags      write-without-response write notify extended-properties reliable-write
+   desc       00002900  (characteristic extended properties)
+   desc       00002902  (client characteristic configuration)
+```
+
+Calling `StartNotify` on that characteristic returns in 0.1 s with no error, and
+`Notifying` stays **false**. BlueZ issued the CCCD write and no answer came back.
+
+Ruled out:
+
+- **No mesh service.** It is there, at the right UUID.
+- **No notify property.** Present, with the CCCD beside it.
+- **Missing background entitlement.** `UIBackgroundModes` declares both
+  `bluetooth-central` and `bluetooth-peripheral`.
+- **App not running.** `MeshMonitor{CoreBluetooth}` logs `handlePeerMTUChanged`
+  as the central connects, so the process is alive and CoreBluetooth is live in it.
+
+What is left is the subscribe itself. CoreBluetooth answers a CCCD write without
+the application's help, so either the request is not reaching it or the link is
+gone by the time it would answer. The next reading is on the Apple side - whether
+a `CBPeripheralManager` is actually serving this database or the advertisement
+outlives the manager that published it.
