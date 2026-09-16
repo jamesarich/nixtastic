@@ -16,18 +16,28 @@ Attempting to connect to E8:48:B8:C8:20:00 ... Connection successful
 Discoverable, connectable, and serving both the mesh service and its
 characteristic. The peripheral half is sound.
 
-## What the timeout was, as far as the evidence goes
+## What the timeout was - my first answer was wrong
 
-The run that failed had three peers pending at once:
+The failing run had three peers pending at once:
 
 ```
 central=[dev_28_84_85_78_4E_ED:pending, dev_E8_48_B8_C8_20_00:pending, dev_ED_D2_65_9A_10_F7:pending]
 ```
 
-`Device1.Connect()` is a blocking D-Bus call and BlueZ does not dial in parallel,
-so with three in flight the last can exceed the reply timeout. That fits what was
-seen and is **not** established: it would take a run dialling one peer at a time
-to show the timeout goes away.
+I read that as three `Connect()` calls in flight, BlueZ not dialling in parallel,
+and the last exceeding its D-Bus reply timeout. **The code says otherwise.**
+`BluezGattLink` runs every connect on `Executors.newSingleThreadExecutor`, and
+says why:
 
-Recorded so the next session does not start from "peer GATT does not work". It
-does; a peer that times out under a fan-out of dials is a different question.
+```kotlin
+// One thread, not a pool: BlueZ serialises connects internally, and a queue here keeps a
+// slow connect from starving the callbacks that report the last one finishing.
+```
+
+So the dials were already serialised and `pending` is a bookkeeping state, not a
+call in flight. A peer waiting its turn cannot time out on D-Bus, because its
+`Connect()` has not been made yet.
+
+That leaves the timeout as what it says: **one peer's own `Connect()` took longer
+than dbus-java's reply timeout.** About that peer or that adapter, not about how
+many others were queued behind it - and nothing here identifies which.
