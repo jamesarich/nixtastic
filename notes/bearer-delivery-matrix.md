@@ -155,3 +155,30 @@ of each dropped as DUPLICATE.
 Measured, n=15 against the RAK4631: **15/15 outbound, 15/15 acknowledged, 13/15
 (86%) inbound** - against 15/15 and 14/15 before, so unchanged within
 over-the-air variance.
+
+## node-kmp's half of the relay fix, proven
+
+Two things blocked this and neither was the change.
+
+`rebroadcastMode` was never set by node-headless, so it took the library default
+`RebroadcastMode.NONE` and the node relayed nothing at all - `scheduleRelay` was
+unreachable and the first attempt could not have worked whatever the code did.
+`MESH_REBROADCAST_MODE` now says so, defaulting to NONE as before.
+
+The firmware author's own log was then the wrong observable: a Cardputer
+capturing `--listen` across the whole window carried **zero** `BLE GATT mesh`
+lines. `GattMeshTransport` now logs the peers that took each packet, and the
+excluded one beside them, because a relay that skipped its origin and a peer that
+quietly went away leave the same trace - none.
+
+With both in place, node-kmp relaying the Cardputer's own broadcast:
+
+```
+MNGATT sent 1 chunk(s) to [/org/bluez/hci0/dev_28_84_85_78_4E_ED, /org/bluez/hci0/dev_ED_D2_65_9A_10_F7]
+relayed[gatt] !3235af1d hops=6
+```
+
+`dev_28_84_85_78_4E_ED` is the Cardputer, `!3235af1d` is the Cardputer, and the
+relay went **back to it** with no `excluding` clause - which is the change. Three
+consecutive relays, all the same. Before it the line would have named that peer
+as excluded and reached only the RAK.
