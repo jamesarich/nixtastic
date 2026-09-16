@@ -147,6 +147,12 @@ sleep 10
 #
 # `via=` is the bearer the ACK came back on, not the one the message went out on,
 # so this is a total rather than a per-bearer figure. Run one bearer to attribute it.
+#
+# It is itself a floor when the RETURN path is lossy: a GATT run measured 4/6
+# outbound in the firmware's log and 0/6 acknowledged, because the delivery
+# succeeded and the acknowledgement did not. The two numbers bound the truth from
+# opposite sides - trust the higher one, and treat a gap between them as a
+# statement about the return path.
 acked=$(grep -oE "Delivered\(from=[0-9]+, requestId=[0-9]+" "$RUN/kmp.log" | sort -u | wc -l | tr -d ' ')
 
 decoded_total=0
