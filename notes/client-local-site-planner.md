@@ -555,12 +555,59 @@ or use a faster fixed-source libm. Not worth doing speculatively.
   not, so KMP common code still would not agree across targets — and it costs
   a reimplementation of the model to find that out.
 
-### So: native with a vendored libm, not wasm2c
+### Does any of this matter? Measured: no.
 
-The `wasm2c` route was the right answer only while a pinned libm looked like
-something only wasm could provide. It is not: vendoring nine functions gets
-the same bytes with no codegen hop, no sandbox indirection, and ordinary
-`.a`/`.so` packaging that every platform's tooling already understands.
+Before adopting the pinning, the question worth asking is what the *unpinned*
+divergence actually does to the output. Calgary, arm64 vs x86_64, platform
+libm, default flags:
+
+| Property | Result |
+| --- | --- |
+| **Coverage mask** | **byte-identical** — bit-stable with no pinning at all |
+| Signal bytes differing | 1,272 / 5,760,000 (0.0221 %) |
+| Magnitude of those | 1,262 at 1 dB, 9 at 2 dB, **1 pixel** at 3 dB |
+| Pixels landing on a different display colour (256-entry LUT) | **150** (0.0026 %) |
+| Pixels changing contour band — 8 bands | **31** (0.00054 %) |
+| — 16 bands | 47 (0.00082 %) |
+| — 32 bands | 104 (0.00181 %) |
+
+The mask — the thing that answers "is there coverage here" — is already
+bit-identical across architectures. The signal divergence is 150 visibly
+different pixels in 5.76 million, and at the contour resolution the apps
+actually consume, **31 to 104 pixels**. Against a model whose own prediction
+error is several dB, on 30–90 m terrain, with clutter as a single scalar.
+
+Nobody will ever site a node differently because of it.
+
+**So do not pin the maths by default.** Build native against the platform's
+libm, keep the tolerance gate that already exists and already passes, and
+spend nothing. The 33 % and the 22 vendored files buy an exact-equality test
+gate — a convenience for CI, not a correctness property — and add a trap
+(`-ffp-contract=off` must reach the vendored sources too) that caught me on
+the first attempt.
+
+The recipe is recorded below because it works and because it is the right
+answer *if* a concrete need ever appears: a support case that turns on
+reproducibility, a regulator, or a bionic result far worse than anything
+measured here. Not before.
+
+### Recommended packaging
+
+| Platform | Engine | Native code shipped |
+| --- | --- | --- |
+| Web | the existing wasm build | none |
+| Android | C++, NDK, `.so` per ABI | one library |
+| iOS | C++, static lib in an XCFramework | one library |
+| Desktop (JVM) | JNI to the same library, or Panama on JDK 22+ | one library |
+
+Plain C++ per target, platform libm, existing tolerance gate. The wasm build
+stays as the web target and as a free cross-check.
+
+<details>
+<summary>If pinning ever becomes necessary: vendoring musl's libm (tested, works)</summary>
+
+Vendoring nine functions gets the same bytes as wasm with no codegen hop and
+ordinary `.a`/`.so` packaging.
 
 | Platform | Engine | Native code shipped |
 | --- | --- | --- |
@@ -569,9 +616,7 @@ the same bytes with no codegen hop, no sandbox indirection, and ordinary
 | iOS | C++ + vendored musl, static lib in an XCFramework | one library |
 | Desktop (JVM) | JNI to the same library, or Panama on JDK 22+ | one library |
 
-The wasm build stays as the web target *and* as a free cross-check: if native
-and wasm keep producing identical bytes, that is two independent
-implementations agreeing on every pixel, every build.
+</details>
 
 <details>
 <summary>Superseded: the wasm2c plan</summary>
