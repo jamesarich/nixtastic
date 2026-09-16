@@ -99,3 +99,36 @@ One thing the pair of runs shows plainly: the `kmp->radio (min)` column read
 15/15 then 0/15 across the two runs after the fix. It is the sparse LogRecord
 floor and it is not a rate, exactly as the header says. The ack figure is now the
 stable one on this bearer, where before the fix it was the unreliable one.
+
+## What was actually running, and one measurement that was not what it looked like
+
+The "after" runs above were taken with a node-kmp jar built at 14:23 against a
+relay fix committed at 15:26. All three hosts held byte-identical copies, which
+is what made it look right: **matching hashes across hosts say the hosts agree,
+not that they are current.**
+
+Those runs are still valid for what they claimed - the firmware half, where the
+radio relays back to the node that wrote the packet. They never exercised
+node-kmp's own `scheduleRelay`, which was not in the jar.
+
+Re-run with everything current (node-kmp `5b73d5d5d617`, firmware `d38498c7a` on
+the RAK): gatt alone, n=15, **15/15 outbound, 15/15 inbound, 15/15 acknowledged**.
+Three runs at 15/15 acknowledged now.
+
+`nodeJar` stamps `git describe` into the manifest and the node prints it as its
+first line, so a log now says which commit produced it.
+
+### Fleet state, 2026-09-16
+
+| | build | carries the relay fix |
+| --- | --- | --- |
+| node-kmp on james-pc, uConsole, this Mac | `5b73d5d5d617` | yes |
+| RAK4631 `/dev/ttyACM2` `rak4631_blemesh` | firmware `d38498c7a` | yes |
+| M5Stack Cardputer `/dev/ttyACM1` `m5stack-cardputer-adv_blemesh` | older | **no** |
+| Seeed Xiao S3 `/dev/ttyACM0` `seeed-xiao-s3` | older, not a blemesh env | n/a |
+| meshtadpole (CH341 LoRa) | not plugged in | n/a |
+
+node-kmp's own relay change is unit-tested on both branches of the rule but is
+**not yet proven on hardware**: that needs two node-kmp nodes linked over GATT,
+and in a run with one on james-pc and one on the uConsole they never found each
+other - the uConsole's adapter saw only one peer the whole time. Not diagnosed.
