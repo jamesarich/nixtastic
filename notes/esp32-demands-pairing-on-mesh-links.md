@@ -14,10 +14,11 @@ design, exactly as on LoRa, and the channel PSK is the security.
 
 ## Why the two differ
 
-The nRF52 sets security **per characteristic** and opens the mesh service
-explicitly - `NRF52Bluetooth.cpp:395`, `meshBleService.setPermission(SECMODE_OPEN,
-SECMODE_OPEN)` - while each phone-API characteristic gets `SECMODE_ENC_NO_MITM`
-of its own.
+The nRF52 sets security **per attribute**. Note the naming trap: `meshBleService`
+in `NRF52Bluetooth.cpp` is the *phone API* service - it holds `fromNum`,
+`fromRadio` and `toRadio` - not the mesh-peer service. The mesh-peer service is
+`NRF52BLEGattMesh.cpp`, and it sets no security at all, which is why a BlueZ
+central holds an nRF52 link unpaired.
 
 The ESP32 sets security **for the device**. `NimbleBluetooth.cpp:1183-1197`:
 whenever `config.bluetooth.mode != NO_PIN` it calls

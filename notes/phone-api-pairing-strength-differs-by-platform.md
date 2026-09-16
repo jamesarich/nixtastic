@@ -1,4 +1,4 @@
-# The phone API demands a stronger link on ESP32 than on nRF52
+# The phone API demanded a stronger link on ESP32 than on nRF52
 
 Found 2026-09-15 while tracing why an ESP32 pulls BLE mesh peers into pairing.
 The same `config.bluetooth.mode` produces a different security *level* on the
@@ -41,6 +41,19 @@ explains the second half of why the platforms behave differently for a mesh
 peer: `notes/esp32-demands-pairing-on-mesh-links.md` covers the first half,
 which is that the ESP32's requirements are device-global.
 
-Worth raising upstream before changing anything here: the fix is a decision
-about what `bluetooth.mode` is supposed to promise, and it should be the same
-promise on both radios.
+## Resolved on the nRF52 side, 2026-09-16
+
+The nRF52 characteristics now take `SECMODE_ENC_WITH_MITM`, matching the service
+that already held them at that level and the DFU services beside them, so the
+passkey it displays has to be proven. Existing Just Works pairings must pair
+again.
+
+ESP32 cannot follow. Its MITM requirement is device-global, and that is exactly
+what drags a mesh peer which never touches the phone API into passkey pairing -
+see `esp32-demands-pairing-on-mesh-links.md`. So the platforms still differ, but
+now deliberately and for a stated reason rather than by accident.
+
+Also worth recording, because it misled this note when first written:
+`meshBleService` in `NRF52Bluetooth.cpp` is the phone-API service, not the
+mesh-peer service. The mesh-peer service is `NRF52BLEGattMesh.cpp` and carries no
+security.
