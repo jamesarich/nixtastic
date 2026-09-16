@@ -452,6 +452,60 @@ this is a tight numeric loop over 9,600 radials, the worst case for it.)
 Chicory's output is nonetheless **byte-identical to Node/V8**, which is
 what makes the determinism claim above as strong as it is.
 
+### What is actually in the wasm that native code cannot replicate
+
+Nothing algorithmic. The module is the *same* C++ — `driver.cpp` plus
+unmodified `itwom3.0.cpp` — compiled by a different backend. There is no
+logic in it that a native library or a KMP library could not contain.
+
+What it has is **a pinned maths library**. And that surface is tiny. Every
+libm call in the whole engine, kernel included:
+
+| Function | Calls | Bit-exact across implementations? |
+| --- | --- | --- |
+| `sqrt` | 55 | **yes** — IEEE 754 requires correct rounding |
+| `floor`, `fabs` | 15 | **yes** — exact by definition |
+| `exp`, `pow`, `log10`, `log`, `cos`, `sin`, `acos`, `atan`, `asin` | 178 | **no** — IEEE does not require correct rounding for transcendentals |
+
+So **nine functions** are the entire source of implementation-defined
+behaviour. wasm is deterministic here only because emscripten compiles
+musl's versions of those nine *into* the module.
+
+Measured, to be sure it is libm and not codegen: rebuilding both
+architectures with `-ffp-contract=off` — the flag that should remove
+FMA-fusion differences — leaves them **still disagreeing**, 1,278 of
+5,760,000 bytes against 1,272 with contraction on. Essentially unchanged, and
+the mask stays bit-identical either way. (It does perturb arm64 enough to
+stop matching the committed golden, which incidentally shows the goldens were
+generated with contraction *on*.)
+
+Since both those builds use Apple's libm on one machine, and Apple ships
+separately tuned implementations per architecture, the residual divergence is
+the maths library — exactly what the wasm result implies.
+
+**Which means the determinism is replicable natively.** Compile the C++ for
+each target, `-ffp-contract=off`, and link against a **vendored** fixed-source
+libm for those nine functions instead of the platform's. That is what wasm
+does; there is no reason a normal static library cannot do the same thing, at
+full native speed, with no sandbox, no `wasm2c`, and no extra codegen step.
+Untested here — it is the experiment worth running before committing to
+either route.
+
+### Why not KMP
+
+- **Kotlin/Native** would reach the engine through cinterop — the C++ still
+  has to be there, because `itwom3.0.cpp` must stay frozen — and
+  `kotlin.math` maps to the platform's libm, so it inherits the same
+  divergence with an extra layer on top.
+- **A pure-Kotlin port** would mean re-deriving the ITM model in Kotlin. That
+  is the one thing this document says not to do: it discards the frozen
+  oracle and every golden with it.
+- A curiosity that does not rescue it: the JVM's `StrictMath` *is* specified
+  to be bit-reproducible (it reproduces fdlibm exactly), so a pure-Kotlin/JVM
+  port would be deterministic on the JVM. `kotlin.math` on Kotlin/Native is
+  not, so KMP common code still would not agree across targets — and it costs
+  a reimplementation of the model to find that out.
+
 ### So: wasm2c on both platforms
 
 | Platform | Execution | Native code shipped |
