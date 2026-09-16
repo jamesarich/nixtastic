@@ -41,12 +41,22 @@ MNGATT sent 7 chunk(s) to []
    `4931417D` is dropped by the peer. Different reasons, so probably different
    causes, and neither is diagnosed.
 
-2. **A node whose links are all down at startup says nothing and never retries.**
-   The startup NodeInfo went out while no peer was ready, `broadcast()` carried
-   it on nothing, and no send followed in 200 s. On a bearer that churns this
-   badly, that means silence rather than degraded delivery. Worth deciding
-   whether a carried-by-nothing broadcast should be re-queued when a peer next
-   turns ready.
+2. ~~**A node whose links are all down at startup says nothing and never
+   retries.**~~ **Resolved: firmware parity, not a defect.** `BroadcastPolicy`
+   announces after `initialDelay = 2.seconds` and then every
+   `nodeInfoInterval = 3.hours`, which is firmware's
+   `default_node_info_broadcast_secs`. The `to []` is that first announcement
+   firing before any link came up, and three hours is genuinely the next
+   scheduled one.
 
-Both were invisible until `GattMeshTransport` began logging the peers each
-packet reached - `to []` is the whole of the second finding.
+   Nor should link-up trigger one: firmware's `sendOurNodeInfo` is called when it
+   **hears** somebody - a received NodeInfo, a request, the phone asking, a
+   `want_ack` reply - and the GATT mesh handler has no announce-on-connect path
+   at all. A node that hears nothing says nothing, on either implementation.
+
+   So the silence is a symptom of finding 1, not a second finding. On a bearer
+   whose links hold, the first thing heard draws a reply.
+
+The first finding stands and is the whole problem. `to []` was still worth having:
+it is what showed the send had gone nowhere, which is why the silence could be
+chased to its cause rather than guessed at.
