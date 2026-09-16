@@ -112,18 +112,34 @@ sleep 3
 # to scan, dial, resolve services and subscribe, and against a firmware peer that
 # measured 93 seconds - three times the old `sleep 25`, so every outbound message
 # went out before the link existed and the bearer scored 0% while working.
+# Wait for THIS radio, not for any peer. `:ready` matches whichever device linked
+# first, and on a bench with several mesh peers that is routinely not the one under
+# test - the radio came up 79 s after the first send in one run here, so the whole
+# outbound phase went out before its link existed and the bearer scored 0/15.
+#
+# The node names a peer it has identified as `peer[<bearer>] !<nodeid>`, so the
+# radio's own id from --info is the exact thing to wait for.
+radionum=$(timeout 40 meshtastic --port "$PORT" --info 2>/dev/null |
+  grep -oE '"myNodeNum": *[0-9]+' | grep -oE '[0-9]+$')
+radiohex=$(printf '%08x' "${radionum:-0}")
+
 waited=0
-while [ "$waited" -lt "${READY_TIMEOUT:-150}" ]; do
+while [ "$waited" -lt "${READY_TIMEOUT:-180}" ]; do
   ready=1
   grep -q "avail\[" "$RUN/kmp.log" 2>/dev/null || ready=0
-  case ",$BEARERS," in
-    *,gatt,*) grep -q ':ready' "$RUN/kmp.log" 2>/dev/null || ready=0 ;;
-  esac
+  if [ "$radionum" != "" ] && [ "$radionum" != "0" ]; then
+    grep -q "!$radiohex" "$RUN/kmp.log" 2>/dev/null || ready=0
+  fi
   [ "$ready" = 1 ] && break
   sleep 5
   waited=$((waited + 5))
 done
-echo "bearers settled after ${waited}s"
+if [ "$ready" = 1 ]; then
+  echo "radio !$radiohex seen by the node after ${waited}s"
+else
+  echo "WARNING: the node never named radio !$radiohex in ${waited}s - measuring anyway,"
+  echo "         and a zero here says nothing about the bearer."
+fi
 sleep 5
 
 kmpnode=$(grep -oE 'node [^ ]+ \(!([0-9a-f]+)\)' "$RUN/kmp.log" | head -1 | grep -oE '[0-9a-f]{8}')
