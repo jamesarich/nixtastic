@@ -142,3 +142,29 @@ Taken with the contention result above, the whole thread resolves the same way:
 many other centrals were dialling the same radios.** What is not established is
 where the limit is - the radio logs `no spare adv set (0x4), sharing the phone's`,
 so advertising-set pressure is the thing to measure next, not the link itself.
+
+## Why two centrals churn: there are two slots, and the phone holds one
+
+Not a defect - a declared capacity. `NRF52Bluetooth::setup`:
+
+```cpp
+// Two peripheral links: the phone and one mesh peer.
+Bluefruit.begin(2, 1);
+```
+
+Two peripheral links total on the nRF52, and the design reserves one for the
+phone. So **one mesh central at a time** is what the radio offers. The iPad and
+james-pc's node were competing for a single slot, which is why 20 disconnects
+became 4 when the Linux node stopped, and 0 when nothing else was dialling.
+
+The radio's own `no spare adv set (0x4), sharing the phone's` is the same
+constraint showing up in advertising rather than connections.
+
+This is the exposure [`gatt-bearer-security-posture.md`](./gatt-bearer-security-posture.md)
+names as the one real one: a stranger who bonds occupies the only mesh slot. It
+is not mitigated, and it is the same resource whether the occupant is hostile or
+just a second bench host.
+
+Worth deciding, not assumed: whether a mesh bearer that offers one central at a
+time is the intended shape, or whether the phone's reservation should yield when
+no phone is connected. That is a firmware design question, not a bug to fix here.
