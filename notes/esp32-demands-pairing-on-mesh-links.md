@@ -43,6 +43,21 @@ Every client that dials an ESP32 mesh peer is pulled into MITM pairing:
 So the BLE GATT mesh bearer does not currently work between a BlueZ node and an
 ESP32 node, while the same central holds an nRF52 node cleanly.
 
+## Proven by the switch
+
+Setting `bluetooth.mode = NO_PIN` on the same Cardputer, changing nothing else,
+flips every symptom in one run:
+
+| | `RANDOM_PIN` | `NO_PIN` |
+| --- | --- | --- |
+| `declined RequestAuthorization` | 13 | 0 |
+| Cardputer peer state | never held | `ready`, 7 consecutive status lines |
+| faults naming it | 17 | none |
+
+That is the `config.bluetooth.mode != NO_PIN` branch at
+`NimbleBluetooth.cpp:1183` and nothing else: it is the only thing the switch
+changes.
+
 ## Open
 
 Whether the ESP32 should follow the nRF52's per-characteristic model is a
