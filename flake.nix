@@ -1297,6 +1297,16 @@
             text = builtins.readFile ./scripts/meshbench.sh;
           };
 
+          # nix run .#iosdeploy -- [UDID] - build and install the iOS app,
+          # linking the framework first. xcodebuild alone links whatever Gradle
+          # last produced and says nothing when that is stale - one was nine days
+          # old, and results "verified on device" had no such change in them.
+          iosdeploy = pkgs.writeShellApplication {
+            name = "meshtastic-iosdeploy";
+            runtimeInputs = [ pkgs.coreutils ];
+            text = builtins.readFile ./scripts/iosdeploy.sh;
+          };
+
           # nix run .#meshprobe -- [host] [KEY=VALUE ...] - one bearer's own
           # account of itself: every availability transition, its counters and
           # its faults.
@@ -1459,6 +1469,7 @@
             pr
             meshbench
             meshprobe
+            iosdeploy
             ;
           bootstrap-sdk = bootstrapSdk;
           default = sync;
