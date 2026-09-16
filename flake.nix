@@ -1286,14 +1286,35 @@
           # was linted by nothing and had two bugs that silently reported 0%.
           meshbench = pkgs.writeShellApplication {
             name = "meshtastic-meshbench";
+            # No pkgs.openssh - see meshprobe: it cannot parse an Apple
+            # ~/.ssh/config, and this tool only ever talks to the bench host.
             runtimeInputs = [
-              pkgs.openssh
               pkgs.coreutils
             ];
             runtimeEnv = {
               NIXTASTIC_BENCH_REMOTE = "${./scripts/mesh-bench-remote.sh}";
             };
             text = builtins.readFile ./scripts/meshbench.sh;
+          };
+
+          # nix run .#meshprobe -- [host] [KEY=VALUE ...] - one bearer's own
+          # account of itself: every availability transition, its counters and
+          # its faults.
+          #
+          # Delivery is not the whole story. A bearer can carry every frame and
+          # still tell its collectors it is unavailable on the way up, which is
+          # what a UI and a bearer chip both read.
+          meshprobe = pkgs.writeShellApplication {
+            name = "meshtastic-meshprobe";
+            # Deliberately not pkgs.openssh: nixpkgs' OpenSSH rejects Apple's
+            # UseKeychain outright ("Bad configuration option"), so on a Mac
+            # whose ~/.ssh/config carries it every connection dies before it
+            # dials. writeShellApplication only prepends to PATH, so the host's
+            # own ssh - which understands its own config - is what runs.
+            runtimeInputs = [
+              pkgs.coreutils
+            ];
+            text = builtins.readFile ./scripts/meshprobe.sh;
           };
 
           pins = pkgs.writeShellApplication {
@@ -1437,6 +1458,7 @@
             pins
             pr
             meshbench
+            meshprobe
             ;
           bootstrap-sdk = bootstrapSdk;
           default = sync;
