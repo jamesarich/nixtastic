@@ -70,14 +70,58 @@ Nothing else in the capture needs it - Device Name (0x0003) and Appearance
 triggers security. Unverified until it runs; the causal chain is measured, the
 remedy is not.
 
-## Two things the capture also shows
+## The same shape, mirrored, on james-pc
 
-- **No ATT 0x0e anywhere.** The failure in
-  [`bluez-peripheral-subscribe-att-0x0e.md`](./bluez-peripheral-subscribe-att-0x0e.md)
-  did not reproduce here, because this capture is iPad-to-uConsole; `james-pc`
-  never appears in it. That isolation still needs its own capture.
-- **A TP-Link LE Audio device (`E8:48:B8:C8:20:00`)** - Microphone Control,
-  Volume Control, Broadcast Audio Scan - dials the uConsole every 5-10 s, gets
-  a `User Confirmation Negative Reply` and disconnects, restarting advertising
-  each time. Who sends that reply is not settled: it lands ~90 us after the
-  event, which is fast for a D-Bus round trip to our agent but not impossible.
+`E8:48:B8:C8:20:00` in that capture is **james-pc's own Realtek adapter** - btmon
+prints "TP-Link Systems Inc" from the OUI registry, which is not the vendor of
+the dongle. So james-pc is in the capture after all, and it fails the same way
+with the roles swapped:
+
+```
+#176  ATT: Read Request    Handle: 0x0015  f36b109d-66f2-a9a1-1241-6838dbe57277
+#177  ATT: Error Response  Error: Insufficient Encryption (0x0f)
+      ... SMP ... User Confirmation Negative Reply ...
+#188  HCI Disconnect       Reason: Authentication Failure
+```
+
+Handle 0x0015 is inside **james-pc's Microphone Control service (0x0013-0x0016)**
+- PipeWire/WirePlumber's LE Audio GATT server. It demands encryption, the
+uConsole's bluetoothd probes it because probing is unconditional, and the link
+dies. Six times in the capture, on a 5-10 s cycle.
+
+So it is not one plugin and not one peer. **Any service on either side that
+demands encryption will drag a mesh link into a pairing it does not need, and
+BlueZ tears the link down when that pairing fails.** The iPad's Battery Level
+and james-pc's LE Audio are two instances of one bug.
+
+## Which means `-P battery` is the wrong fix
+
+It removes one trigger out of many and asks the user for root to enable meshing,
+which is not a thing a mesh app may require. The fix has to be application-level
+and has to make the pairing *succeed quietly* rather than remove its causes one
+at a time. Candidates, untested:
+
+- Set `Device1.Trusted = true` on a dialled mesh peer, which is what BlueZ's
+  Just Works repair policy consults before it asks any agent.
+- Make the agent's accept path actually reached. It is: the central logs
+  `4 x accepted RequestAuthorization without authentication`. The uConsole side
+  in this capture answered `User Confirmation Negative Reply` ~90 us after the
+  event, which is too fast for a D-Bus round trip to the JVM, so on that host
+  BlueZ answered for itself - `new_auth()` returns NULL and BlueZ replies
+  negatively when no default agent is available.
+
+## Still open
+
+**No ATT 0x0e is in this capture**, because it is the peripheral's HCI and the
+error is raised toward the central. Reproduced on demand 2026-09-16 with both
+ends on `meshnode-headless`: the peripheral logs `subscribers=[bluez-subscribers]`
+- its `StartNotify` ran - while the central logs
+`BlueZ refused StartNotify (ATT error: 0x0e)` for the same link, and the
+subscriber lives ~32 s, the pairing-timeout lifetime above.
+
+BlueZ raises `BT_ATT_ERROR_UNLIKELY` (0x0e) from `gatt-server.c` when
+`gatt_db_attribute_write()` finds no write handler on the addressed attribute -
+so the central is writing a CCCD handle the peripheral's database does not treat
+as one. A stale cached GATT database on the central would do that, and so would
+a handle that moved: the uConsole indicated `Service Changed 0x003c-0x0043` on
+connect, and the mesh CCCD sits at 0x0043. Needs a capture on the **central**.
