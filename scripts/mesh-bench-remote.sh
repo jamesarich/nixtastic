@@ -81,6 +81,18 @@ else
   echo "         so anything the radio sends on a keyed channel will not decode."
 fi
 
+# Which jar this actually ran, because it is not necessarily the one just built.
+# meshbench takes whatever sits at $KMP while a hand-driven test usually ships its
+# own elsewhere, and the two drifted apart for most of a session here - several
+# results were measured against a jar predating the fixes they were testing.
+KMPJAR="$KMP/node-headless/build/libs/meshnode-headless.jar"
+if [ -f "$KMPJAR" ]; then
+  echo "jar $(date -r "$KMPJAR" '+%Y-%m-%d %H:%M') $(md5sum "$KMPJAR" | cut -c1-12) $KMPJAR"
+else
+  echo "ABORT: no jar at $KMPJAR"
+  exit 2
+fi
+
 # The outbound row is counted from the FIRMWARE's own log line, which reaches this
 # host only as a protobuf LogRecord over the phone API - `meshtastic --listen`
 # otherwise prints the Python client's debug output and nothing of the radio's.

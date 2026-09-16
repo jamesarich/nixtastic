@@ -25,6 +25,9 @@ usage: meshbench [host] [KEY=VALUE ...]
   NODE=bench          node-kmp node name
   CHANNEL_URL=...     channel URL for the node; read off the radio when unset
 
+The run prints the jar's timestamp and hash. It runs whatever sits under KMP on
+the bench host - build and copy it there yourself; this does not ship one.
+
 Prints a per-bearer, per-direction delivery matrix, counting decoded messages
 rather than frames. One run covers every enabled bearer: node-kmp broadcasts on
 all of them and the radio stamps each arrival with its transport, so the outbound
