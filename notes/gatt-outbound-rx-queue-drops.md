@@ -53,3 +53,29 @@ total. The mechanism is confirmed; its exact contribution is not.
 
 Measure the share first: the right fix depends on whether this is most of the
 loss or a fraction of it.
+
+## The ring is not the fix - tested
+
+Raised `BLE_GATT_MESH_RX_QUEUE_SIZE` from 6 to 24 (RAM 41.1% -> 44.9%, an extra
+9 KB; each slot is a 516-byte `RxChunk` regardless of the 43-byte writes that were
+being dropped), flashed, and re-ran the same n=15 measurement:
+
+```
+ring 6    kmp->radio 4/15     radio->kmp 15/15
+ring 24   kmp->radio 0/15     radio->kmp 15/15
+```
+
+Not an improvement, and **not a controlled comparison either**: the ring-24 run
+produced *zero* `BLE GATT mesh` log lines against twenty-four before, so the
+firmware side said nothing at all. 4 versus 0 out of 15 is within the noise of a
+log stream that sparse.
+
+What it does establish is that the queue depth is not what caps outbound delivery
+at roughly a quarter - nine more kilobytes of ring bought nothing. Reverted; the
+bench is back on the committed six-slot build.
+
+So the drops are real and are **not** the whole story. The next measurement has to
+count what the firmware *accepts*, which needs a counter it does not currently
+keep - `pushRx` logs only on drop. A periodic accepted/dropped pair in the
+handler's status would settle it and would not depend on the log stream carrying
+every line.
