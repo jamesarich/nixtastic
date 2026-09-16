@@ -140,14 +140,23 @@ Both `engine/build.sh` and `engine/build_native.sh` pass `-std=gnu++11 -w`.
 Not "a few warnings disabled" — all of them, on a 2011 FORTRAN translation,
 for the life of the project.
 
-Run this session: a `-fsanitize=undefined` build over Calgary with real
-terrain (4 pages, relief to 3,145 m, 9,600 radials) reports **zero findings**.
-Verified non-vacuous with a control program that does fire. This is the best
-possible phase-0 result and it de-risks the port considerably.
+Run this session over Calgary with real terrain (4 pages, relief to 3,145 m,
+9,600 radials):
 
-Two caveats. It is **UBSan only** — the ASan build is still outstanding. And
-building it exposed a workspace trap worth its own line: **the Nix clang
-21.1.8 produces a silently non-functional sanitizer binary on darwin.** It
+| Build | Result |
+| --- | --- |
+| `-fsanitize=undefined` | **zero findings** |
+| `-fsanitize=address` | **zero findings** |
+
+Both verified non-vacuous: UBSan against a control program that does fire,
+and ASan by confirming its build still reproduces the golden byte-for-byte —
+which matters, because the failure mode below is a binary that silently
+executes nothing. This is the best available phase-0 result and it de-risks
+the port considerably.
+
+One caveat, and it is a workspace trap worth its own line. Building these
+exposed that a workspace trap worth its own line: **the Nix clang 21.1.8
+produces a silently non-functional sanitizer binary on darwin.** It
 compiles and links, then runs nothing at all — no output even on the
 missing-argument path, and a 25-minute run that ended in a timeout with a
 0-byte log. Apple's `/usr/bin/clang++` works. Same class as the `.#apple`
@@ -385,7 +394,7 @@ publish artifacts from there — worse ergonomics, no blocker.
 
 | # | Work | Output |
 | --- | --- | --- |
-| **0** | ~~UBSan over the native build~~ **done — clean**. Remaining: ASan; commit the `.s16` terrain so the CLI reproduces goldens from a clean checkout (finding 5); widen the corpus — HD, antimeridian, high latitude. | A corpus wide enough to port against. ~1 day. |
+| **0** | ~~UBSan + ASan over the native build~~ **done — both clean**. Remaining: commit the `.s16` terrain so the CLI reproduces goldens from a clean checkout (finding 5); widen the corpus — HD, antimeridian, high latitude. | A corpus wide enough to port against. ~1 day. |
 | **1** | New `core/` + `abi/` + CMake presets; golden gate green on x86_64 **and** arm64, reporting the difference *distribution*, not just pass/fail. | The engine, measured, on two architectures. |
 | **2** | Terrain transform into `core/`; web app calls it via wasm; `srtm.ts`'s transform deleted. | One terrain implementation. |
 | **3** | Android: prefab AAR, JNI shim, Kotlin API, on-disk page cache, in-app golden parity test. `SitePlannerRunner.kt` deleted. | Coverage on-device, both flavours. |
@@ -449,6 +458,8 @@ pnpm exec vitest run test/golden --reporter=verbose
 env -u DEVELOPER_DIR -u SDKROOT -u CC -u CXX -u NIX_CC PATH="/usr/bin:/bin" \
   clang++ -O1 -g -std=gnu++11 -w -fsanitize=undefined \
   -o engine/build/splat_cli_ubsan engine/driver.cpp engine/native/main.cpp splat/itwom3.0.cpp
+# ...and confirm the instrumentation is live, or a clean result means nothing:
+#   int main(){ int x=1,s=33; return x<<s; }   must report a runtime error
 
 # cross-ISA check: same source, two architectures, diff the rasters
 clang++ -arch x86_64 -O2 -std=gnu++11 -w -o splat_cli_x86 engine/driver.cpp \
