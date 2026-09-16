@@ -55,6 +55,27 @@ that happens once at channel creation is not established, and guessing it wrong
 costs the case that works today. It needs reading `Channels::getName` against the
 firmware this image was built from, not inference from the URL.
 
+## Proven, on a channel with a name
+
+Give the peer an explicit channel name and the whole substitution question goes
+away - the hash is over a name both ends can see:
+
+```
+meshtastic --host 127.0.0.1 --ch-index 0 --ch-set name UdpBench
+```
+
+node-kmp then joins by URL and the bearer runs **both ways against real firmware
+code**:
+
+```
+channel 'UdpBench' from MESH_CHANNEL_URL, 1 in the set
+meshtasticd -> node   6/6
+node -> meshtasticd   3/3
+```
+
+So a bench UDP run should always name its channel. A blank name is only
+ambiguous because both ends have to guess the same substitution.
+
 ## Bench recipe
 
 ```

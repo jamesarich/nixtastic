@@ -27,8 +27,11 @@ fresh IGMP membership for the group, or that rate-limits it.
 
 - **A UDP bearer test needs both peers on the same segment.** Wired-to-wired is
   the reliable pair. The uConsole cannot be the UDP peer while it is on wifi.
-- Plug the meshtadpole into the **same switch as james-pc**, not wifi: that gives
-  the wired pair this test has been missing.
+- The peer to use is a `meshtasticd` container on `james-pc` itself
+  (`--net=host`), which is one host and so has no wireless hop at all - see
+  [`udp-group-and-preset-parity.md`](./udp-group-and-preset-parity.md).
+  **meshtadpole is not a network host**: it is the CH341 LoRa stick
+  (`1a86:5512`) on the desktop hub, which is what gives node-kmp its LoRa bearer.
 - A one-packet result proves nothing here. Both nodes broadcast a single NODE_INFO
   at startup, so `rx=0 tx=1` is within the loss this path shows anyway - drive
   sustained traffic through the phone API before reading anything into it.
