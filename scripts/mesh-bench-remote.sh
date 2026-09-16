@@ -86,6 +86,7 @@ for i in $(seq 1 "$SENDS"); do
 done
 sleep 10
 
+decoded_total=0
 printf '\n%-10s %16s %16s\n' bearer 'kmp->radio' 'radio->kmp (first)'
 for t in 1 9 10 6; do
   b=$(bearer_of_transport "$t")
@@ -98,11 +99,24 @@ for t in 1 9 10 6; do
     udp) inn=$(( $(count 'rx\[udp\] text' "$RUN/kmp.log") - before_udp )) ;;
     *) inn=0 ;;
   esac
+  decoded_total=$(( decoded_total + out + inn ))
   printf '%-10s %6s/%-7s %6s/%-7s\n' "$b" "$out" "$SENDS ($(pct "$out" "$SENDS"))" "$inn" "$SENDS ($(pct "$inn" "$SENDS"))"
 done
 
 echo
-echo "-- bearer counters --"; grep -oE 'bearers .*rx=[0-9]+ tx=[0-9]+' "$RUN/kmp.log" | tail -1
+counters=$(grep -oE 'bearers .*rx=[0-9]+ tx=[0-9]+' "$RUN/kmp.log" | tail -1)
+echo "-- bearer counters --"; echo "$counters"
+
+# A row of zeros beside non-zero rx counters is the signature of a channel
+# mismatch, not a dead link: the bearer carried the frames and no key opened
+# them. Saying so here is the difference between a five-minute check and
+# re-measuring a link that was never broken.
+if [ "$decoded_total" -eq 0 ] && printf '%s' "$counters" | grep -qE 'rx=[1-9]'; then
+  echo
+  echo "NOTE: frames arrived but none decoded, so this run measured nothing."
+  echo "      The node and the radio are not on one channel+PSK - compare the"
+  echo "      radio's 'Primary channel URL' with the node's MESH_CHANNEL."
+fi
 echo "-- one packet carried onto several bearers by the radio --"
 grep -ohE 'decoded message \(id=0x[0-9a-f]+[^"\\]*transport = [0-9]+' "$RUN/radio.log" 2>/dev/null |
   sed -E 's/.*id=(0x[0-9a-f]+).*transport = ([0-9]+)/\1 \2/' | sort -u |
