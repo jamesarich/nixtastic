@@ -1,5 +1,7 @@
 # The iPad advertises the mesh service and never answers a subscribe
 
+**FIXED 2026-09-16** - the characteristic needed the readable permission; see the end.
+
 Measured 2026-09-16 from `james-pc` running `meshnode-headless` as
 `CENTRAL_ONLY`, against an iPad running the Apple node.
 
@@ -121,3 +123,45 @@ CBMutableCharacteristic(
 Apple's reference for that initialiser does **not** state that notify requires the
 read permission, so this is a hypothesis and not a citation. It is testable: add
 `CBAttributePermissionsReadable`, deploy, and re-run this exact pair of traces.
+
+
+## Fixed: the characteristic needed to be readable
+
+```kotlin
+permissions = CBAttributePermissionsReadable or CBAttributePermissionsWriteable
+```
+
+It declared `notify` with the write bit alone, and CoreBluetooth delivered no
+`didSubscribeTo` at all. With the readable bit added, built and installed to the
+iPad (iPadOS 26.6.1, `devicectl device install app`):
+
+```
+MNGATT didReceiveWrite 10B control
+MNGATT central subscribed 4931417D maxUpdate=512 negotiated=244
+```
+
+Three runs, a subscribe in each, where every run before had none. The HELLO
+arrives as a write, so the peripheral both subscribes and receives.
+
+Apple's reference for that initialiser does not state the requirement. This is
+measured, not cited.
+
+## What it did not fix: the link does not last
+
+Eight texts sent after the subscribe did not arrive, and the reason is not the
+subscribe. The link flaps:
+
+```
+ready 17:09:47 -> gone 17:09:54    7 s
+ready 17:11:18 -> gone 17:11:41   23 s
+```
+
+The HELLO and the subscribe land in the first seconds; anything later falls in a
+gap. Seven and twenty-three seconds is not cleanly the ~30 s pairing timeout from
+[`bluez-mesh-link-torn-down-by-profile-probes.md`](./bluez-mesh-link-torn-down-by-profile-probes.md),
+so that mechanism is a candidate rather than the answer. The iPad's address
+rotation is the other - `4E:1E:…`, `57:AC:…`, `7A:E1:…`, `54:00:…`, `74:74:…`
+over one session, and a rotation invalidates the connection.
+
+Separating them needs the link lifetime measured against a peer that does **not**
+rotate, and against one whose bluetoothd has the probe profiles disabled.
