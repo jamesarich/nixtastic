@@ -113,12 +113,24 @@ a refusal, nothing. In one run here the central spent 95 s talking to a stranger
 while the node it was paired with sat two feet away advertising.
 
 `bluetoothctl remove` restored it, and the mesh UUID came back on the next
-session. `Adapter1.RemoveDevice` is unprivileged, so the node can do this itself -
-but not from the path that exists today, because a peer that is never *reserved*
-never accumulates the refusals that would trigger it. **Open.** The gate probably
-has to trust the discovery filter - `SetDiscoveryFilter(UUIDs=[mesh])` is already
-set, so a device BlueZ reports during that discovery matched by advertisement -
-rather than re-reading a property the cache can poison.
+session. `Adapter1.RemoveDevice` is unprivileged, so the node could do this
+itself - but **two candidate fixes were tried on paper and both are wrong**, so
+this is open rather than merely unwritten:
+
+- *Trust the discovery filter.* `SetDiscoveryFilter(UUIDs=[mesh])` is already set,
+  so a device reported during discovery matched by advertisement - except BlueZ
+  merges the filters of every client, so one unfiltered `bluetoothctl scan on`
+  elsewhere makes this dial every device in range. A connect is what drags a
+  stranger into a bond, which is the failure at the top of this note.
+- *Report any paired peer whose UUIDs lack the mesh service.* True of every paired
+  headset, keyboard and phone on the host, so it is a fault per innocent device.
+
+The discriminator that would make either safe - "this peer serves the mesh but its
+cached list no longer says so" - cannot be had without connecting, which is the
+thing being gated. A within-one-run version is possible: remember peers whose
+services resolved to the mesh service, and report only those whose UUIDs later
+stop naming it. That catches the transition, not a poisoned cache inherited from
+a previous run.
 
 Disabling probe profiles is a packaging concern if anyone wants it - a
 `bluetooth.service.d` drop-in in meshtasticd's deb, root at install time - never
