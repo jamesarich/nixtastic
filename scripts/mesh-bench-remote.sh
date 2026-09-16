@@ -115,6 +115,21 @@ echo "bearers settled after ${waited}s"
 sleep 5
 
 kmpnode=$(grep -oE 'node [^ ]+ \(!([0-9a-f]+)\)' "$RUN/kmp.log" | head -1 | grep -oE '[0-9a-f]{8}')
+
+# Every outbound send goes to 127.0.0.1's phone API, and anything else holding that
+# port answers instead - a meshtasticd container on --net=host will. The node then
+# transmits nothing and the bearer reads 0% while working.
+owner=$(timeout 40 meshtastic --host 127.0.0.1 --info 2>/dev/null | grep -m1 '^Owner:')
+case "$owner" in
+  *"${NODE:-bench}"*) ;;
+  *)
+    echo "ABORT: 127.0.0.1's phone API is not this run's node."
+    echo "       expected ${NODE:-bench}, got: ${owner:-no answer}"
+    echo "       something else holds tcp 4403 - ss -lntp | grep 4403"
+    teardown
+    exit 2
+    ;;
+esac
 echo "run $RUN   bearers $BEARERS   node !${kmpnode:-unknown}   $SENDS per direction"
 
 # Outbound: node-kmp broadcasts on every bearer; the radio's log says which arrived.
