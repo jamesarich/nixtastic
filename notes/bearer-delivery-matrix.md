@@ -46,3 +46,40 @@ is already 100%, so nothing is hidden there.
 
 Every one of those was the rig, not the bearer. Check `enabled_protocols`, the
 channel, and what holds `tcp 4403` before reading anything into a zero.
+
+## Re-measured 2026-09-16 after the BlueZ extraction
+
+`:node-bluez` took the D-Bus session and the adapter probe out of both Linux
+bearers (`ea8cb3d`), so both were re-run against the same RAK4631 to show the
+refactor cost nothing. Same script, same radio, n=15, and the jar's md5 was
+checked on the bench against the one built here - `de2a3394ea71` both ends.
+
+| bearer | outbound | inbound | before |
+| --- | --- | --- | --- |
+| gatt, run 1 | 15/15 (100%) | 14/15 (93%) | 14/15 · 15/15 |
+| gatt, run 2 | 13/15 (86%) | 15/15 (100%) | " |
+| ble-adv | 13/15 (86%) | 15/15 (100%) | 10/15 · 12/15 |
+| both together | **15/15 ACK** | 15/15 | - |
+
+Both bearers are at or above where they were. Nothing regressed.
+
+### The ACK column and the data column disagree on GATT
+
+Worth separating from the numbers above, because it is not a delivery figure.
+
+With **both** bearers on, the radio acknowledged 15/15. With **gatt alone** it
+acknowledged 1/15, then 3/15 on a repeat - while the firmware's own log recorded
+decoding 15/15 and 13/15 of those same sends, and inbound ran 93-100%. With
+**ble-adv alone** it acknowledged 10/15.
+
+So this is not the data path. Frames arrive: the firmware logs them, and the
+return direction is near-perfect in the same run. What is thin is the
+*confirmation* getting back over GATT, and with ble-adv also enabled the
+confirmations arrive - which is consistent with them returning by the other
+bearer rather than by the one that carried the request.
+
+**Not a theory of why.** Two samples say it reproduces and say where it is not.
+What would settle it is capturing the ACK itself: run gatt alone with the node's
+frame logging on and the radio's `debug_log_api_enabled` set, and check whether
+the radio *emits* an ACK that never arrives, or never emits one. Those are
+different bugs and nothing measured so far tells them apart.
