@@ -226,17 +226,13 @@ echo "-- bearer counters --"; echo "$counters"
 # Printed beside the matrix, not inside it: it is a total across the bearers that
 # were enabled, and it counts what the radio acknowledged rather than what any one
 # bearer carried.
-# Only meaningful where some enabled bearer can carry the radio's relay back to
-# us. gatt cannot - see the split-horizon note above - so gatt-only runs say why
-# instead of printing a number that reads as loss.
+echo "-- acknowledged by the radio: $acked/$SENDS outbound (all bearers together) --"
+# On gatt alone this needs firmware carrying the relay-back fix. Before it the radio excluded
+# the peer that delivered a packet from every relay, its author included, so the implicit ack
+# could not return and a link passing everything read 1/15 and 3/15. A zero here beside a high
+# decoded count means old firmware, not a lossy link.
 case ",$BEARERS," in
-  ,gatt,)
-    echo "-- acknowledged by the radio: n/a on gatt alone --"
-    echo "   Broadcasts get no routing ack, and the radio never relays a packet back to the"
-    echo "   peer that delivered it, so the implicit ack cannot return. ($acked/$SENDS seen,"
-    echo "   which is noise, not delivery.) Add a second bearer for an ack figure." ;;
-  *)
-    echo "-- acknowledged by the radio: $acked/$SENDS outbound (all bearers together) --" ;;
+  ,gatt,) [ "$acked" -eq 0 ] && echo "   0 on gatt alone usually means firmware without the relay-back fix." ;;
 esac
 
 # A row of zeros beside non-zero rx counters is the signature of a channel

@@ -63,32 +63,39 @@ checked on the bench against the one built here - `de2a3394ea71` both ends.
 
 Both bearers are at or above where they were. Nothing regressed.
 
-### Why the ack column reads near zero on a gatt-only run - settled
+### Why the ack column read near zero on a gatt-only run - found and fixed
 
-These sends are **broadcasts**, and firmware raises no routing ack for a
-broadcast. So every `Delivered` the bench counts comes from
-`MeshNode.implicitAck`: our own packet heard back with `hop_limit` decremented,
-which means some neighbour relayed it.
+These sends are **broadcasts**, and firmware raises no routing ack for one. So
+every `Delivered` the bench counts came from `MeshNode.implicitAck`: our own
+packet heard back with `hop_limit` decremented, meaning a neighbour relayed it.
 
-`BLEGattMeshHandler::onSend` sets
+`BLEGattMeshHandler::onSend` excluded the peer that delivered a packet from the
+relay - correct while carrying somebody else's packet onward, wrong when that
+peer wrote it. On LoRa an author hears its own packet relayed and takes that as
+the ack; a point-to-point link has no such echo. GATT was the **only** bearer
+with an exclusion at all - `BLEMeshHandler` and UDP are broadcast media and have
+none - which is why it was the only one where the implicit ack never arrived.
 
-```cpp
-// A relay must never go back to the peer that delivered it; an origination matches nothing.
-slot.exclude = arrivalPeer(mp->from, mp->id);
-```
+Fixed in both repos, same rule on each side so they cannot drift:
 
-so the radio deliberately never relays a packet back to the peer that handed it
-over. Split-horizon. With gatt as the only bearer the relay cannot reach us,
-`implicitAck` cannot fire, and the figure reads near zero for a link passing
-everything: 1/15 and 3/15 against 15/15 and 13/15 decoded at the firmware in the
-same runs, with the return direction at 93-100%.
+- firmware `BLEGattMeshHandler::relayExclusion` - the arrival records whether
+  `hop_start` still equalled `hop_limit`, read before the Router decrements.
+- node-kmp `MeshNode.scheduleRelay` - `header.hopsAway == 0`. Null is "the frame
+  did not say", which is not evidence of authorship, so the exclusion stands.
 
-**Correct firmware behaviour, and a defective metric.** It had been read as a
-fault twice, once by the script's own comments. `mesh-bench-remote.sh` now
-suppresses the number on a gatt-only run and says why. Verified live: a 4-send
-gatt-only run printed `n/a on gatt alone` beside `4/4 (100%)` both directions.
+Measured on the RAK4631, gatt alone, n=15:
 
-What remains open is not a measurement problem: on a connection-oriented bearer
-this node has **no delivery evidence at all**, because the only mechanism it has
-is the implicit ack that split-horizon forecloses. Link-level acceptance by the
-peer is evidence GATT actually has and the mesh layer currently discards.
+| | acknowledged |
+| --- | --- |
+| before, run 1 | 1/15 |
+| before, run 2 | 3/15 |
+| **after, run 1** | **15/15** |
+| **after, run 2** | **15/15** |
+
+The data path was never the problem and did not move: 15/15 inbound in both runs
+after, against 14/15 and 15/15 before.
+
+One thing the pair of runs shows plainly: the `kmp->radio (min)` column read
+15/15 then 0/15 across the two runs after the fix. It is the sparse LogRecord
+floor and it is not a rate, exactly as the header says. The ack figure is now the
+stable one on this bearer, where before the fix it was the unreliable one.
