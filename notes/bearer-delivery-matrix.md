@@ -126,9 +126,32 @@ first line, so a log now says which commit produced it.
 | RAK4631 `/dev/ttyACM2` `rak4631_blemesh` | firmware `d38498c7a` | yes |
 | M5Stack Cardputer `/dev/ttyACM1` `m5stack-cardputer-adv_blemesh` | older | **no** |
 | Seeed Xiao S3 `/dev/ttyACM0` `seeed-xiao-s3` | older, not a blemesh env | n/a |
-| meshtadpole (CH341 LoRa) | not plugged in | n/a |
+| meshtadpole (CH341 LoRa, `1a86:5512`) | n/a - it is the node's own radio | n/a |
 
 node-kmp's own relay change is unit-tested on both branches of the rule but is
 **not yet proven on hardware**: that needs two node-kmp nodes linked over GATT,
 and in a run with one on james-pc and one on the uConsole they never found each
 other - the uConsole's adapter saw only one peer the whole time. Not diagnosed.
+
+### The meshtadpole does not appear under /dev/serial/by-id, and should not
+
+Recorded because it was misread as "not plugged in" and put in the table that
+way. The CH341A enumerates as
+
+```
+Bus 001 Device 103: ID 1a86:5512 QinHeng Electronics CH341 in EPP/MEM/I2C mode, EPP/I2C adapter
+```
+
+**EPP/MEM/I2C mode is not a serial device.** It is an SPI bridge driving the
+SX1262, reached over libusb, so it creates no tty and never shows up in
+`/dev/serial/by-id/` - which is exactly the right place to look for the *radios*
+and exactly the wrong place to look for this. `lsusb | grep 1a86` is the probe.
+
+Proven working the same session, current build `5b73d5d5d617`: `avail[lora]`
+Ready then Active, a NodeInfo transmitted, and two radios received off the air
+(`!cfa242df olm3c xiao s3`, `!f2775c7e olm3sh seeed Solar`) with the second copy
+of each dropped as DUPLICATE.
+
+Measured, n=15 against the RAK4631: **15/15 outbound, 15/15 acknowledged, 13/15
+(86%) inbound** - against 15/15 and 14/15 before, so unchanged within
+over-the-air variance.
