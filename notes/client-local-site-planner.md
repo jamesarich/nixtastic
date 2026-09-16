@@ -483,13 +483,62 @@ Since both those builds use Apple's libm on one machine, and Apple ships
 separately tuned implementations per architecture, the residual divergence is
 the maths library — exactly what the wasm result implies.
 
-**Which means the determinism is replicable natively.** Compile the C++ for
-each target, `-ffp-contract=off`, and link against a **vendored** fixed-source
-libm for those nine functions instead of the platform's. That is what wasm
-does; there is no reason a normal static library cannot do the same thing, at
-full native speed, with no sandbox, no `wasm2c`, and no extra codegen step.
-Untested here — it is the experiment worth running before committing to
-either route.
+**Which means the determinism is replicable natively — and this was tested.**
+
+Vendored musl 1.2.5's libm (22 `.c` files: the nine functions, their internal
+helpers `__sin`/`__cos`/`__rem_pio2`/`__rem_pio2_large`, the `exp`/`log`/
+`log2`/`pow` data tables, and the five `__math_*` error helpers; two tiny
+shims for `endian.h` and `features.h`, which musl expects from Linux).
+Compiled it and the engine with `-fno-builtin -ffp-contract=off`, and linked
+the musl objects ahead of libSystem — confirmed with `nm -m` that all nine
+resolve into `__TEXT`, not as dynamic imports.
+
+Calgary, both architectures:
+
+| Build | arm64 vs x86_64 | vs wasm |
+| --- | --- | --- |
+| Platform libm, default flags | 1,272 / 5,760,000 differ, max 3 | — |
+| Platform libm, `-ffp-contract=off` | 1,278 differ, max 2 | — |
+| Vendored musl, contract off on engine **only** | 1,119 differ, max 2 | 1,119 differ |
+| **Vendored musl, contract off everywhere** | **BYTE-IDENTICAL** | **BYTE-IDENTICAL** |
+
+The third row is the instructive failure: `-ffp-contract=off` has to reach
+**musl's own sources too**, not just the engine's. musl's `pow`/`exp`/`log`
+are full of `a*b+c`, arm64 fuses them and x86_64 does not, and leaving that
+flag off the libm build silently reintroduces the divergence you vendored the
+library to remove.
+
+With it applied everywhere, a native build produces **the same bytes as the
+wasm build**, on both architectures. That is the whole of what wasm was
+buying.
+
+Cost, measured on the same machine:
+
+| Build | Calgary 30 km | vs fastest | Deterministic |
+| --- | --- | --- | --- |
+| Native, Apple libm | **1.84 s** | 1.00× | no |
+| Native, Apple libm, no FMA | 1.84 s | 1.00× | no |
+| **Native, vendored musl, no FMA** | **2.45 s** | **1.33×** | **yes** |
+| wasm under Node/V8 | 2.29 s | 1.24× | yes |
+| wasm under Chicory AOT | 91.1 s | 50× | yes |
+
+**33 % is the price of exact cross-platform determinism**, and it buys
+something stronger than the current tolerance gate: the golden becomes an
+exact byte comparison instead of "≥99.9 % within ±1 dB".
+
+Two consequences worth planning for:
+
+- **The goldens need a one-time re-baseline** to the vendored build; they were
+  generated with Apple's libm and FMA contraction on. Conveniently the wasm
+  build already produces exactly the new bytes, so **one golden serves the web
+  build and every native target**, and Tier B stops being a tolerance.
+- **Still untested:** Android/bionic with the NDK's clang, and real Intel
+  silicon rather than Rosetta. The mechanism is proven and the remaining
+  variables (compiler build, OS) are far weaker than libm and ISA were — but
+  it is a CI matrix job, not an assumption.
+
+Recoverable performance, if 33 % ever matters: vendor only the hot functions,
+or use a faster fixed-source libm. Not worth doing speculatively.
 
 ### Why not KMP
 
@@ -506,7 +555,27 @@ either route.
   not, so KMP common code still would not agree across targets — and it costs
   a reimplementation of the model to find that out.
 
-### So: wasm2c on both platforms
+### So: native with a vendored libm, not wasm2c
+
+The `wasm2c` route was the right answer only while a pinned libm looked like
+something only wasm could provide. It is not: vendoring nine functions gets
+the same bytes with no codegen hop, no sandbox indirection, and ordinary
+`.a`/`.so` packaging that every platform's tooling already understands.
+
+| Platform | Engine | Native code shipped |
+| --- | --- | --- |
+| Web | the existing wasm build | none |
+| Android | C++ + vendored musl, NDK, `.so` per ABI | one library |
+| iOS | C++ + vendored musl, static lib in an XCFramework | one library |
+| Desktop (JVM) | JNI to the same library, or Panama on JDK 22+ | one library |
+
+The wasm build stays as the web target *and* as a free cross-check: if native
+and wasm keep producing identical bytes, that is two independent
+implementations agreeing on every pixel, every build.
+
+<details>
+<summary>Superseded: the wasm2c plan</summary>
+
 
 | Platform | Execution | Native code shipped |
 | --- | --- | --- |
@@ -527,9 +596,9 @@ compiling the C++ per platform, because the C++ route lets libm and codegen
 vary and the wasm route provably does not. It just does not get you out of
 shipping a native library.
 
-**One thing left to verify:** that `wasm2c` output keeps bit-exact FP. It is
-designed to, and the golden gate will prove it immediately — build the
-generated C on one platform and diff against the wasm run.
+**One thing left to verify:** that `wasm2c` output keeps bit-exact FP.
+
+</details>
 
 ### What this changes about the ABI
 
