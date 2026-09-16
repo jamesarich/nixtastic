@@ -112,15 +112,33 @@ firmware. It is not a reboot - `rebootCount` on the RAK has read 0 before, durin
 and after every run today - so whatever the controller does, it does not restart
 the device. The failure is a connection that times out, not a crash.
 
-**Attempted, and the observable does not exist.** Capturing the nRF52 side while
-an iOS central connected produced 1537 lines with `debug_log_api_enabled` set and
-**not one BLE or GATT firmware line** - only the Python client's own debug output
-and nodeinfo. The Cardputer behaved the same way earlier. The LogRecord stream
-does not carry this subsystem, and the run also ended with
-`Meshtastic serial port disconnected ... (multiple access on port?)`, so the API
-port cannot be held open for a capture while anything else touches the radio.
+**The observable exists, and `--listen` is what was hiding it.**
 
-What would actually work, none of it done: a second UART on the nRF52, or a build
-with the BLE subsystem's log level raised and read over that UART, or a BLE
-sniffer capturing the SMP exchange - which is what would show whether the iOS
-central is being asked to pair and timing out.
+`SerialConsole::log_to_serial` only emits a LogRecord `if (usingProtobufs)`, and
+that branch is gated on `!pauseBluetoothLogging` - which `PhoneAPI` sets **true**
+the moment a client requests config (`PhoneAPI.cpp:311`). So
+`meshtastic --listen` silences the firmware logs it is being used to read. Both
+empty captures were that, not a missing log.
+
+A reader that does **not** speak the phone API falls through to the plain-text
+branch and gets everything. A bare `pyserial` read of `/dev/ttyACM2`:
+
+```
+INFO  | BLE Connected to iPad
+WARN  | [BLEMesh] BLE mesh: no spare adv set (0x4), sharing the phone's
+INFO  | BLE GATT mesh: conn 1 subscribed (chunk 244)
+DEBUG | BLE GATT mesh: write 10 bytes from conn 1 (arrived 3, accepted 3, dropped 0)
+```
+
+## So the link works
+
+That run had **zero disconnects**. The iPad connected, subscribed at chunk 244,
+and the radio accepted three writes from it - `arrived 3, accepted 3, dropped 0`.
+
+`chunk 244` also confirms the identification: `9D91F3F2` is the RAK4631.
+
+Taken with the contention result above, the whole thread resolves the same way:
+**the iPad↔nRF52 GATT link works, and every failure measured today tracked how
+many other centrals were dialling the same radios.** What is not established is
+where the limit is - the radio logs `no spare adv set (0x4), sharing the phone's`,
+so advertising-set pressure is the thing to measure next, not the link itself.
