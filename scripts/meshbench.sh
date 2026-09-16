@@ -23,6 +23,7 @@ usage: meshbench [host] [KEY=VALUE ...]
   GATT_ROLE=CENTRAL_ONLY          MESH_GATT_ROLE
   REGION=US                       MESH_LORA_REGION
   NODE=bench          node-kmp node name
+  CHANNEL_URL=...     channel URL for the node; read off the radio when unset
 
 Prints a per-bearer, per-direction delivery matrix, counting decoded messages
 rather than frames. One run covers every enabled bearer: node-kmp broadcasts on

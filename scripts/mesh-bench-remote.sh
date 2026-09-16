@@ -56,8 +56,36 @@ bearer_of_transport() {
 }
 
 teardown
+
+# The node joins the radio's own channel, key included. A matching name with a
+# different PSK hears every frame and decodes none, which reads as a dead bearer
+# rather than as the configuration error it is - this run measured 0% on all four
+# bearers that way while the counters showed lora rx=16. Read before the --listen
+# session below, which holds the port exclusively. CHANNEL_URL overrides.
+if [ -z "${CHANNEL_URL:-}" ]; then
+  CHANNEL_URL=$(timeout 40 meshtastic --port "$PORT" --info 2>/dev/null |
+    grep -oE 'https://meshtastic\.org/e/#[A-Za-z0-9_-]+' | head -1)
+fi
+if [ -n "${CHANNEL_URL:-}" ]; then
+  echo "channel from the radio: ${CHANNEL_URL:0:48}..."
+else
+  echo "WARNING: no channel URL from the radio - the node falls back to the default PSK,"
+  echo "         so anything the radio sends on a keyed channel will not decode."
+fi
+
+# The outbound row is counted from the FIRMWARE's own log line, which reaches this
+# host only as a protobuf LogRecord over the phone API - `meshtastic --listen`
+# otherwise prints the Python client's debug output and nothing of the radio's.
+# Without this every outbound cell reads 0% no matter what arrived. Persists in
+# NVS, so this is a no-op on a radio already set up.
+timeout 60 meshtastic --port "$PORT" --begin-edit \
+  --set security.debug_log_api_enabled true --commit-edit >/dev/null 2>&1 ||
+  echo "WARNING: could not enable the radio's log API - the outbound row will read 0%"
+sleep 3
+
 ( cd "$KMP" && MESH_NODE_NAME="${NODE:-bench}" MESH_NODE_SHORT=BNCH MESH_LORA_REGION="${REGION:-US}" \
     MESH_TRANSPORTS="$BEARERS" MESH_GATT_ROLE="${GATT_ROLE:-CENTRAL_ONLY}" MESH_STATE_DIR="$RUN/state" \
+    MESH_CHANNEL_URL="${CHANNEL_URL:-}" \
     nohup java -jar node-headless/build/libs/meshnode-headless.jar >"$RUN/kmp.log" 2>&1 & )
 sleep 25
 
