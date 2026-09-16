@@ -540,143 +540,81 @@ Two consequences worth planning for:
 Recoverable performance, if 33 % ever matters: vendor only the hot functions,
 or use a faster fixed-source libm. Not worth doing speculatively.
 
-### Why not a Kotlin/KMP or Swift reimplementation
+### Rethinking the model: ITU-R P.1812 instead of ITM
 
-Not because of the maths. Once the divergence is measured at 31 pixels of
-contour change, "a port would compute slightly different numbers" stops being
-an objection — the tolerance is wide enough that a careful port could sit
-inside it.
+Everything above assumes the engine must stay SPLAT!'s ITM. Worth questioning,
+because ITM is a 1968 statistical model spanning 20 MHz - 20 GHz, and this is a
+tool for visualising one ISM band.
 
-The real objection is that **the golden corpus is a pinhole**, so passing it
-proves almost nothing about a reimplementation. All four cases:
+**ITU-R P.1812** is the modern answer to exactly this problem: *"a path-specific
+propagation prediction method for point-to-area terrestrial services in the
+frequency range 30 MHz to 6000 MHz"*. Point-to-area is the site planner's
+shape, and 30 MHz - 6 GHz covers every band Meshtastic uses with none of ITM's
+dead range. Current revision is P.1812-8; ITM has not moved since 2011.
 
-| Parameter | Corpus covers | Engine / UI accepts |
+The decisive difference is not accuracy, it is **validatability**:
+
+| | ITM / ITWOM (today) | ITU-R P.1812 |
 | --- | --- | --- |
-| Frequency | 868, 907, 915 MHz — a 47 MHz window | **20 – 20,000 MHz** |
-| Radio climate | 3 of 7 | 1–7 (no equatorial, subtropical, desert) |
-| Polarization | both | both |
-| Radius | 15 – 30 km | up to **150 km** (70 km HD) |
-| Resolution | **standard only** — all four are `high_resolution: false` | 1200 and **3600 ippd** |
-| rx height | **one value** (1.0 m) | free |
-| Ground dielectric | **one value** (15.0) | free |
-| Ground conductivity | **one value** (0.005) | free |
-| Atmospheric bending | **one value** (301.0) | free |
-| tx gain | **one value** (2.0) | free |
+| Spec | a 2011 C++ file, FORTRAN lineage | a maintained ITU Recommendation |
+| Reference implementation | none; the code *is* the spec | official, ITU-R WP 3K approved ([MATLAB/Octave](https://github.com/eeveetza/p1812), [Python](https://github.com/eeveetza/Py1812)) |
+| Conformance suite | **none** - we had to generate one | **shipped**: 19 validation profiles, 64 result files |
+| Failure localisation | aggregate pixel diff | **74 logged intermediates per case** |
 
-ITM is a regime-switching model — line-of-sight, diffraction and troposcatter
-are selected by distance, frequency and terrain, and the climate constant
-feeds the troposcatter branch. Four cases clustered in one ISM band, at one
-resolution, with four of the environment inputs pinned to a single value each,
-exercise a narrow slice of that. A port that passes them could be wrong across
-whole branches and nothing here would notice.
+That last row is what changes the argument. The objection to a Kotlin port was
+never arithmetic - it was that four goldens cannot validate a reimplementation
+of a regime-switching model. P.1812's validation logs carry every intermediate
+in the chain (`Lbfs`, `Lbulla`, `Lbulls`, `Ldsph`, `Ld50`, `Ldp`, `Lba`,
+`Lbs`, `Lbc`, `Lb` ...), so a port that gets Bullington diffraction right but
+spherical-earth diffraction wrong is told *which equation*. Porting ITWOM is a
+leap; porting P.1812 is a checklist.
 
-That objection also applies, more weakly, to the C++ rewrite of `driver.cpp`
-— but that code is structural (page enumeration, radial order, rasterising),
-so the four cases genuinely do exercise it.
+The reference Python core is ~3,180 lines - comparable to `itwom3.0.cpp`'s
+2,863, so this is not a line-count win. It is a *traceability* win: each block
+maps to a numbered equation in a published Recommendation, and the licence
+explicitly permits derivative works.
 
-**And it is a cheap blocker to remove.** The native CLI computes Calgary in
-1.83 s. Sweeping frequency, climate, polarization, resolution, distance and
-the environment inputs into a corpus of a few thousand cases is hours of CPU
-against the existing C++ oracle, not a project. Do that and a reimplementation
-becomes a bounded, testable piece of work rather than a leap.
+**This makes a KMP implementation defensible**, which it was not before: one
+Kotlin implementation for android, desktop, iOS and web, no NDK, no JNI, no
+XCFramework, no per-ABI `.so` - validated against an official suite rather
+than against goldens we generated ourselves.
 
-If the corpus existed, KMP would be genuinely attractive: one implementation
-covering android, desktop, iOS (Kotlin/Native) and web (wasmJs) — no NDK, no
-JNI shim, no XCFramework, no `.so` per ABI, which is most of the packaging
-cost in this document. Two things would still need answering, both measurable:
+Costs to weigh honestly: it stops being "the same code SPLAT! runs", results
+will differ from today's maps (P.1812 is a different model, not a better
+implementation of the same one), and Kotlin/Native performance on the radial
+sweep is unmeasured.
 
-- **Kotlin/Native performance on a tight numeric loop.** 9,600 radials of
-  double maths is the worst case for a GC'd runtime. Reference: 1.83 s in
-  C++, 91 s under a JVM wasm runtime.
-- **apple consumes no KMP today** — `project.yml` has no KMP artifact, and
-  `TAKPacket-SDK` ships Apple a hand-written Swift implementation instead.
-  That is an org decision, not a technical one, but it is not free.
+### Other directions worth knowing about
 
-And one non-technical cost worth naming: *"we run the same code SPLAT! runs"*
-is itself a claim users of an RF tool trust. *"We reimplemented SPLAT! and it
-passes our tests"* is a weaker one, however good the tests are.
-
-### Does any of this matter? Settled: no — this is a visualisation tool
-
-**Decision (James, 2026-09-16): site-planner visualises Meshtastic coverage.
-It does not need to be pixel-perfect.** That closes the question. What follows
-records how it was measured, because the measurements changed the *gate* even
-though they did not change the build.
-
-The first measurement was taken on one case, Calgary at 907 MHz, and said the
-divergence was negligible. Running the generated corpus (452 cases, see
-`scripts/gen_corpus.py`) against a second architecture showed that conclusion
-did not generalise:
-
-| x86_64 vs arm64, platform libm | All 452 cases | LoRa bands only (256) |
-| --- | --- | --- |
-| FAIL the existing ±1 dB gate | **38 (8.4 %)** | **4 (1.6 %)** |
-| Worst within ±1 dB | 99.5576 % | 99.8588 % |
-| Worst per-pixel delta | **43 dB** | 12 dB |
-| **Cases with any coverage-mask mismatch** | **0** | **0** |
-
-The failures are monotonic in frequency — 10–11 of 28 fail at 20/50/144 MHz,
-3 at 433, 0 at 915 and above — so they sit almost entirely outside the bands
-Meshtastic uses.
-
-And the number that decides it for a visualisation tool: **the coverage mask
-is bit-identical in all 452 cases, on both architectures, at every
-frequency.** The boundary a user reads off the map does not move. Only signal
-values wobble, by ≤12 dB on a few fringe pixels inside the LoRa bands, against
-a model whose own prediction error is larger than that.
-
-**So: do not pin the maths.** Build against the platform's libm. No vendored
-libm, no 33 % throughput cost, no 22 extra source files, no arch-conditional
-flag traps.
-
-### What the measurements *do* change: the gate
-
-The existing Tier-B gate asserts `≥99.9 % of pixels within ±1 dB`. That is an
-*exactness* assertion being used to answer a *visualisation* question, and it
-is already marginal: four LoRa-band cases fail it across architectures today.
-Phase 1 requires running the gate on more than one architecture, so it would
-go red for reasons that do not matter.
-
-Assert what the product actually promises instead — stricter where it counts,
-looser where it does not:
-
-| Assert | Threshold | Evidence |
-| --- | --- | --- |
-| Coverage mask | **exact byte equality** | passes 452/452 unpinned, both arches |
-| Signal values | same contour band at display resolution | 31 / 5,760,000 pixels moved band at 8 bands on the case measured |
-| Per-pixel dB | drop as the primary gate; keep as a reported statistic | 43 dB outliers are real but confined to 20 MHz fringe |
-
-That is a *stronger* guarantee on coverage extent than today's 0.1 %
-mask tolerance, and it stops the suite failing over pixels nobody can see.
-The contour-band threshold should be calibrated from a corpus run rather than
-guessed.
-
-<details>
-<summary>Recorded, not recommended: pinning the maths works, if a future need appears</summary>
-
-Vendoring musl's nine functions removes every failure: **38 FAIL → 0**, and
-412 of 452 become byte-exact, worst case 99.9999 % within ±1, max delta 2 dB.
-
-It does not get all the way to byte-identical, for a reason worth writing
-down: musl itself branches on architecture. `log2_data.c` guards a constant
-table on `#if !__FP_FAST_FMA`, and `exp.c` on `#if TOINT_INTRINSICS` — and
-clang defines `__FP_FAST_FMA` on arm64 but not x86_64, so the two builds get
-different tables. The residue clusters on radius ≥ 60 km (38 of 40 cases),
-where more accumulated operations expose it. Forcing
-`-U__FP_FAST_FMA -DTOINT_INTRINSICS=0` on both should close it; that run was
-cancelled when the product decision made it moot.
-
-Both binaries are deterministic run-to-run, so none of this is an
-uninitialised-memory bug — checked explicitly.
-
-Recipe: vendor 22 `.c` files from musl 1.2.5 (`sin cos asin acos atan exp log
-log10 pow`, their `__sin`/`__cos`/`__rem_pio2*` helpers, the `exp`/`log`/
-`log2`/`pow` data tables, five `__math_*` error helpers), plus shims for
-`endian.h` and `features.h`. Build **everything** — engine and libm — with
-`-fno-builtin -ffp-contract=off`; applying the flag to only the engine leaves
-1,119 bytes differing. Costs ~33 % (2.45 s vs 1.84 s on Calgary).
-
-</details>
+- **Newer SPLAT! lineage.** [Signal-Server](https://github.com/Cloud-RF/Signal-Server)
+  is the actively-maintained SPLAT! derivative (forks updated 2025), adding
+  Hata, ECC33, SUI, COST231 and ITU models behind one CLI. Still SPLAT!-shaped.
+- **[crc-covlib](https://github.com/ic-crc/crc-covlib)** (Communications
+  Research Centre Canada) - C++/Python, implements P.1812-7, P.452, P.2108
+  clutter loss, Longley-Rice, plus ML-based path-loss models. The closest
+  thing to a modern drop-in for the whole engine.
+- **Viewshed instead of a propagation model.** A line-of-sight + Fresnel
+  clearance map over a DEM is far lighter than ITM, is a pure geometry problem,
+  and is genuinely GPU-friendly (unlike ITM, which is branchy scalar code).
+  `gdal_viewshed` and GRASS `r.viewshed` are mature. **But it loses
+  diffraction** - and "does it get over that ridge" is precisely what
+  Meshtastic users ask. Best as a *fast preview layer* while the real model
+  runs, not as the model.
+- **Better terrain is a bigger win than a better model.** SRTM (2000, ~10-16 m
+  RMSE) vs Copernicus GLO-30 (~4 m RMSE), or USGS 3DEP at 10 m - and 1 m lidar
+  in much of the US. The org already has a client-friendly path to modern
+  elevation: **Mapterhorn**, which `android` and `apple` already use for
+  terrain.
+- **Clutter is the weakest input, by far.** Today it is a single scalar height
+  applied everywhere. P.1812 takes a *clutter profile*, and ESA WorldCover
+  gives 10 m global land cover - forest, urban, water - that maps directly to
+  representative clutter heights per pixel. Likely the single largest accuracy
+  improvement available, and independent of which model is used.
+- **Ground truth nobody else has.** Meshtastic nodes report position and SNR,
+  and MQTT carries observed links. Predicted coverage could be validated - and
+  calibrated - against links the mesh actually made. No RF library can offer
+  that; it is the org's unique asset and it would make any model choice
+  defensible with measurements rather than argument.
 
 ### Recommended packaging
 
