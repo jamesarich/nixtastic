@@ -34,7 +34,8 @@ for host in $hosts; do
             echo "TTY $(basename "$p")"
         done
         # Not /dev/serial/by-id: in EPP/MEM/I2C mode the CH341 is an SPI bridge and creates no tty.
-        if lsusb 2>/dev/null | grep -qi '1a86:'; then echo "LORA ch341 present"; else echo "LORA absent"; fi
+        # By device, not by vendor: 1a86 is QinHeng, who also make the USB hub on the uConsole.
+        echo "LORA $(lsusb 2>/dev/null | grep -i 'ch341' | sed -n 's/.*ID \([0-9a-f:]*\).*/\1/p' | head -1)"
         bluetoothctl list 2>/dev/null | sed -n 's/^Controller /BT /p'
 REMOTE
     ); then
@@ -51,7 +52,8 @@ REMOTE
     esac
 
     printf '%s\n' "$out" | sed -n 's/^TTY /  radio      /p'
-    printf '%s\n' "$out" | sed -n 's/^LORA /  lora       /p'
+    lora=$(printf '%s\n' "$out" | sed -n 's/^LORA //p')
+    if [ -n "$lora" ]; then printf '  lora       ch341 %s\n' "$lora"; else printf '  lora       no ch341\n'; fi
     printf '%s\n' "$out" | sed -n 's/^BT /  bluetooth  /p'
     printf '\n'
 done
