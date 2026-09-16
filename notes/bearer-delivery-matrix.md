@@ -1,16 +1,26 @@
 # What each bearer actually delivers
 
 Measured 2026-09-16 on `james-pc` with `nix run .#meshbench`, node-kmp against a
-RAK4631 on `rak4631_blemesh` (and, for UDP, a `meshtasticd` container). Read the
-caveats before quoting a number - three of the four figures here replaced an
-earlier one that was an artefact of the measurement rather than the bearer.
+RAK4631 on `rak4631_blemesh` (and, for UDP, a `meshtasticd` container).
 
-| bearer | outbound | inbound | n | notes |
+**Every bearer delivers. No number here is evidence of a lossy bearer** - and
+four of the figures this table has carried were artefacts of the measurement,
+which is the thing to read before quoting any of them.
+
+| bearer | outbound | inbound | n | how outbound was established |
 | --- | --- | --- | --- | --- |
-| udp | **15/15 (100%)** | **15/15 (100%)** | 15 | vs meshtasticd, on its own group |
-| lora | **15/15 (100%)** | 14/15 (93%) | 15 | meshtadpole (CH341 + SX1262) |
-| ble-adv | 10/15 (67%) | 12/15 (80%) | 15 | connectionless; see compounding |
-| gatt | **14/15 (93%)** | **15/15 (100%)** | 15 | 3 drops in 106 arrivals at the firmware |
+| udp | **15/15** | **15/15** | 15 | ACKs, vs meshtasticd on its own group |
+| lora | **15/15** | 13-14/15 | 15 | ACKs; the missing inbound frame is over-the-air |
+| gatt | **15/15** | **15/15** | 15 | ACKs, three runs, after the relay-back fix |
+| ble-adv | **effectively complete** | **15/15** | 15 | 60 of 66 advertising events decoded at the radio; a frame needs one of its three |
+
+The one figure this table used to print for `ble-adv` outbound - 67%, later 86% -
+is the `kmp->radio (min)` column, and that column is a **floor off a sparse log
+stream, never a rate**. It has now misled three times: once reading 20-38% for a
+link passing everything, once as 67%, and once today when it sent a whole session
+hunting an advertising-set mechanism for a gap that did not exist.
+`nix run .#radiolog` asks the radio what it actually decoded, which is what the
+ble-adv row above rests on and what the floor cannot tell you.
 
 ## How to read the two outbound numbers
 
