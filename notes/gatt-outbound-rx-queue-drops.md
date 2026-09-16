@@ -56,7 +56,42 @@ characteristic notifies at 15/15.
 That also retires the queue as a suspect for good. Nothing can overflow a ring
 that is never written to.
 
-## The leading suspect, untested
+## A reproducible working case, and a reproducible failing one
+
+The one run where writes **did** arrive:
+
+```
+node low4 (!1597f6f7), state dir reused, MESH_TRANSPORTS=gatt, CENTRAL_ONLY,
+no MESH_CHANNEL_URL, --listen held for the whole 170 s
+  -> 42 arrivals at onWrite, arrived/accepted counters climbing, zero drops
+```
+
+Every meshbench run: **0 arrivals**. The differences between them are few and all
+testable one at a time:
+
+| | working run | meshbench runs |
+| --- | --- | --- |
+| state dir | reused, identity already established | fresh per run |
+| channel | default LongFast + default PSK | the radio's own URL |
+| `--listen` window | whole run | outbound phase only |
+| driver | sent by hand through the phone API | meshbench's phases |
+
+**Two hypotheses are already dead.** Write type is not it - write-with-response
+produced 0 arrivals too, with 30 decoded-message lines proving the stream was
+live. And the role election is not it: shedding requires
+`peers.hasSubscriberFor(peer)`, and a `CENTRAL_ONLY` node runs no peripheral, so
+it has no subscribers and `resolve` returns before it can shed. The election gates
+nothing else in the link.
+
+The node-id correlation that suggested the election - five failing runs all with
+an id above the RAK's, the working run below it - is therefore **coincidence
+until something explains it**. Five samples of a ~24% event is not a finding.
+
+Next: take the working run and change one thing at a time toward the meshbench
+shape. The channel is the first to try, because it is the only difference that
+touches what the node sends rather than how it is driven.
+
+## An earlier suspect, now dead
 
 Every central writes **without response** - BlueZ `type=command`, Android
 `WRITE_TYPE_NO_RESPONSE`, Apple `CBCharacteristicWriteWithoutResponse` - and the
