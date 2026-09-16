@@ -95,7 +95,24 @@ sleep 3
     MESH_TRANSPORTS="$BEARERS" MESH_GATT_ROLE="${GATT_ROLE:-CENTRAL_ONLY}" MESH_STATE_DIR="$RUN/state" \
     MESH_CHANNEL_URL="${CHANNEL_URL:-}" \
     nohup java -jar node-headless/build/libs/meshnode-headless.jar >"$RUN/kmp.log" 2>&1 & )
-sleep 25
+
+# Wait for the bearers to be usable rather than assuming a fixed settle. GATT has
+# to scan, dial, resolve services and subscribe, and against a firmware peer that
+# measured 93 seconds - three times the old `sleep 25`, so every outbound message
+# went out before the link existed and the bearer scored 0% while working.
+waited=0
+while [ "$waited" -lt "${READY_TIMEOUT:-150}" ]; do
+  ready=1
+  grep -q "avail\[" "$RUN/kmp.log" 2>/dev/null || ready=0
+  case ",$BEARERS," in
+    *,gatt,*) grep -q ':ready' "$RUN/kmp.log" 2>/dev/null || ready=0 ;;
+  esac
+  [ "$ready" = 1 ] && break
+  sleep 5
+  waited=$((waited + 5))
+done
+echo "bearers settled after ${waited}s"
+sleep 5
 
 kmpnode=$(grep -oE 'node [^ ]+ \(!([0-9a-f]+)\)' "$RUN/kmp.log" | head -1 | grep -oE '[0-9a-f]{8}')
 echo "run $RUN   bearers $BEARERS   node !${kmpnode:-unknown}   $SENDS per direction"
