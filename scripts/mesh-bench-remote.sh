@@ -17,6 +17,14 @@
 # event, counts the radio's own background traffic, and counts frames the
 # receiver could not open - which is how an earlier version reported 20-38% for a
 # link that was passing everything. Both sides must share a channel name AND PSK.
+#
+# The outbound column is a LOWER BOUND, which is why it is labelled (min). It
+# counts the firmware's own log line, and that reaches this host as a LogRecord
+# stream which is sparse and is captured only during the outbound phase: a
+# single-bearer LoRa run whose ACKs proved all six messages landed showed one.
+# The `acknowledged by the radio` line below the matrix is the trustworthy
+# outbound figure - an ACK cannot exist unless the radio decoded the packet -
+# and with one bearer enabled it is that bearer's rate.
 set -uo pipefail
 
 PORT="${PORT:-/dev/ttyACM2}"
@@ -114,8 +122,18 @@ for i in $(seq 1 "$SENDS"); do
 done
 sleep 10
 
+# An ACK can only come from a radio that decoded the packet, so the node's own
+# Delivered events are ground truth for outbound delivery - and unlike the
+# firmware's log they cannot be missed, because the node is the one counting.
+# The firmware LogRecord stream is sparse: a run whose ACKs proved two messages
+# landed showed only one 'decoded message' line for them.
+#
+# `via=` is the bearer the ACK came back on, not the one the message went out on,
+# so this is a total rather than a per-bearer figure. Run one bearer to attribute it.
+acked=$(grep -oE "Delivered\(from=[0-9]+, requestId=[0-9]+" "$RUN/kmp.log" | sort -u | wc -l | tr -d ' ')
+
 decoded_total=0
-printf '\n%-10s %16s %16s\n' bearer 'kmp->radio' 'radio->kmp (first)'
+printf '\n%-10s %16s %16s\n' bearer 'kmp->radio (min)' 'radio->kmp (first)'
 for t in 1 9 10 6; do
   b=$(bearer_of_transport "$t")
   case ",$BEARERS," in *",$b,"*) ;; *) continue ;; esac
@@ -134,6 +152,10 @@ done
 echo
 counters=$(grep -oE 'bearers .*rx=[0-9]+ tx=[0-9]+' "$RUN/kmp.log" | tail -1)
 echo "-- bearer counters --"; echo "$counters"
+# Printed beside the matrix, not inside it: it is a total across the bearers that
+# were enabled, and it counts what the radio acknowledged rather than what any one
+# bearer carried.
+echo "-- acknowledged by the radio: $acked/$SENDS outbound (all bearers together) --"
 
 # A row of zeros beside non-zero rx counters is the signature of a channel
 # mismatch, not a dead link: the bearer carried the frames and no key opened
