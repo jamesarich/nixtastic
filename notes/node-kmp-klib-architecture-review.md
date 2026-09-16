@@ -17,39 +17,38 @@ Reviewed 2026-09-16. Kotlin 2.4.20, Gradle 9.7.1, AGP 9.4.0.
 That is a stronger baseline than most KMP libraries carry, and nothing here needs
 changing.
 
-## The one real gap: no `@ObjCName`, and what it would actually buy
+## `@ObjCName`: unblocked, attempted, and there is nothing to do
 
-Nothing in the tree uses `@ObjCName`. **Corrected 2026-09-16 against the
-generated header** - an earlier draft of this claimed a Swift consumer sees
-`MeshNodeGattMeshNode`, and that is wrong. Kotlin/Native derives a short prefix
-from the framework `baseName`, so the header is `MNG`-prefixed:
+James lifted the hold on changing the Apple surface (2026-09-16, "we're not
+published yet"). Measured against the generated header, and the answer is that
+this item should be closed rather than acted on.
+
+**What Swift actually sees is already clean.** Two earlier drafts of this section
+were wrong about it. The `MNG` prefix is an Objective-C symbol name and **never
+reaches Swift**: Kotlin/Native emits `swift_name` attributes, 2072 of them, and
+nesting is preserved.
 
 ```
-@interface MNGDecodedPacketAck
-@interface MNGDecodedPacketNodeInfo
-@interface MNGBroadcastPolicyCompanion
-@interface MNGAppleGattTransportKt
+swift_name("MeshNode")             swift_name("MeshNode.Config")
+swift_name("MeshChannel.Role")     swift_name("MeshNode.TransportCounters")
+swift_name("GattMeshTransport")    swift_name("DecodedPacketNeighborInfo.Neighbor")
 ```
 
-So the real cost is smaller and differently shaped than stated. Three things
-`@ObjCName` would fix, in descending order of how much they matter:
+No `doInit` mangling anywhere. Two cosmetic things remain, and **the compiler
+refuses both fixes**:
 
-1. **Nested types are flattened with the parent concatenated.** `DecodedPacket.Ack`
-   exports as `MNGDecodedPacketAck`, so Swift cannot write `DecodedPacket.Ack`.
-   This is the one a consumer actually feels.
-2. **The `MNG` prefix is on every type**, including ones a caller names often.
-3. **Companions and file facades leak** - `…Companion`, `…Kt`.
+| wart | attempted | result |
+| --- | --- | --- |
+| sealed subclasses flatten: `MeshEventDelivered`, not `MeshEvent.Delivered` | `@ObjCName(swiftName = "MeshEvent.Delivered")` | `e: '@ObjCName' contains illegal characters` - dots are not allowed |
+| file facades: `AppleGattTransportKt`, `MeshChannelKt` | `@file:ObjCName("MeshGatt")` | `e: not applicable to target 'file'` - class, property, value parameter, function only |
 
-`MeshNodeGatt` does `export(project(":node-core"))`, so all of node-core is in
-that surface. **Nothing in this repo links that framework**: the iPad app links
-`Monitor`, which deliberately exports nothing and whose Swift side touches only
-`MainViewControllerKt.MainViewController()`. So there is still no consumer to
-break, and the window stated below is genuinely open.
+The facade suffix could only go by moving top-level functions into an `object`,
+which changes the Kotlin API for Android, JVM and desktop consumers to please
+Swift. Not worth it. And `MeshEventDelivered` is arguably right for a flat Swift
+namespace anyway.
 
-Doing it means annotating every public sealed subclass, companion and facade in
-node-core - a large mechanical rename of the published Apple surface. Worth a
-decision rather than a drive-by: cosmetic for Swift ergonomics, free today, a
-source break for any external consumer once one exists.
+**So: no gap, and no work.** The recommendation this section carried for two
+drafts assumed a problem that measurement does not support.
 
 ## Added since: a tenth module, and the tree's first opt-in marker
 
