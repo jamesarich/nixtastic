@@ -596,41 +596,87 @@ And one non-technical cost worth naming: *"we run the same code SPLAT! runs"*
 is itself a claim users of an RF tool trust. *"We reimplemented SPLAT! and it
 passes our tests"* is a weaker one, however good the tests are.
 
-### Does any of this matter? Measured: no.
+### Does any of this matter? Settled: no — this is a visualisation tool
 
-Before adopting the pinning, the question worth asking is what the *unpinned*
-divergence actually does to the output. Calgary, arm64 vs x86_64, platform
-libm, default flags:
+**Decision (James, 2026-09-16): site-planner visualises Meshtastic coverage.
+It does not need to be pixel-perfect.** That closes the question. What follows
+records how it was measured, because the measurements changed the *gate* even
+though they did not change the build.
 
-| Property | Result |
-| --- | --- |
-| **Coverage mask** | **byte-identical** — bit-stable with no pinning at all |
-| Signal bytes differing | 1,272 / 5,760,000 (0.0221 %) |
-| Magnitude of those | 1,262 at 1 dB, 9 at 2 dB, **1 pixel** at 3 dB |
-| Pixels landing on a different display colour (256-entry LUT) | **150** (0.0026 %) |
-| Pixels changing contour band — 8 bands | **31** (0.00054 %) |
-| — 16 bands | 47 (0.00082 %) |
-| — 32 bands | 104 (0.00181 %) |
+The first measurement was taken on one case, Calgary at 907 MHz, and said the
+divergence was negligible. Running the generated corpus (452 cases, see
+`scripts/gen_corpus.py`) against a second architecture showed that conclusion
+did not generalise:
 
-The mask — the thing that answers "is there coverage here" — is already
-bit-identical across architectures. The signal divergence is 150 visibly
-different pixels in 5.76 million, and at the contour resolution the apps
-actually consume, **31 to 104 pixels**. Against a model whose own prediction
-error is several dB, on 30–90 m terrain, with clutter as a single scalar.
+| x86_64 vs arm64, platform libm | All 452 cases | LoRa bands only (256) |
+| --- | --- | --- |
+| FAIL the existing ±1 dB gate | **38 (8.4 %)** | **4 (1.6 %)** |
+| Worst within ±1 dB | 99.5576 % | 99.8588 % |
+| Worst per-pixel delta | **43 dB** | 12 dB |
+| **Cases with any coverage-mask mismatch** | **0** | **0** |
 
-Nobody will ever site a node differently because of it.
+The failures are monotonic in frequency — 10–11 of 28 fail at 20/50/144 MHz,
+3 at 433, 0 at 915 and above — so they sit almost entirely outside the bands
+Meshtastic uses.
 
-**So do not pin the maths by default.** Build native against the platform's
-libm, keep the tolerance gate that already exists and already passes, and
-spend nothing. The 33 % and the 22 vendored files buy an exact-equality test
-gate — a convenience for CI, not a correctness property — and add a trap
-(`-ffp-contract=off` must reach the vendored sources too) that caught me on
-the first attempt.
+And the number that decides it for a visualisation tool: **the coverage mask
+is bit-identical in all 452 cases, on both architectures, at every
+frequency.** The boundary a user reads off the map does not move. Only signal
+values wobble, by ≤12 dB on a few fringe pixels inside the LoRa bands, against
+a model whose own prediction error is larger than that.
 
-The recipe is recorded below because it works and because it is the right
-answer *if* a concrete need ever appears: a support case that turns on
-reproducibility, a regulator, or a bionic result far worse than anything
-measured here. Not before.
+**So: do not pin the maths.** Build against the platform's libm. No vendored
+libm, no 33 % throughput cost, no 22 extra source files, no arch-conditional
+flag traps.
+
+### What the measurements *do* change: the gate
+
+The existing Tier-B gate asserts `≥99.9 % of pixels within ±1 dB`. That is an
+*exactness* assertion being used to answer a *visualisation* question, and it
+is already marginal: four LoRa-band cases fail it across architectures today.
+Phase 1 requires running the gate on more than one architecture, so it would
+go red for reasons that do not matter.
+
+Assert what the product actually promises instead — stricter where it counts,
+looser where it does not:
+
+| Assert | Threshold | Evidence |
+| --- | --- | --- |
+| Coverage mask | **exact byte equality** | passes 452/452 unpinned, both arches |
+| Signal values | same contour band at display resolution | 31 / 5,760,000 pixels moved band at 8 bands on the case measured |
+| Per-pixel dB | drop as the primary gate; keep as a reported statistic | 43 dB outliers are real but confined to 20 MHz fringe |
+
+That is a *stronger* guarantee on coverage extent than today's 0.1 %
+mask tolerance, and it stops the suite failing over pixels nobody can see.
+The contour-band threshold should be calibrated from a corpus run rather than
+guessed.
+
+<details>
+<summary>Recorded, not recommended: pinning the maths works, if a future need appears</summary>
+
+Vendoring musl's nine functions removes every failure: **38 FAIL → 0**, and
+412 of 452 become byte-exact, worst case 99.9999 % within ±1, max delta 2 dB.
+
+It does not get all the way to byte-identical, for a reason worth writing
+down: musl itself branches on architecture. `log2_data.c` guards a constant
+table on `#if !__FP_FAST_FMA`, and `exp.c` on `#if TOINT_INTRINSICS` — and
+clang defines `__FP_FAST_FMA` on arm64 but not x86_64, so the two builds get
+different tables. The residue clusters on radius ≥ 60 km (38 of 40 cases),
+where more accumulated operations expose it. Forcing
+`-U__FP_FAST_FMA -DTOINT_INTRINSICS=0` on both should close it; that run was
+cancelled when the product decision made it moot.
+
+Both binaries are deterministic run-to-run, so none of this is an
+uninitialised-memory bug — checked explicitly.
+
+Recipe: vendor 22 `.c` files from musl 1.2.5 (`sin cos asin acos atan exp log
+log10 pow`, their `__sin`/`__cos`/`__rem_pio2*` helpers, the `exp`/`log`/
+`log2`/`pow` data tables, five `__math_*` error helpers), plus shims for
+`endian.h` and `features.h`. Build **everything** — engine and libm — with
+`-fno-builtin -ffp-contract=off`; applying the flag to only the engine leaves
+1,119 bytes differing. Costs ~33 % (2.45 s vs 1.84 s on Calgary).
+
+</details>
 
 ### Recommended packaging
 
