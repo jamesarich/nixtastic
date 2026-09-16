@@ -91,6 +91,35 @@ asks a user for root to enable meshing. The durable answers are:
    not re-pair, and `Device1.Pair()`/`Adapter1.RemoveDevice()` are both
    unprivileged. This is the remaining piece.
 
+## And a fourth face: the cache hides the peer entirely
+
+Measured after a bond was established. `bluetoothctl info` on the central:
+
+```
+Paired: yes
+UUID: Vendor specific  (03b80e5a-...)        <- BLE-MIDI, still there
+                                             <- the mesh UUID is GONE
+```
+
+For an **unpaired** device BlueZ reports the UUIDs from the advertisement; for a
+**paired** one it reports the stored GATT service list. If that stored list was
+written from a session where the mesh service was not up, the mesh UUID is simply
+absent - and `advertisesMeshService(UUIDs)`, which is how the central decides
+whether to dial, says no. Forever: the cache is on disk and survives reboots.
+
+The symptom is the worst kind. The peripheral advertises, both nodes report
+`Active`, and the central's log never mentions the peer at all - not a fault, not
+a refusal, nothing. In one run here the central spent 95 s talking to a stranger
+while the node it was paired with sat two feet away advertising.
+
+`bluetoothctl remove` restored it, and the mesh UUID came back on the next
+session. `Adapter1.RemoveDevice` is unprivileged, so the node can do this itself -
+but not from the path that exists today, because a peer that is never *reserved*
+never accumulates the refusals that would trigger it. **Open.** The gate probably
+has to trust the discovery filter - `SetDiscoveryFilter(UUIDs=[mesh])` is already
+set, so a device BlueZ reports during that discovery matched by advertisement -
+rather than re-reading a property the cache can poison.
+
 Disabling probe profiles is a packaging concern if anyone wants it - a
 `bluetooth.service.d` drop-in in meshtasticd's deb, root at install time - never
 a runtime ask.
