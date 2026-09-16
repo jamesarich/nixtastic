@@ -96,7 +96,9 @@ ssh "$host" \
 # shellcheck disable=SC2029  # the log path is ours, expanded here on purpose
 transitions=$(ssh "$host" "grep -oE 'avail\\[[a-z-]+\\] .*' '$remote_log' || true")
 # shellcheck disable=SC2029  # the log path is ours, expanded here on purpose
-counters=$(ssh "$host" "grep -oE '[a-z-]+ rx=[0-9]+ tx=[0-9]+' '$remote_log' | tail -1 || true")
+# The whole `bearers ...` line, not one pair from it: a multi-bearer run puts every bearer on that
+# line and matching a single pair reports only the last one.
+counters=$(ssh "$host" "grep -oE 'bearers .*rx=[0-9]+ tx=[0-9]+' '$remote_log' | tail -1 || true")
 # shellcheck disable=SC2029  # the log path is ours, expanded here on purpose
 faults=$(ssh "$host" "grep -oE 'fault=.*' '$remote_log' | sort | uniq -c | sort -rn || true")
 
