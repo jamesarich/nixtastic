@@ -85,17 +85,33 @@ radios: `/dev/ttyACM1` 1 → 1, `/dev/ttyACM2` 0 → 0. That eliminates the bloc
 the README records for Apple centrals against this firmware - the controller
 asserting ~200 ms in - as the cause here. Nothing rebooted.
 
-## What is left is one peer, not the bearer
+## What is left is one peer, and it is the nRF52 - my first guess was backwards
 
 Every disconnect in the quiet run was the same peer, `9D91F3F2`, always
-`The connection has timed out unexpectedly.` The other peer stayed up.
+`The connection has timed out unexpectedly.` The other stayed up and took a write.
 
-The two negotiate differently: `chunk=512` for the one that works, `chunk=244`
-for the one that times out. 512 is the nRF52 asking 517; 244 is the ESP32 shape.
-And [[esp32-demands-pairing-on-mesh-links]] records that ESP32 pulls every BLE
-mesh peer into MITM pairing where nRF52 does not - an iOS central meeting that
-would sit out its SMP timeout and drop, which is exactly what this looks like.
+I inferred from MTU that `9D91F3F2` was the ESP32: it negotiated `chunk=244`
+against the healthy peer's `chunk=512`, and
+[[esp32-demands-pairing-on-mesh-links]] records the ESP32 pulling mesh peers into
+MITM pairing. **That was wrong.**
 
-**Corroborated, not established.** iOS gives peripheral UUIDs, not addresses, so
-the mapping is inferred from MTU. Powering the Cardputer down and re-running is
-what would settle it, and has not been done.
+Settled by taking the Cardputer's GATT peer role off the air
+(`network.enabled_protocols` 6 → 2, restored after):
+
+| | with the Cardputer serving | with it off |
+| --- | --- | --- |
+| peers discovered | `3FD7485B`, `9D91F3F2` | `9D91F3F2` only |
+| disconnects | 4, all `9D91F3F2` | 6, all `9D91F3F2` |
+
+The peer that disappeared is the one that **worked**. So `3FD7485B` was the
+Cardputer, the ESP32 is fine against an iOS central, and `9D91F3F2` is the
+**RAK4631** - the nRF52 carrying the spike firmware.
+
+That is the pair the README already calls out: an Apple node against this
+firmware. It is not a reboot - `rebootCount` on the RAK has read 0 before, during
+and after every run today - so whatever the controller does, it does not restart
+the device. The failure is a connection that times out, not a crash.
+
+**Next, and not done:** capture the nRF52 side while an iOS central connects.
+Its serial log during the attempt is what says whether the link is refused, hung,
+or dropped, and nothing measured so far distinguishes those.
