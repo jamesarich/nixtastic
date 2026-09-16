@@ -10,7 +10,7 @@ earlier one that was an artefact of the measurement rather than the bearer.
 | udp | **15/15 (100%)** | **15/15 (100%)** | 15 | vs meshtasticd, on its own group |
 | lora | **15/15 (100%)** | 14/15 (93%) | 15 | meshtadpole (CH341 + SX1262) |
 | ble-adv | 10/15 (67%) | 12/15 (80%) | 15 | connectionless; see compounding |
-| gatt | 4/6 | 3/6 | 6 | needs a central; not yet re-run at n=15 |
+| gatt | **14/15 (93%)** | **15/15 (100%)** | 15 | 3 drops in 106 arrivals at the firmware |
 
 ## How to read the two outbound numbers
 

@@ -1,128 +1,46 @@
-# GATT outbound, and how much of its loss was the harness
-
-**Headline, corrected twice:** with a jar that is actually current, GATT outbound
-measures **8/15 acknowledged (53%)**, not the 4/15 and 0/15 this note previously
-carried. Several runs here were measured against a jar at `$KMP` built before the
-fixes under test, because meshbench uses whatever sits there and a hand-driven
-test ships its own elsewhere. meshbench now prints the jar's timestamp and hash.
-
-A hand-driven run on the same pair decodes freely - 76 packets tagged
-`transport = 10` from the node, 48 arrivals at the firmware's `onWrite` - so the
-bearer carries. What remains is a gap between that and 53%, not a bearer that
-delivers a quarter.
+# GATT outbound is 93%, and every low figure was the harness
 
 Measured 2026-09-16, node-kmp as `CENTRAL_ONLY` on `james-pc` against a RAK4631
-on `rak4631_blemesh`, 15 messages each way.
+on `rak4631_blemesh`, 15 messages each way, with a current jar and a readiness
+gate that waits for the radio under test.
 
 ```
 bearer     kmp->radio (min) radio->kmp (first)
-gatt            4/15 (26%)     15/15 (100%)
+gatt           14/15 (93%)     15/15 (100%)
+
+firmware counters : arrived 106, accepted 103, dropped 3
+transport=10 decodes from the node : 108
 ```
 
-Inbound is perfect and comes from the RAK itself - `rx[gatt] text from
-!3d01e450`, which is its node number - so there is no relay through another peer
-and the acknowledgement path is sound. Outbound really is about a quarter.
+## What the earlier figures actually measured
 
-## The queue was the first suspect and it is not the cause
+This bearer was reported at 4/15, then 0/15, then 8/15 over one session. None of
+those were the bearer:
 
-The firmware logs `BLE GATT mesh: RX queue full, dropping a 43-byte write` and
-ten of them appeared in the first run, which looked conclusive. Three runs say
-otherwise:
+- **A stale jar.** meshbench runs whatever sits at `$KMP` on the bench host while
+  a hand-driven test ships its own elsewhere. The two drifted for most of a
+  session, so meshbench measured a build predating the fixes under test. It now
+  prints the jar's timestamp and hash.
+- **A readiness gate that waited for the wrong peer.** It matched the first
+  `:ready` in the node's log, which on a bench with several mesh peers is some
+  other device. In one run the node began sending at 18:23:00 and the radio linked
+  at 18:24:19 - the entire outbound phase went out before the link existed. It now
+  waits for `!<the radio's own myNodeNum>`.
 
-| run | ring | queue-full drops | outbound |
-| --- | --- | --- | --- |
-| 3892036 | 6 | 10 | 4/15 |
-| 3912932 | 24 | **0** | 0/15 |
-| 3925210 | 6 | **0** | 0/15 |
+## The RX queue, finally in proportion
 
-Outbound is broken whether the queue overflows or not, and raising the ring from
-6 to 24 slots (RAM 41.1% -> 44.9%) removed the drops without recovering a single
-message. Reverted.
+The firmware's `RX queue full, dropping` warning was the first suspect and looked
+conclusive. With a denominator it is **3 drops in 106 arrivals - 2.8%**. Raising
+the ring from 6 to 24 slots was tried and reverted: it removed the drops and
+recovered nothing measurable, because they were never the problem.
 
-## Reading the firmware log here, which took three attempts to get right
+Getting to that denominator needed a counter on the drop line itself, since the
+firmware log reaches the host as a sparse stream and one surviving line has to
+carry the rate. `pushRx` spoke only when it turned a write away.
 
-`BLE GATT mesh:` covers `setupService`, the CCCD callback and the queue-full
-warning. meshbench starts `meshtastic --listen` **after** waiting for the bearer
-to be ready, so the subscribe has already happened and `onCccd` is never inside
-the capture window. In practice the only mesh line that can appear is the
-queue-full warning - so **zero mesh lines means zero drops, not a broken log
-stream**, which is what an earlier version of this note wrongly concluded.
+## What is left
 
-## Answered: the writes never reach `onWrite`
-
-An arrival log was added to `onWrite` - every write, logged after the lock -
-and the next run measured:
-
-```
-decoded message lines : 24     (so the log stream is flowing)
-BLE GATT mesh lines   :  0     (so onWrite never fired, not once)
-node counters         : tx=31  rx=38
-```
-
-`LOG_DEBUG` reaches the host - the `decoded message` lines are the same level -
-so zero arrivals is not a logging artefact. **The central's writes never arrive at
-the firmware's characteristic write callback.** Inbound is unaffected: the same
-characteristic notifies at 15/15.
-
-That also retires the queue as a suspect for good. Nothing can overflow a ring
-that is never written to.
-
-## A reproducible working case, and a reproducible failing one
-
-The one run where writes **did** arrive:
-
-```
-node low4 (!1597f6f7), state dir reused, MESH_TRANSPORTS=gatt, CENTRAL_ONLY,
-no MESH_CHANNEL_URL, --listen held for the whole 170 s
-  -> 42 arrivals at onWrite, arrived/accepted counters climbing, zero drops
-```
-
-Every meshbench run: **0 arrivals**. The differences between them are few and all
-testable one at a time:
-
-| | working run | meshbench runs |
-| --- | --- | --- |
-| state dir | reused, identity already established | fresh per run |
-| channel | default LongFast + default PSK | the radio's own URL |
-| `--listen` window | whole run | outbound phase only |
-| driver | sent by hand through the phone API | meshbench's phases |
-
-**Two hypotheses are already dead.** Write type is not it - write-with-response
-produced 0 arrivals too, with 30 decoded-message lines proving the stream was
-live. And the role election is not it: shedding requires
-`peers.hasSubscriberFor(peer)`, and a `CENTRAL_ONLY` node runs no peripheral, so
-it has no subscribers and `resolve` returns before it can shed. The election gates
-nothing else in the link.
-
-The node-id correlation that suggested the election - five failing runs all with
-an id above the RAK's, the working run below it - is therefore **coincidence
-until something explains it**. Five samples of a ~24% event is not a finding.
-
-Next: take the working run and change one thing at a time toward the meshbench
-shape. The channel is the first to try, because it is the only difference that
-touches what the node sends rather than how it is driven.
-
-## An earlier suspect, now dead
-
-Every central writes **without response** - BlueZ `type=command`, Android
-`WRITE_TYPE_NO_RESPONSE`, Apple `CBCharacteristicWriteWithoutResponse` - and the
-nRF52 characteristic declares `CHR_PROPS_WRITE | CHR_PROPS_WRITE_WO_RESP` with
-`setWriteCallback(onWrite, true)`. If Bluefruit delivers only write-with-response
-to that callback, every fragment this bearer sends is discarded by the stack
-before any of our code sees it, which fits every measurement here.
-
-Testing it is one line at the central: write with response once and see whether
-`onWrite` fires. That has not been done.
-
-## Previously unexplained, now superseded
-
-The node reports the writes going out (`tx=41` for 15 messages, fragments
-included), the firmware drops none of them, and the firmware decodes none of them
-either. So the writes are either not reaching the ATT layer or not surviving
-reassembly. BlueZ's `WriteValue` with `type=command` is fire-and-forget and
-reports nothing back, so the node cannot tell the difference today.
-
-The next measurement is on the firmware side and needs no host-side counting:
-log in `onWrite` - arrival, length and conn - so the ring's input can be compared
-against what the central believes it sent. `pushRx` still only speaks when it
-drops something.
+The `acknowledged by the radio` column reads 5/15 here against the log's 14/15 -
+the reverse of every other bearer, where the log column is the floor. Worth
+understanding before quoting either as *the* number, but it does not change the
+conclusion: 106 writes arrived and 103 were accepted.
