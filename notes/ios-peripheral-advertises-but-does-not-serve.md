@@ -76,8 +76,48 @@ Ruled out:
 - **App not running.** `MeshMonitor{CoreBluetooth}` logs `handlePeerMTUChanged`
   as the central connects, so the process is alive and CoreBluetooth is live in it.
 
-What is left is the subscribe itself. CoreBluetooth answers a CCCD write without
-the application's help, so either the request is not reaching it or the link is
-gone by the time it would answer. The next reading is on the Apple side - whether
-a `CBPeripheralManager` is actually serving this database or the advertisement
-outlives the manager that published it.
+What is left is the subscribe itself.
+
+## Proven at both ends at once
+
+Both traces captured over the same 180 seconds, with the app launched fresh so
+`devicectl --console` owned its stdout (attaching to a running instance captures
+nothing - it foregrounds rather than spawns):
+
+```
+iPad      MNGATT peripheralManager state=5
+          MNGATT addService + startAdvertising
+          MNGATT central subscribed ...            <- ZERO occurrences
+
+james-pc  3 x dev_54_00_0A_78_71_4E: BlueZ refused StartNotify (No reply within
+              specified time) - this peer's frames will not arrive
+          1 x subscription refused, reconnecting (1/2)
+          1 x subscription refused, reconnecting (2/2)
+```
+
+`54:00:0A:78:71:4E` is the iPad - `bluetoothctl info` gives `Alias: iPad` with
+ANCS and AMS beside the mesh UUID.
+
+So the central wrote the CCCD three times in that window, and CoreBluetooth
+delivered `peripheralManager(_:central:didSubscribeTo:)` to the application
+**not once**. The service is published, the peripheral manager is powered on, and
+the subscribe never arrives. It is not a case of the central never trying.
+
+## The one structural oddity left
+
+The characteristic is built with `permissions = CBAttributePermissionsWriteable`
+and no readable bit:
+
+```kotlin
+CBMutableCharacteristic(
+    type = characteristicUuid,
+    properties = CBCharacteristicPropertyWrite or CBCharacteristicPropertyWriteWithoutResponse or
+        CBCharacteristicPropertyNotify,
+    value = null,
+    permissions = CBAttributePermissionsWriteable,
+)
+```
+
+Apple's reference for that initialiser does **not** state that notify requires the
+read permission, so this is a hypothesis and not a citation. It is testable: add
+`CBAttributePermissionsReadable`, deploy, and re-run this exact pair of traces.
