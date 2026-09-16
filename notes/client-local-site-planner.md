@@ -375,6 +375,105 @@ nowhere), so this is greenfield; Apple as an XCFramework behind a SwiftPM
 binary target, the channel `TAKPacket-SDK` already uses; wasm as today,
 against the new ABI.
 
+## Packaging: ship the wasm, not a native binary per platform
+
+The plan above assumed the distribution unit is C++ compiled per target. After
+measuring, that is the *second*-best option. The better one is to treat the
+**`.wasm` module as the artifact** and give each platform a thin way to
+execute it.
+
+### Why — the determinism is free and total
+
+WebAssembly arithmetic is deterministic by specification. The question is
+whether this module's maths actually stays inside that guarantee, and it
+does: the compiled module has **exactly three imports** (`__cxa_throw`,
+`__abort_js`, `emscripten_resize_heap`) and **none of them is a maths
+function**. musl's libm is compiled *into* the 58 KB module, so no `sin`,
+`atan2` or `pow` ever escapes to the host.
+
+Verified rather than assumed — Calgary, same `.wasm`, two unrelated engines:
+
+| Runtime | Engine | Result |
+| --- | --- | --- |
+| Node 22 | V8, JIT | baseline |
+| wasmtime 48 | Cranelift, AOT | **byte-identical**, signal and mask, 5,760,000 bytes each |
+
+Both also land on exactly the same figures against the native golden
+(mask 0.0000 %, 99.9973 % within ±1, max Δ 3).
+
+That collapses the entire risk section of this document:
+
+- **One golden, everywhere.** No per-architecture matrix, no bionic unknown,
+  no "is the tolerance wide enough for a third libm" question — because there
+  is no third libm. The gate becomes **exact byte equality**, which is a far
+  stronger contract than `≥99.9 % within ±1 dB`.
+- **The 2011 FORTRAN translation runs in a sandbox.** Bounded linear memory,
+  no host heap access. A latent bug traps instead of corrupting the app. With
+  JNI, a fault in that code takes the whole process down with no Kotlin frame
+  in the report.
+- **58 KB, one file**, versus an NDK build producing a `.so` per ABI plus an
+  XCFramework per Apple platform.
+
+Honest counterweight: we *measured* the native C++ path's cross-ISA
+divergence at 99.9981 % with a bit-identical mask, so determinism is an
+elegance-and-maintenance win here, not a rescue. The sandboxing and the
+single-artifact packaging are the arguments that stand on their own.
+
+### How each platform runs it
+
+| Platform | Execution | Native code shipped |
+| --- | --- | --- |
+| Web | as today | none |
+| Android | **Chicory** — a pure-JVM wasm runtime, no JNI, no NDK, no per-ABI binaries | **none** |
+| Desktop (JVM) | Chicory, the same code path as Android | none |
+| iOS | **wasm2c** → generated C → static lib in an XCFramework | one static lib |
+
+iOS cannot JIT, so a JIT runtime is out. `wasm2c` (from wabt) compiles the
+module to portable C at *build* time, preserving wasm semantics — including
+the bundled musl and the bounds checks — at native speed with no runtime
+dependency. **Verify that its output keeps bit-exact FP** (it is designed to,
+but that is the one claim here worth testing before committing).
+
+Two things to measure before this is settled, both cheap:
+
+1. **Chicory's speed on a real case.** Upstream lists "be the fastest
+   runtime" as an explicit non-goal, and it has an AOT bytecode compiler
+   that is comparatively new. Reference points: Calgary 30 km is **1.83 s**
+   native arm64 and **2.29 s** under Node/V8 — so wasm costs ~1.25× native.
+   If Chicory lands within ~3×, ship it and Android carries no native code at
+   all. If not, fall back to `wasm2c` + NDK on Android too — still one
+   artifact, still one golden, just with a `.so` again.
+2. **`wasm2c` FP fidelity**, per above.
+
+### What this changes about the ABI
+
+wasm's import mechanism is better than a C ABI at exactly the thing this
+engine needs, and it is worth redesigning around.
+
+Today the client drives the tiling: `splat_page_count` → `splat_page_info` →
+`splat_load_page`, which means every client must understand SDF cell order,
+west-positive 0–360 longitude, and 1°×1° page geometry. Three clients
+reimplementing that is three chances to get it subtly wrong.
+
+**Invert it.** The module *imports* a `fetch_tile(lat, lon) -> ptr` callback;
+the host supplies networking, gzip and caching, and the module keeps all the
+geodesy. The public API each platform then exposes is one call:
+
+```
+coverage(site, radio, environment) -> { grid, bounds, contours, stats }
+```
+
+No pages, no radials, no feet, no west-positive longitude — those become
+internal. The resumable radial loop stays, but as progress and cancellation
+on that one call, which is what Kotlin `Flow` and Swift `AsyncSequence` want
+anyway.
+
+And ship the **parameter schema alongside the module** — keys, defaults,
+ranges, colour scales, as one JSON document in the same release. That is what
+kills the `store.ts` / `SitePlannerParams.kt` / `SitePlannerParameters.swift`
+triplication, and it costs nothing once there is a release artifact to attach
+it to.
+
 ## Where the engine lives
 
 **Recommendation: extract it.** `engine/` + `splat/` + `test/fixtures/`
