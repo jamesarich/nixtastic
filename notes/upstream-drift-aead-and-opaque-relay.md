@@ -35,8 +35,35 @@ Three things are missing, in the order they bite:
    predates the flag, so a channel imported from a URL or `AdminService` loses it
    silently.
 
-AEAD is opt-in and off by default, so nothing is broken today. It breaks the first
-time anyone enables it on a channel node-kmp is meant to share.
+### It is worse than "cannot read", and it is blocked on a release
+
+The proto's own comment raises the stakes:
+
+```proto
+/* ... this enabled - unauthenticated (AES-CTR) packets are rejected.
+ * Experimental. Default: false (standard AES-CTR encryption). */
+bool use_aead = 8;
+```
+
+So on an AEAD channel a node-kmp node would not merely fail to read: **its own
+AES-CTR transmissions are rejected by every firmware node on that channel.** It
+would be mute and deaf at once, and the hash mismatch means it would not even
+report a crypto failure.
+
+**Nothing can be fixed yet.** `use_aead` landed in `protobufs` on 2026-09-10
+(`826908b`, "Settle the open schema questions") and **no tag contains it** - the
+newest release is `v2.8.0`, ten days older. node-kmp pins the published
+`org.meshtastic:protobufs` 2.8.0, and the field is simply not in that artifact:
+`ChannelSettings` there carries name, channel_num, uplink/downlink,
+module_settings and psk.
+
+So the first move is not code, it is the pin - a new protobufs release, or
+consuming a `-SNAPSHOT` as [[protobufs-tags-lockstep-with-firmware]] describes.
+That is a cross-repo decision: `firmware` and `meshtastic-python` vendor the
+submodule, `android` and `TAKPacket-SDK` take the published artifact.
+
+Tempering it: the field is marked **Experimental** and defaults to false, so this
+is a contract still moving, not one node-kmp is behind on.
 
 ## 2. CORE_PORTNUMS_ONLY must now relay opaque frames
 
