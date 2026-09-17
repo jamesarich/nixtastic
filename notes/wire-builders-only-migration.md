@@ -48,18 +48,38 @@ has to be regenerated against current `main`, which is now **308 constructor and
 `copy()` call sites across 40 files** - larger than the original 43, because
 `main` has grown.
 
-**Do not regenerate it before `protobufs` #1074 lands.** Ahead of the flag the
-rewrite is unenforced: `copy()` and the all-args constructor still exist, so every
-converted site is verified only by a green `build`, and the 309th site added the
-next day compiles fine. With the flag, the compiler names all 308. #1074 is one
-file, `+14/-3`, and has not moved since 2026-09-10 - landing it first turns this
-from a hand-audit into a compile error list, and means doing it once instead of
-twice.
+**It cannot be regenerated before `protobufs` #1074 lands.** Checked against the
+built artifacts 2026-09-17: in published `protobufs-jvm-2.8.0`, `Position.newBuilder()`
+returns `java.lang.Void` and its body is
 
-Note also that node-kmp #1 pins `2.8.1-buildersonly-SNAPSHOT`, which exists only
-in a local `~/.m2`. The pin is not actually required by the source changes -
-`newBuilder()` is present in the published 2.8.0 artifact, so the regenerated
-migration compiles on the default track. Only the *enforcement* needs the flag.
+    throw new AssertionError("Builders are deprecated and only available in a
+    javaInterop build; see https://square.github.io/wire/wire_compiler/#kotlin")
+
+So the Builder API does not exist on the default track - it is a poison stub, and a
+`grep` for `newBuilder` in the jar finds it and tells you nothing. The migration is
+therefore not merely unenforced ahead of the flag; it does not compile at all, and
+node-kmp #1's `2.8.1-buildersonly-SNAPSHOT` pin is load-bearing rather than a
+placeholder. Landing #1074 first is the only order that works, and it also turns
+the 308 sites from a hand-audit into a compile-error list.
+
+**Wire 7.0.0 does not replace the flag.** `protobufs` #1076 bumps Wire and renames
+`boxOneOfsMinSize = 5000` to `oneofMode = "flat"`, which its own diff says generates
+byte-identical output; its comment reads "Required by buildersOnly, **still on Wire
+7.0.0**". Compared class-for-class, `2.8.1-wire7-SNAPSHOT` and
+`2.8.1-buildersonly-SNAPSHOT` have the same shape - a `(Builder, ByteString)`
+constructor and no `copy` - because #1076 is stacked on #1074. Wire 7 is a tidy-up
+on this axis, not a fix.
+
+The shape difference that matters, measured on `Position`:
+
+| | published 2.8.0 | with `buildersOnly` |
+| --- | --- | --- |
+| constructor | all-args, 24 params | `(Builder, ByteString)` |
+| `copy` / `copy$default` | present, 24 params | absent |
+| `newBuilder()` | returns `Void`, throws | returns `Position.Builder` |
+
+The middle row is the whole bug: both the constructor and `copy$default` carry one
+parameter per field, so adding a field moves both signatures.
 
 The `meshtastic-sdk` schema bump separates cleanly, verified rather than
 assumed: with the pin at the published 2.8.0 and **no source changes at all**,
