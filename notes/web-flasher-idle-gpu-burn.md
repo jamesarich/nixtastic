@@ -94,6 +94,31 @@ One confound was found and excluded: the Claude in Chrome extension injects its
 own full-viewport animated overlay with its own `backdrop-filter`. Pausing that
 alone left GPU at 81-84%, so the cost is the page's.
 
+## It is an Apple Silicon problem
+
+The same test on `james-pc` - Linux, GeForce GTX 1080, Chrome, window visible and
+in front - does not reproduce.
+
+| | Apple Silicon | GTX 1080 |
+| --- | --- | --- |
+| Flasher open, idle | 35-72% | **5%** |
+| During a flash | 78-87% | **9-13%**, peak 18 |
+| GPU temperature | - | 52 -> 53 C |
+| Chrome CPU during flash | 43-89% | 28-39%, peak 128 |
+
+Six to eight times the GPU cost for identical work. `logo-pulse` is unconditional,
+so it runs on both; the page, the firmware and the flash were the same.
+
+The likely reason is the renderer. Apple Silicon is tile-based and deferred, and
+the macOS counter reports `Tiler Utilization` pegged alongside `Device
+Utilization` - a large `backdrop-filter` forces the blurred region through the
+tiler every frame. A discrete card with that much fill rate absorbs the same work
+without noticing.
+
+So this is not "the flasher burns everyone's GPU". It is severe on Apple Silicon
+and mild on a discrete GPU - which still means every Mac and every iOS device, and
+those are the machines most likely to be on battery.
+
 The idle finding above explains the *level* - anything that repaints continuously
 costs 70% of a GPU while those blurs are on the page, and a flash repaints
 constantly: a progress bar, `animate-spin` spinners, and a **full-viewport
