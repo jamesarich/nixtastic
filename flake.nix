@@ -202,6 +202,7 @@
         let
           inherit (pkgs) lib;
           isLinux = pkgs.stdenv.hostPlatform.isLinux;
+          isDarwin = pkgs.stdenv.hostPlatform.isDarwin;
 
           #########################################################
           # Common: present in every shell.
@@ -376,6 +377,21 @@
             org.gradle.java.installations.auto-detect=false
             org.gradle.java.installations.auto-download=false
             org.gradle.java.installations.paths=${toolchainPaths}
+          '';
+
+          # nixpkgs' apple-sdk setup hook exports DEVELOPER_DIR/SDKROOT and the compiler vars
+          # into every darwin shell, pointing at a Nix SDK stub instead of Xcode
+          # (NixOS/nixpkgs#355486). Real xcodebuild, xcrun and simctl then fail, and none of the
+          # errors name Nix: a Kotlin/Native cinterop reports `tool 'xcodebuild' not found` from a
+          # host where /usr/bin/xcodebuild exists. Every shell that builds an Apple target needs
+          # this, so it is shared rather than copied.
+          darwinXcodeHook = lib.optionalString isDarwin ''
+            unset DEVELOPER_DIR SDKROOT CC CXX LD AR NM RANLIB STRIP NIX_CC
+            # The same hook puts xcbuild's 2019 `xcrun` stub ahead of Xcode's. Drop only that
+            # entry - keeping Nix's git/gh/jq/rg ahead of the system ones, which a blanket
+            # /usr/bin prepend would shadow.
+            PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v 'xcbuild.*xcrun' | paste -sd: -)
+            export PATH
           '';
 
           jvmHook = ''
@@ -653,6 +669,8 @@
             shellHook =
               jvmHook
               + androidHook
+              # The KMP repos here build iOS and macOS targets.
+              + darwinXcodeHook
               + (banner "kotlin" (reposFor "kotlin"))
               + ''
                 echo "  JDKs: 21 (default), 17, 11 - Gradle toolchains resolved from Nix"
@@ -915,27 +933,18 @@
                   xcbeautify
                 ]
               );
-            shellHook = (banner "apple" "Meshtastic-Apple - iOS · macOS · watchOS · visionOS") + ''
-              # nixpkgs' apple-sdk setup hook exports DEVELOPER_DIR/SDKROOT and
-              # the compiler vars into every darwin shell, pointing at a Nix SDK
-              # stub instead of Xcode (NixOS/nixpkgs#355486). Real xcodebuild,
-              # xcrun and simctl then fail, and none of the errors name Nix.
-              # Strip them here so the shell needs no `env -u` incantation.
-              unset DEVELOPER_DIR SDKROOT CC CXX LD AR NM RANLIB STRIP NIX_CC
-              # The same hook puts xcbuild's 2019 `xcrun` stub ahead of Xcode's.
-              # Drop only that entry - keeping Nix's git/gh/jq/rg ahead of the
-              # system ones, which a blanket /usr/bin prepend would shadow.
-              PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v 'xcbuild.*xcrun' | paste -sd: -)
-              export PATH
-
-              if [ "$(uname)" != "Darwin" ]; then
-                echo "  !  This repo builds only on macOS with Xcode."
-                echo "     On Linux this shell gives you git/gh for review work."
-              else
-                echo "  xcodebuild -scheme Meshtastic | xcbeautify"
-              fi
-              echo ""
-            '';
+            shellHook =
+              darwinXcodeHook
+              + (banner "apple" "Meshtastic-Apple - iOS · macOS · watchOS · visionOS")
+              + ''
+                if [ "$(uname)" != "Darwin" ]; then
+                  echo "  !  This repo builds only on macOS with Xcode."
+                  echo "     On Linux this shell gives you git/gh for review work."
+                else
+                  echo "  xcodebuild -scheme Meshtastic | xcbeautify"
+                fi
+                echo ""
+              '';
           };
 
           #########################################################
@@ -972,6 +981,8 @@
               # "SDK location not found" without ANDROID_HOME. Every other shell
               # whose repo has an Android target already carries this hook.
               + androidHook
+              # packages/kmp declares macosArm64 and both iOS targets.
+              + darwinXcodeHook
               + (banner "protobufs" "shared .proto definitions - buf · deno · gradle · cargo")
               + ''
                 echo "  buf lint && buf generate     (generate needs network: remote plugin)"

@@ -235,7 +235,7 @@ finds - run it before diagnosing by hand.
   interpreter, whose loader cannot see the system `libstdc++`/`libz` that
   manylinux wheels link. numpy, opencv and torch install fine and then fail to
   import, blaming neither library.
-- **Any Nix shell OTHER than `.#apple` breaks `apple`'s real Xcode builds** -
+- **A Nix shell that does not strip it breaks every real Xcode build** -
   nixpkgs' Darwin stdenv exports `DEVELOPER_DIR`/`SDKROOT` pointing at a bare
   Nix `apple-sdk` stub, and `CC=clang`/`CXX=clang++` resolve through the
   polluted `PATH` to Nix's own `clang` and an ancient `xcbuild`-package
@@ -245,11 +245,20 @@ finds - run it before diagnosing by hand.
   only the bare alias breaks), and `clang` rejecting `-index-store-path` as
   `unknown argument` all look like Xcode or project bugs. `xcode-select -p`
   itself is unaffected - only the env vars and `PATH` lookup are.
-  **`.#apple` strips all of this in its shellHook** (2026-09-15), so
-  `just in apple xcodebuild …` and a plain `xcodebuild` inside that shell both
-  reach the real Xcode - verified with `xcrun --sdk macosx --show-sdk-path`.
-  Anywhere else on darwin - `.#kotlin`, `.#python`, the root shell - fix per
-  invocation and don't touch the persistent selection:
+  **`.#apple`, `.#kotlin` and `.#protobufs` strip all of this** through the
+  shared `darwinXcodeHook` - the three shells that build an Apple target. So a
+  plain `xcodebuild` in `.#apple`, and a Kotlin/Native Apple cinterop or link in
+  the other two, reach the real Xcode with no `env -u` incantation. Verified with
+  `xcrun --sdk macosx --show-sdk-path`, and with
+  `:node-desktop-ble-macos:cinteropJniMacosArm64` + `linkReleaseSharedMacosArm64`
+  building from a bare `direnv exec`.
+  **A Gradle daemon outlives the fix.** It captures the environment it started
+  in and is reused on matching JVM criteria whatever the launcher's env, so a
+  daemon from before this landed keeps failing with `tool 'xcodebuild' not
+  found`. `./gradlew --stop` once per machine; check
+  `~/.claude/bin/gradle-queue --status` first.
+  Anywhere else on darwin - `.#python`, the root shell - fix per invocation and
+  don't touch the persistent selection:
   `env -u DEVELOPER_DIR -u SDKROOT -u CC -u CXX -u LD -u AR -u NM -u RANLIB
   -u STRIP -u NIX_CC PATH="/usr/bin:/bin:/usr/sbin:/sbin" xcodebuild …`
   (same for bare `xcrun`/`simctl` calls). Verified 2026-08-20 against Xcode

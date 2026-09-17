@@ -225,6 +225,31 @@ else
   ok "worktrees" "$nwt found, all outfitted"
 fi
 
+# --- Xcode reachability (darwin) ------------------------
+# nixpkgs' apple-sdk hook points DEVELOPER_DIR/SDKROOT at a
+# stub in every darwin shell, and the shells that build an
+# Apple target strip it back out. Nothing else notices if a
+# refactor drops that: the failure is a Kotlin/Native
+# cinterop reporting `tool 'xcodebuild' not found` from a
+# host where /usr/bin/xcodebuild plainly exists.
+if [ "$(uname)" = "Darwin" ]; then
+  unstripped=""
+  for sh in apple kotlin protobufs; do
+    awk -v s="$sh" '
+      $0 ~ "^ +" s " = pkgs.mkShell" { inside = 1 }
+      inside && /darwinXcodeHook/ { found = 1 }
+      inside && /^          };/ { exit }
+      END { exit !found }
+    ' "$root/flake.nix" || unstripped="$unstripped .#$sh"
+  done
+  if [ -n "$unstripped" ]; then
+    bad "xcode shells" "no darwinXcodeHook:$unstripped"
+    fix "these shells build an Apple target and need the strip - see CLAUDE.md"
+  else
+    ok "xcode shells" ".#apple .#kotlin .#protobufs strip the Nix SDK stub"
+  fi
+fi
+
 # --- JDK pinning ----------------------------------------
 # The failure this catches is silent and expensive: Gradle
 # downloading its own JDKs behind Nix's back.
