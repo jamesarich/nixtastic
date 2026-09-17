@@ -33,6 +33,26 @@ because the repo publishes nothing to a remote yet.
   (`java_pid2884.hprof`, `idb-*/`, `local.properties`, `build/`) is ignored and
   none is tracked.
 
+## Two overclaims the audit found and fixed
+
+Both were in the repo's own docs before this branch, and both are the kind an
+org reader would check first.
+
+- **Every "against firmware" BLE row was proven against a spike branch.**
+  `BLEMeshHandler` and the mesh-peer GATT service live on firmware's
+  `spike/ble-mesh-transport` and are absent from `develop` (verified by
+  `git grep` on both). The README stated this once, obliquely, as a caveat about
+  BLE and UDP not being provable together on an ESP32. It now leads the
+  paragraph and qualifies both tables, the Not-yet-here bullet and AGENTS.md.
+  Our side is real and hardware-proven; the radio's side is a proposal, which is
+  the same conversation as the on-air format decision.
+- **"meshtasticd needs a radio" is false.** It runs radio-less over UDP
+  multicast, and two of them on one docker bridge is a standard rig here
+  (`meshtasticd-sim-rig`). The honest differentiators are that meshtasticd is a
+  Linux process rather than a library you embed on Android, iOS, macOS, Windows
+  and the JVM, and that it carries only the firmware's bearer set, so the GATT
+  mesh and Wi-Fi Aware are not in its vocabulary.
+
 ## The calls
 
 ### 1. The repo name
