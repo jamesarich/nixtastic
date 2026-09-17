@@ -72,17 +72,20 @@ match, Gradle resolves two pins to the higher one, and that is precisely the
 broken combination. A BOM is the mechanism that stops a consumer assembling
 that failure by hand. It should land with publication, not after.
 
-### 4. `curve25519` and `node-bluez` under `org.meshtastic`
+### 4. `curve25519` under `org.meshtastic`
 
-Both deliberately carry no Meshtastic type. `node-bluez` is kept
-dependency-free so it can be offered to Kable; `curve25519` has no dependencies
-at all. Yet `org.meshtastic:curve25519` claims a very generic name inside the
-org's group, which is either a squat or a promise depending on how you read it.
+`node-bluez` is **not** an open question: James stated on 2026-09-16 that the
+BLE work is meant to be upstreamed into Kable, which has no JVM/Linux backend,
+and `:node-bluez` is already built for that donation (it speaks `BluezProbe`,
+imports nothing else here). Its coordinate is a way station, so leave it.
 
-Three ways out: keep them there and accept that the group is not only about
-Meshtastic; publish them under a different group; or upstream them and depend
-on the result. Worth deciding before either has an external consumer, because
-that is the moment the coordinate stops being free to move.
+`curve25519` is the open one. It carries no Meshtastic type and no dependencies
+at all, and yet `org.meshtastic:curve25519` claims a very generic name inside
+the org's group - either a squat or a promise, depending on how it is read.
+Three ways out: keep it there and accept that the group is not only about
+Meshtastic; publish it under a different group; or upstream it and depend on the
+result. Worth deciding before it has an external consumer, because that is the
+moment the coordinate stops being free to move.
 
 ### 5. Cosmetic: a stale artifact in `~/.m2`
 
