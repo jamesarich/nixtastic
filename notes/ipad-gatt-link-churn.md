@@ -143,28 +143,44 @@ many other centrals were dialling the same radios.** What is not established is
 where the limit is - the radio logs `no spare adv set (0x4), sharing the phone's`,
 so advertising-set pressure is the thing to measure next, not the link itself.
 
-## Why two centrals churn: there are two slots, and the phone holds one
+## Why two centrals churn - two separate limits, not one
 
-Not a defect - a declared capacity. `NRF52Bluetooth::setup`:
+An earlier version of this note said "one mesh slot, the phone holds the other".
+That conflated two different resources. Read from the nRF52 source:
+
+**Connection slots are shared, not reserved.** `NRF52Bluetooth::setup` calls
 
 ```cpp
 // Two peripheral links: the phone and one mesh peer.
 Bluefruit.begin(2, 1);
 ```
 
-Two peripheral links total on the nRF52, and the design reserves one for the
-phone. So **one mesh central at a time** is what the radio offers. The iPad and
-james-pc's node were competing for a single slot, which is why 20 disconnects
-became 4 when the Linux node stopped, and 0 when nothing else was dialling.
+Two peripheral links and one central link. The comment describes the expected
+use, not an enforced split: `rearmAdvertising` re-advertises while
+`Bluefruit.Periph.connected() < 2`, so the slots go first-come. With no phone
+connected, **two mesh centrals can both hold links** - which is why the iPad and
+james-pc's node were not simply fighting over one.
 
-The radio's own `no spare adv set (0x4), sharing the phone's` is the same
-constraint showing up in advertising rather than connections.
+**Advertising sets are the scarcer resource.** The mesh advertiser asks the
+SoftDevice for its own extended-advertising set, and when that fails:
 
-This is the exposure [`gatt-bearer-security-posture.md`](./gatt-bearer-security-posture.md)
-names as the one real one: a stranger who bonds occupies the only mesh slot. It
-is not mitigated, and it is the same resource whether the occupant is hostile or
-just a second bench host.
+```cpp
+// Sharing handle 0 means suspending the phone advertisement for each burst and
+// restoring it afterwards.
+LOG_WARN("BLE mesh: no spare adv set (0x%x), sharing the phone's", err);
+```
 
-Worth deciding, not assumed: whether a mesh bearer that offers one central at a
-time is the intended shape, or whether the phone's reservation should yield when
-no phone is connected. That is a firmware design question, not a bug to fix here.
+`0x4` is out-of-memory. Sharing handle 0 means every mesh burst **suspends the
+phone advertisement and restores it** - so advertising and connectability contend
+on one set, and a burst can be scheduled and never transmitted. That is the
+`reason=1 after 0 events` termination measured in
+[`radio-plain-text-log.md`](./radio-plain-text-log.md), at 1 in 25 bursts.
+
+So the churn under two centrals is not slot exhaustion. Both centrals fit. What
+they contend for is the radio's time: two link lifecycles plus a shared
+advertising set on one antenna.
+
+**The open design question**, stated properly: whether the mesh advertiser should
+get a dedicated set - which is a SoftDevice memory-budget change, the same
+`nrf52840_s140_v*.ld` RAM base that already gates the central role - or whether
+sharing handle 0 is acceptable given it costs a few percent of bursts.

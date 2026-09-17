@@ -1,8 +1,7 @@
 # A firmware node cannot take an implicit ack over GATT
 
-Open, and deliberately not patched: the fix touches a security guard and an
-upstream ack contract, so it is James's call. Everything below is read from
-source, not inferred.
+**Closed 2026-09-16: the guard stays, following firmware.** Everything below is
+read from source, not inferred.
 
 ## The interaction
 
@@ -37,17 +36,30 @@ Its comment names the reason: a spoofed local origin reaches paths that trust
 `isFromUs`. Removing it to admit the echo would widen that trust to any peer on
 the link, which on a bearer with no link-layer authentication is the whole mesh.
 
-## The three options, as they stand
+## Decided: follow firmware, keep the guard
 
-1. **Leave it.** Firmware gets no implicit ack over GATT; node-kmp does. Costs a
-   retransmit that a LoRa-adjacent node would have retired, and nothing else.
-2. **Admit the echo into the Router.** Smallest diff, widest blast radius - it is
-   exactly what the guard exists to stop.
-3. **Account for it without routing it.** Keep the drop, and before returning,
-   hand the packet to the ack path alone when it matches a pending retransmission
-   by `(from, id)` and carries `hop_limit < hop_start`. A forger would have to
-   guess a packet id currently in flight, and the only thing they could buy is an
-   ack the sender was already expecting - not a routing decision.
+James's call, 2026-09-16: follow firmware's lead. The guard stays.
 
-Option 3 is the one worth building. It is a change to ack semantics on a bearer
-upstream has not shipped, so it wants a PR of its own rather than riding along.
+Upstream argues the same way in its own code. `Router.cpp` keeps a forged sender
+off exactly this path -
+
+```cpp
+// instead of blackholing; isFromUs stays REJECT to keep forged senders off the ACK path.
+```
+
+- and the blast radius is concrete: `Router.cpp:598` gates the **MQTT uplink** on
+`isFromUs(p)`, so a packet forged with our node number that reached the Router
+decoded would be published to the broker under our identity. On a bearer with no
+link-layer authentication, that is the whole mesh.
+
+The alternative considered and rejected was to hand the echo to the ack path
+alone, never to routing. That is precisely the case upstream's comment names.
+
+**What it costs:** a firmware node takes no implicit ack over GATT, so a
+`want_ack` packet retransmits where a LoRa-adjacent node would have retired it.
+Nothing else. node-kmp is unaffected - it takes its implicit ack normally, which
+the relay-back fix proved on the bench.
+
+AEAD would change the calculus, since a forgery cannot decrypt on an AEAD
+channel - but it is opt-in, off by default, and not yet in a released proto. See
+[`upstream-drift-aead-and-opaque-relay.md`](./upstream-drift-aead-and-opaque-relay.md).
