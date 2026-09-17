@@ -285,8 +285,14 @@ a Linux node that went silent would be worse than one advertising at the default
 the same day. That controller is HCI version 9 (BT 5.0, Broadcom) on bluez 5.82, and
 `LEAdvertisingManager1.SupportedCapabilities` still reports `MaxAdvLen 31`: BlueZ sees
 no extended advertising, so a `MeshPacket` cannot leave the host and `canTransmit`
-correctly reads false. `james-pc`'s Realtek adapter refuses advertising outright. So
-the tuned `RegisterAdvertisement` is never reached on either box.
+correctly reads false. So the tuned `RegisterAdvertisement` is never reached on that
+box.
+
+`james-pc` is the opposite case and **does** advertise - `MaxAdvLen 251`, extended
+advertising, `CanSetTxPower` - measured 2026-09-14. An earlier reading here called
+its Realtek adapter one that refuses advertising outright; that was the +20 int8 cap
+on `Advertising_TX_Power` refusing the tuned registration, not the adapter refusing
+to advertise. See [`ble-mesh-reevaluation-2026-09-14.md`](./ble-mesh-reevaluation-2026-09-14.md).
 
 It did settle the half that matters most, though. `SupportedFeatures` is **empty** -
 no `CanSetTxPower` - so `maxTxPower()` returns null and no `TxPower` property is sent.
