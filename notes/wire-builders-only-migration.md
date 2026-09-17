@@ -26,12 +26,12 @@ are placeholders.
 | `protobufs` | [#1074](https://github.com/meshtastic/protobufs/pull/1074) | 1 | the flag. **MERGED** 2026-09-17 `aba4ee8` - and it broke master, below |
 | `protobufs` | [#1076](https://github.com/meshtastic/protobufs/pull/1076) | 1 | Wire 7.0.0 + `oneofMode`. **Superseded** - folded into #1097 |
 | `protobufs` | [#1097](https://github.com/meshtastic/protobufs/pull/1097) | 2 | the registry fix + Wire 7.0.0. **MERGED** 2026-09-17 `1476d78` |
-| `protobufs` | [#1098](https://github.com/meshtastic/protobufs/pull/1098) | 1 | pin the bytecode level - **blocks both library repos** |
-| `TAKPacket-SDK` | [#141](https://github.com/meshtastic/TAKPacket-SDK/pull/141) | 3 | pushed, 332/332 green at class 65. Needs #1098, then one pin line |
+| `protobufs` | [#1098](https://github.com/meshtastic/protobufs/pull/1098) | 1 | pin the bytecode level. **MERGED** 2026-09-17 `e319346` (by Ben) |
+| `TAKPacket-SDK` | [#141](https://github.com/meshtastic/TAKPacket-SDK/pull/141) | 3 | **ready, CLEAN, 10/10 CI.** 332/332 on the real snapshot. Merge next |
 | `meshtastic-node-kmp` | [#1](https://github.com/meshtastic/meshtastic-node-kmp/pull/1) | 42 | reference diff only; reapplied separately. #9 `a246fa7` and #11 `75d1e13` merged |
-| `meshtastic-sdk` | [#125](https://github.com/meshtastic/meshtastic-sdk/pull/125) | 64 | pushed, full `check` green at class 65. Subsumes #132 (`wire` 7.0.0) |
+| `meshtastic-sdk` | [#125](https://github.com/meshtastic/meshtastic-sdk/pull/125) | 64 | **ready, CLEAN, 12/12 CI.** Subsumes #132 (`wire` 7.0.0) |
 | `meshtastic-sdk` | [#126](https://github.com/meshtastic/meshtastic-sdk/pull/126) | 3 | the schema bump. **MERGED** 2026-09-17 `419a624` |
-| `Meshtastic-Android` | [#7115](https://github.com/meshtastic/Meshtastic-Android/pull/7115) | 282 | pushed, baseline green: 8345 tests, 0 failures. Needs #141 published |
+| `Meshtastic-Android` | [#7115](https://github.com/meshtastic/Meshtastic-Android/pull/7115) | 282 | baseline green: 8345 tests, 0 failures. Draft until #141 publishes `0.9.2-SNAPSHOT` |
 
 ### Landing day, 2026-09-17: #1074 merged and took master down with it
 
@@ -62,7 +62,7 @@ this note said it would be - and folded #1076's Wire 7.0.0 bump in, because mast
 Wasm and Android target) and by reading the generated file: 370 `FieldMetadata.Builder()`
 calls, 0 bare constructors.
 
-**The coordinate the consumers pin is `2.8.0.81-g1476d78-SNAPSHOT`.** No tag was cut;
+**The coordinate the consumers pin is `2.8.0.85-ge319346-SNAPSHOT`** - the first snapshot after #1098, and the first that is both buildersOnly *and* consumable below JDK 25 (class file 55, verified from the jar rather than the coordinate). `.81` and `.83` carry buildersOnly but are class 69; do not pin either. No tag was cut;
 the decision on the day was snapshots all the way, so `TAKPacket-SDK` publishes a
 snapshot too and `android` pins both. `~/.m2` now also holds
 `2.8.1-buildersonly-SNAPSHOT` rebuilt from #1097 (buildersOnly + Wire 7 + the registry
