@@ -23,13 +23,51 @@ are placeholders.
 
 | Repo | PR | Files | Notes |
 | --- | --- | ---: | --- |
-| `protobufs` | [#1074](https://github.com/meshtastic/protobufs/pull/1074) | 1 | the flag. Mergeable on its own, breaks nobody |
-| `protobufs` | [#1076](https://github.com/meshtastic/protobufs/pull/1076) | 1 | Wire 7.0.0 + `oneofMode`, **stacked on #1074** |
-| `TAKPacket-SDK` | [#141](https://github.com/meshtastic/TAKPacket-SDK/pull/141) | 2 | prerequisite for android |
-| `meshtastic-node-kmp` | [#1](https://github.com/meshtastic/meshtastic-node-kmp/pull/1) | 42 | |
-| `meshtastic-sdk` | [#125](https://github.com/meshtastic/meshtastic-sdk/pull/125) | 64 | rebase onto #126, drop its `RadioMetrics` changes |
-| `meshtastic-sdk` | [#126](https://github.com/meshtastic/meshtastic-sdk/pull/126) | 3 | the schema bump, **split out and not draft** - green on published 2.8.0 |
-| `Meshtastic-Android` | [#7115](https://github.com/meshtastic/Meshtastic-Android/pull/7115) | 279 | lands last |
+| `protobufs` | [#1074](https://github.com/meshtastic/protobufs/pull/1074) | 1 | the flag. **MERGED** 2026-09-17 `aba4ee8` - and it broke master, below |
+| `protobufs` | [#1076](https://github.com/meshtastic/protobufs/pull/1076) | 1 | Wire 7.0.0 + `oneofMode`. **Superseded** - folded into #1097 |
+| `protobufs` | [#1097](https://github.com/meshtastic/protobufs/pull/1097) | 2 | the registry fix + Wire 7.0.0. **MERGED** 2026-09-17 `1476d78` |
+| `TAKPacket-SDK` | [#141](https://github.com/meshtastic/TAKPacket-SDK/pull/141) | 2 | prerequisite for android. Verified green, pin swap outstanding |
+| `meshtastic-node-kmp` | [#1](https://github.com/meshtastic/meshtastic-node-kmp/pull/1) | 42 | spent; reapply after #9 and #11 merge |
+| `meshtastic-sdk` | [#125](https://github.com/meshtastic/meshtastic-sdk/pull/125) | 64 | rebased onto main; took #126's semantics |
+| `meshtastic-sdk` | [#126](https://github.com/meshtastic/meshtastic-sdk/pull/126) | 3 | the schema bump. **MERGED** 2026-09-17 `419a624` |
+| `Meshtastic-Android` | [#7115](https://github.com/meshtastic/Meshtastic-Android/pull/7115) | 277 | rebased 54 forward, squashed to one commit |
+
+### Landing day, 2026-09-17: #1074 merged and took master down with it
+
+`buildersOnly` makes the generated `FieldMetadata` constructor private, and #952's
+`FieldMetadataRegistryHandler` rendered 336 `FieldMetadata(...)` constructor calls
+into the registry it generates. The moment #1074 landed, the generated file stopped
+compiling:
+
+    FieldMetadataRegistry.kt:799:32 No parameter with name 'deprecated' found.
+    FieldMetadataRegistry.kt:799:32 No value passed for parameter 'builder'.
+
+The interaction was predicted below in *Interaction with `protobufs` #952* and the
+plan was "**#952 lands as written; #1074 rebases onto it and carries both changes**".
+That is not what happened: #1074 merged with its head 38 commits behind base, so its
+green `build-kmp` had never seen #952, which had landed two days earlier. **A green
+check on a stale head is the whole failure mode** - nothing in the PR view says the
+check did not include the base.
+
+The blast radius was wider than a red branch. Both snapshot publishes after the merge
+failed (`aba4ee8`, `f7de057`, in `compileCommonMainKotlinMetadata`,
+`compileKotlinIosArm64` and `compileAndroidMain`), so **no published snapshot carried
+`buildersOnly`** and `android`, which tracks the snapshot, could not move at all.
+
+#1097 fixed it in the handler rather than the schema - one `renderConstructor`, as
+this note said it would be - and folded #1076's Wire 7.0.0 bump in, because master's
+`buildSrc` had meanwhile been moved to `wire-schema` 7.0.3 by Renovate against a
+6.4.7 plugin. Verified on the full `packages/kmp` build (207 tasks, every Native, JS,
+Wasm and Android target) and by reading the generated file: 370 `FieldMetadata.Builder()`
+calls, 0 bare constructors.
+
+**The coordinate the consumers pin is `2.8.0.81-g1476d78-SNAPSHOT`.** No tag was cut;
+the decision on the day was snapshots all the way, so `TAKPacket-SDK` publishes a
+snapshot too and `android` pins both. `~/.m2` now also holds
+`2.8.1-buildersonly-SNAPSHOT` rebuilt from #1097 (buildersOnly + Wire 7 + the registry
++ current protos), which is what every consumer branch was verified against before the
+real snapshot existed - `javap` confirms the private `(Builder, ByteString)` constructor,
+a real `newBuilder()`, and no `copy`.
 
 ### node-kmp's PR cannot be rebased, and should not be redone before the flag
 
