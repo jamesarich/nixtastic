@@ -5,7 +5,8 @@
 # bridge and creates no tty; looking there once had it recorded as unplugged. And
 # a node-kmp jar whose hash matches on every host says the hosts agree, not that
 # any of them is current - that cost two measurements, so the build stamp is
-# compared against the repo's own HEAD.
+# compared against the repo's own HEAD. The Apple side is here because a fleet
+# view that omits the iPad is how it got written off as unreachable for a day.
 set -uo pipefail
 
 hosts="${NIXTASTIC_FLEET_HOSTS:-james-pc.local james@192.168.1.23}"
@@ -57,3 +58,41 @@ REMOTE
     printf '%s\n' "$out" | sed -n 's/^BT /  bluetooth  /p'
     printf '\n'
 done
+
+# The Apple devices are not ssh hosts, so they need their own probe: devicectl for
+# the iPad, and the framework Gradle last linked for what an install would carry.
+if [ "$(uname -s)" = "Darwin" ]; then
+    printf '=== this Mac (Apple bench) ===\n'
+
+    # Every Apple tool needs the Nix environment stripped or xcrun reports Xcode missing.
+    apple() {
+        env -u DEVELOPER_DIR -u SDKROOT -u CC -u CXX -u LD -u AR -u NM -u RANLIB -u STRIP \
+            -u NIX_CC PATH="/usr/bin:/bin:/usr/sbin:/sbin" "$@"
+    }
+
+    devices=$(apple xcrun devicectl list devices 2>/dev/null | tail -n +3 | grep -v '^[[:space:]]*$' || true)
+    if [ -n "$devices" ]; then
+        printf '%s\n' "$devices" | while IFS= read -r line; do
+            name=$(printf '%s' "$line" | awk '{print $1, $2}')
+            state=$(printf '%s' "$line" | grep -oE 'available \(paired\)|unavailable|connecting' | head -1)
+            printf '  device     %s  %s\n' "$name" "${state:-unknown}"
+        done
+    else
+        printf '  device     none paired\n'
+    fi
+
+    fw="$root/meshtastic-node-kmp/monitor/build/bin/iosArm64/debugFramework/Monitor.framework"
+    if [ -d "$fw" ]; then
+        printf '  framework  linked %s\n' "$(date -r "$fw" '+%Y-%m-%d %H:%M' 2>/dev/null)"
+    else
+        printf '  framework  not linked - run: nix run .#iosdeploy\n'
+    fi
+
+    # Local Network is denied under herdr, so a LAN bearer cannot be exercised from here.
+    if timeout 5 python3 -c "import socket;socket.socket(socket.AF_INET,socket.SOCK_DGRAM).sendto(b'x',('192.168.1.1',53))" 2>/dev/null; then
+        printf '  lan        reachable\n'
+    else
+        printf '  lan        DENIED - macOS Local Network; run LAN work outside herdr\n'
+    fi
+    printf '\n'
+fi
