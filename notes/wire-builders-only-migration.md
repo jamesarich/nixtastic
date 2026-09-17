@@ -33,7 +33,7 @@ are placeholders.
 
 ### node-kmp's PR cannot be rebased, and should not be redone before the flag
 
-Checked 2026-09-17. `meshtastic-node-kmp` #1 is 87 commits behind `main` and
+Checked 2026-09-17. `meshtastic-node-kmp` #1 is 109 commits behind `main` and
 `mergeStateStatus DIRTY`. A rebase was attempted and aborted: it conflicts in
 seven files, and one conflict is semantic rather than textual. `8b5a531` ("Report
 the signal this bearer actually measured") landed on `main` after the branch was
@@ -44,9 +44,37 @@ fix. It also predates `969dd64`, so it reintroduces pre-cleanup comment wording
 across the same files.
 
 So the branch's diff is spent; only its knowledge is still good. The migration
-has to be regenerated against current `main`, which is now **308 constructor and
-`copy()` call sites across 40 files** - larger than the original 43, because
-`main` has grown.
+has to be regenerated against current `main`, which is now **348 constructor and
+about 29 proto `copy()` call sites** - larger than the original 43 files, because
+`main` has grown. By module: `node-phone-api` 260, `node-core` 65,
+`node-transport-lora` 10, `node-transport-mqtt` 6, `monitor` 4,
+`node-transport-udp` 2, `node-transport-ble-gatt` 1. Heaviest files
+`LocalRadio.kt` 71, `LocalAdminTest.kt` 47, `AdminService.kt` 39.
+
+**Re-measured at 109 behind**, and the numbers say reapply rather than resolve.
+A whole-branch merge conflicts in **15 files, 27 hunks, ~698 lines inside
+markers**. `main` has touched **40 of the branch's 43 files**, its own churn in
+the conflicted ones running 1157+/1083-, so the branch's side is the Builder form
+of stale text: resolving means re-deriving the migration under merge markers for
+the 158 of 348 sites (45%) that sit in a conflicted file. Four of those files -
+`MeshNode.kt`, `AckTest.kt`, `RelayAndDirectoryTest.kt`, `RetransmitQueueTest.kt` -
+now have **zero** constructor sites on `main`, because the constructions were
+refactored out entirely (MeshNode's into the new `NodeModules.kt`), so the
+branch's work there is dead rather than displaced.
+
+The honest counter-argument: a rebase carries roughly half the sites across free
+in the files that auto-merge. It is still the wrong trade, because a branch fixed
+today is DIRTY again by tag time - `main` moved 40 of 43 files in six days, and
+this branch has already absorbed two rebases. **Do it once, when the tag exists.**
+
+The transform is *not* mechanical and nothing reproducible was committed: the
+rules are judgment calls (`newBuilder()` for read-modify-write so `unknownFields`
+survive, `Builder()` for construction, `.also { wb -> }` never `.apply { }`,
+`addUnknownFields`, and the deliberate exclusions where a name matches but the
+type is not a proto). So "reapply" means redoing the sites with #1's diff open as
+a reference. Under `buildersOnly` the generated constructors are private, so the
+compiler is the completeness oracle - a missed site cannot ship silently - and
+`git diff origin/main` on the result should show construction-syntax changes only.
 
 **It cannot be regenerated before `protobufs` #1074 lands.** Checked against the
 built artifacts 2026-09-17: in published `protobufs-jvm-2.8.0`, `Position.newBuilder()`

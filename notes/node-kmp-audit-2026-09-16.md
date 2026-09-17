@@ -319,6 +319,17 @@ existing home in `notes/` - a ~25% cut with no rule lost.
 
 ## 5. What I would do next, in order
 
+**Worked 2026-09-17.** Items 2, 5 and 6 were closed on `main` before this pass
+(`e291219` real skips, the docs cut, `b7fe930` signature-policy enforcement, plus
+XEdDSA signing). This pass closed 1 and 4 and settled 3:
+
+| | | |
+| --- | --- | --- |
+| 1 | CI | `ci/add-workflows`, PR #4. **Actions is disabled at the repository level** (`actions/permissions` → `enabled: false`) - the workflow cannot run until that is turned on, which is one toggle in Settings → Actions and not a code change. |
+| 3 | PR #1 | Measured, not rebased - see [`wire-builders-only-migration.md`](./wire-builders-only-migration.md). Reset-and-reapply, once `protobufs` tags `buildersOnly`; rebasing now buys half the sites and goes DIRTY again before the tag. |
+| 4 | AEAD | `feat/aead-channels`, PR #5, full gate green. Everything but the `use_aead` proto field, which is ~4 lines and lands with the pin bump. |
+
+
 1. Add a CI workflow. `spotlessCheck`, `detekt`, `checkKotlinAbi`, `allTests`,
    `testAndroidHostTest` - the gate `AGENTS.md` already specifies, which nothing
    currently runs.
