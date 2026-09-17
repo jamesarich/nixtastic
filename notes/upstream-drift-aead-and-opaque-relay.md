@@ -127,3 +127,67 @@ narrowed there. AEAD is off by default, so that buys nothing yet.
 **Recommendation: leave the guard alone** - option 1, not option 3. The cost is a
 retransmit a LoRa-adjacent node would have retired; the alternative is the attack
 upstream is explicitly defending.
+
+## 3. The rest of the `v2.8.0` → master delta, swept 2026-09-17
+
+Re-swept against `protobufs` master `a5ecf64` and `firmware` develop `a4e8b9444`.
+Two findings frame everything below.
+
+**Firmware behaviour has not moved.** Five commits since the audit checkpoint
+`67e8aafef`, one of them in scope, and it is a flash-reclamation pass for rak4631
+- an nRF52 AES implementation swap, two `unordered_map` → `map` changes, and
+deleted log sites. `Channels.cpp` has a zero diff. Packet framing, dedup, hop and
+relay fields, ack semantics, the contention window and the phone-API handshake are
+all untouched. **AEAD remains the whole of the behavioural delta.** The `id == 0`
+divergence is exactly where it was: firmware still never dedups id 0 and still
+refuses to relay it, and node-kmp still dedups it.
+
+**No tag carries any of this.** `v2.8.0` is still the newest, so every item here
+means a `develop-SNAPSHOT`, not a version bump. The pin has nowhere to move.
+
+Additions that need an answer, worst first:
+
+- **`Routing.ack_proof = 4`** (`072c607`, 2026-09-16) - an HMAC-SHA256 truncated
+  to 8 bytes over `"ack" ‖ LE32(from) ‖ LE32(to) ‖ LE32(request_id) ‖ routing`,
+  where `routing` is the encoded message *without* field 4. It exists because
+  channel traffic is AES-CTR with no integrity check, so any PSK holder can forge
+  an ack and a bit-flip can turn a success into a failure - the same reasoning
+  behind AEAD, applied to acks. **The receive path is already safe**:
+  `unknownErrorReason` scans `unknownFields` for the `error_reason` tag rather
+  than testing for emptiness, precisely so an ack that grew an unrelated field is
+  not misread as a NAK. Do not regress that into an emptiness test. Two traps if
+  we ever emit one: encode the message *without* the field rather than zeroing it,
+  and truncate to 8 bytes - nanopb halts on a bytes overflow rather than
+  truncating, so 9 bytes destroys the whole `Routing` decode and the ack vanishes.
+- **`NodeInfo.heard_on_current_lora = 15`** (`9a78479`, 2026-09-05, bit 11 of
+  `NodeInfoLite.bitfield`) - presence-vs-sentinel-zero. A library that never sets
+  it reports `false` for every node, and an app filtering on it hides everything
+  we source. The clear-set is pure Tier 1 state: region, modem preset (or custom
+  BW/SF/CR when `use_preset` is false), `override_frequency`, `channel_num`, and
+  the **primary channel name**, because the frequency slot derives from it.
+  Open question rather than an answer: what "heard on current LoRa" means for a
+  node whose bearers are BLE, MQTT and UDP and which may have no radio at all.
+  The field excludes MQTT-heard nodes for a reason that generalises awkwardly.
+- **`PortNum.PAGING_APP = 38`** (`2fd5a0a`, 2026-09-02) - not a decode gap but a
+  *guard* bug, and the guard is ours. Filed as node-kmp #8.
+- **`StoreAndForward.original_id = 6`** - Tier 2, no S&F implementation here.
+- Tier 3, noted only so a pin bump does not re-derive them: `SoilWaterMetrics`
+  (new message, `Telemetry.variant = 11`), `lorawan_bridge.proto` (which
+  *replaces* the hand-rolled payload format of the existing `LORAWAN_BRIDGE = 75`
+  portnum - a silent reinterpretation, not an addition), `field_metadata.proto`
+  (build-time options, stripped by every runtime, no wire surface), two
+  `HardwareModel`s, two `Language`s, two `Audio_Baud`s, and
+  `HostMetrics.user_string`'s nanopb cap shrinking 200 → 161.
+
+**Five existing messages grew a field** - `ChannelSettings`, `Routing`,
+`NodeInfo`, `StoreAndForward`, `Telemetry.variant`. Each moves Wire's all-args
+constructor signature, which is the `NoSuchMethodError` trap in
+[`wire-builders-only-migration.md`](./wire-builders-only-migration.md). It does
+not bite node-kmp today, but it constrains when the pin can move.
+
+One thing to correct if it is repeated: the AEAD channel hash **does** change.
+Firmware `Channels::generateHash` XORs in `0xAE` for a `use_aead` channel, so an
+AEAD peer and a CTR node on the same name and PSK compute *different* hashes -
+the failure is an unmatched channel, not a matched one that decrypts to garbage.
+Reading the proto alone suggests otherwise, because `use_aead` is not part of
+channel identity in the schema.
