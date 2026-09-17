@@ -231,3 +231,30 @@ The one row that still reads as weak, `ble-adv` outbound, is the sparse
 `LogRecord` floor and nothing else. Worth rewriting the top table in those terms
 rather than leaving a number that has now misled twice - including me, for most
 of a session.
+
+## Two node-kmp hosts, two bearers, measured
+
+The uConsole had only ever been run once on multiple bearers, and that run was
+read as "known GATT faults". Repeated properly on build `2bd873b0d896`, both
+hosts on `udp,gatt` with `MESH_REBROADCAST_MODE=ALL`, ten texts driven through
+james-pc's phone API:
+
+| | |
+| --- | --- |
+| texts sent from james-pc | 10 |
+| **decoded at the uConsole** | **10** |
+| james-pc counters | `gatt rx=3 tx=12  udp rx=3 tx=13` |
+| uConsole counters | `gatt rx=27 tx=10  udp rx=10 tx=11` |
+
+Every one arrived. They are attributed `rx[gatt]` because GATT won the race; the
+uConsole's `udp rx=10` shows the second copy of each arriving and being dropped
+as a duplicate, which is the bearer redundancy working rather than either bearer
+being idle.
+
+**The one fault is the audit line, not a problem.**
+`accepted RequestAuthorization without authentication` against james-pc's adapter
+is the Just Works bond this mesh takes by design - see
+[`gatt-bearer-security-posture.md`](./gatt-bearer-security-posture.md). The
+`Connect(): No reply within specified time` seen in the earlier single run did
+**not** recur, consistent with it being one peer's slow connect rather than
+anything structural.
