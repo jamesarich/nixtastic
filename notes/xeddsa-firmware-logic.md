@@ -1,5 +1,12 @@
 # XEdDSA packet signing, as firmware implements it
 
+> **Implemented in node-kmp, 2026-09-17.** `curve25519/` carries the field and
+> scalar arithmetic, the Edwards points, the birational map and signing;
+> `node-core` carries `PacketSignature`, the three receive policies, the send rule
+> and the gate in `MeshNode`. `security.packet_signature_policy` is now classified
+> `ENFORCED` rather than `ECHOED`. What follows is the firmware behaviour it
+> reproduces.
+
 Read out of `firmware` at `develop` on 2026-09-17, for replication in
 `meshtastic-node-kmp`. Sources: `src/mesh/CryptoEngine.cpp`, `src/mesh/Router.cpp`,
 `src/mesh/NodeDB.cpp`, and the `Crypto` library's `XEdDSA.cpp` (a PlatformIO lib
