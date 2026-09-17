@@ -144,11 +144,19 @@ its common API, and both providers node-kmp uses implement it - 8 classes in
 birational map (field arithmetic mod 2^255-19, one inversion) plus a standard
 Ed25519 verify.
 
-**Signing is the open question.** It needs Ed25519 signing from a *given scalar*,
-not from a seed. If cryptography-kotlin's `EdDSA.PrivateKey` decoders only accept
-seed or PKCS#8 forms, XEdDSA signing cannot be expressed through it, and the
-options are a different dependency or implementing the scalar-mult and `sc_muladd`
-directly. Settle that before committing to a plan.
+**Signing cannot go through cryptography-kotlin. Settled 2026-09-17.**
+`EdDSA.PrivateKey` exposes exactly one operation, `signatureGenerator()`, and its
+`Format` set is `RAW`, `DER`, `PEM`, `JWK`. `RAW` for Ed25519 is the 32-byte
+*seed* per RFC 8032, which the implementation hashes with SHA-512 to derive the
+scalar and the nonce prefix. XEdDSA supplies the scalar directly - a clamped
+X25519 private key, negated when the public point's sign bit is set - so there is
+no seed that produces it. The library offers no expanded-key or raw-scalar entry
+point.
+
+So signing needs either another dependency or the Ed25519 signing equation
+implemented here: scalar multiply for `R = rB`, `sc_muladd` for
+`s = (r + k·a) mod q`, and the hedged nonce. That is a real decision about
+hand-rolled curve arithmetic and belongs to James, not to an implementation pass.
 
 **Suggested order.** Receive-side verification and the three policies first: that
 is the half that makes `security.packet_signature_policy` a real setting rather
