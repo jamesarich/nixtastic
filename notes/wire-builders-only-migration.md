@@ -31,6 +31,36 @@ are placeholders.
 | `meshtastic-sdk` | [#126](https://github.com/meshtastic/meshtastic-sdk/pull/126) | 3 | the schema bump, **split out and not draft** - green on published 2.8.0 |
 | `Meshtastic-Android` | [#7115](https://github.com/meshtastic/Meshtastic-Android/pull/7115) | 279 | lands last |
 
+### node-kmp's PR cannot be rebased, and should not be redone before the flag
+
+Checked 2026-09-17. `meshtastic-node-kmp` #1 is 87 commits behind `main` and
+`mergeStateStatus DIRTY`. A rebase was attempted and aborted: it conflicts in
+seven files, and one conflict is semantic rather than textual. `8b5a531` ("Report
+the signal this bearer actually measured") landed on `main` after the branch was
+cut and fixed a real bug - `rx_snr` was cleared unconditionally, so a client
+reading link quality saw a perfect link on every packet. The branch still carries
+the old `rx_snr = 0f` and the comment justifying it, so replaying it reverts that
+fix. It also predates `969dd64`, so it reintroduces pre-cleanup comment wording
+across the same files.
+
+So the branch's diff is spent; only its knowledge is still good. The migration
+has to be regenerated against current `main`, which is now **308 constructor and
+`copy()` call sites across 40 files** - larger than the original 43, because
+`main` has grown.
+
+**Do not regenerate it before `protobufs` #1074 lands.** Ahead of the flag the
+rewrite is unenforced: `copy()` and the all-args constructor still exist, so every
+converted site is verified only by a green `build`, and the 309th site added the
+next day compiles fine. With the flag, the compiler names all 308. #1074 is one
+file, `+14/-3`, and has not moved since 2026-09-10 - landing it first turns this
+from a hand-audit into a compile error list, and means doing it once instead of
+twice.
+
+Note also that node-kmp #1 pins `2.8.1-buildersonly-SNAPSHOT`, which exists only
+in a local `~/.m2`. The pin is not actually required by the source changes -
+`newBuilder()` is present in the published 2.8.0 artifact, so the regenerated
+migration compiles on the default track. Only the *enforcement* needs the flag.
+
 The `meshtastic-sdk` schema bump separates cleanly, verified rather than
 assumed: with the pin at the published 2.8.0 and **no source changes at all**,
 the whole SDK produces exactly **one** compile error. 2.8.0 made `rx_rssi` an
