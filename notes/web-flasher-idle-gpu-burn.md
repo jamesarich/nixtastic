@@ -66,11 +66,33 @@ since the blurs are the visual design and the animations are decoration:
 Reducing the blur count would help too - 109 is a lot for one page - but the
 interaction is the defect, and either side of it can be broken.
 
-## During and after a flash - reported, not yet measured
+## During and after a flash - measured
 
-James saw both CPU and GPU pegged during a flash, and **neither released when it
-finished**. I have not reproduced that here (it needs a device on the bench), so
-what follows is read out of the source, not measured.
+Reproduced 2026-09-17 on the bench: a Heltec V3 (CP2102, `usbserial-0001`) flashed
+with the 2.8.1.67e8aaf nightly at 115200, Update rather than full erase, sampling
+GPU and Chrome CPU once every two seconds throughout.
+
+| | Baseline | During flash | After it finished | Animations paused |
+| --- | --- | --- | --- | --- |
+| GPU | 2-8% | **78-87%** | **77-87%** | **1-3%** |
+| Renderer | 2-8% | 77-87% | 77-87% | 1-3% |
+| GPU memory | ~650 MB | 1200-2622 MB | ~1300 MB | 567 MB |
+| Chrome CPU | 1-4% | 43-89% | 44-62% | 2-4% |
+| Load | 1.5 | 3.1 | 2.3 | 2.1 |
+
+**It does not release.** The load after the flash completed is the same as during
+it, and only stops when the animations are paused by hand. Renderer utilisation
+tracks device utilisation one-to-one throughout, and the page has **no canvas
+elements**, so this is compositing, not compute and not terminal rendering.
+
+Visible `backdrop-filter` elements go from **7 at rest to 12 during and after a
+flash** - the flash modal's full-viewport overlay plus its panels - while
+`logo-pulse` and an 8x8 `pulse` status dot keep animating underneath them. Neither
+stops when the flash ends.
+
+One confound was found and excluded: the Claude in Chrome extension injects its
+own full-viewport animated overlay with its own `backdrop-filter`. Pausing that
+alone left GPU at 81-84%, so the cost is the page's.
 
 The idle finding above explains the *level* - anything that repaints continuously
 costs 70% of a GPU while those blurs are on the page, and a flash repaints
@@ -100,10 +122,5 @@ Two things that look wrong but are not: the `rawBuffer` watcher
 (`SerialMonitor.vue:147`) correctly writes only the delta, and the `.loader`
 spinner is gated on `isConnected && rawBuffer.length === 0`, so it stops once data
 arrives.
-
-**To confirm, on a bench device:** flash, then with the page idle afterwards read
-`document.getAnimations().filter(a => a.playState === 'running')` and
-`serialMonitorStore.rawBuffer.length`, and sample GPU as above. That distinguishes
-"an animation is still running" from "xterm is still re-rendering a huge buffer".
 
 Not yet filed upstream.
