@@ -26,11 +26,12 @@ are placeholders.
 | `protobufs` | [#1074](https://github.com/meshtastic/protobufs/pull/1074) | 1 | the flag. **MERGED** 2026-09-17 `aba4ee8` - and it broke master, below |
 | `protobufs` | [#1076](https://github.com/meshtastic/protobufs/pull/1076) | 1 | Wire 7.0.0 + `oneofMode`. **Superseded** - folded into #1097 |
 | `protobufs` | [#1097](https://github.com/meshtastic/protobufs/pull/1097) | 2 | the registry fix + Wire 7.0.0. **MERGED** 2026-09-17 `1476d78` |
-| `TAKPacket-SDK` | [#141](https://github.com/meshtastic/TAKPacket-SDK/pull/141) | 2 | prerequisite for android. Verified green, pin swap outstanding |
-| `meshtastic-node-kmp` | [#1](https://github.com/meshtastic/meshtastic-node-kmp/pull/1) | 42 | spent; reapply after #9 and #11 merge |
-| `meshtastic-sdk` | [#125](https://github.com/meshtastic/meshtastic-sdk/pull/125) | 64 | rebased onto main; took #126's semantics |
+| `protobufs` | [#1098](https://github.com/meshtastic/protobufs/pull/1098) | 1 | pin the bytecode level - **blocks both library repos** |
+| `TAKPacket-SDK` | [#141](https://github.com/meshtastic/TAKPacket-SDK/pull/141) | 3 | pushed, 332/332 green at class 65. Needs #1098, then one pin line |
+| `meshtastic-node-kmp` | [#1](https://github.com/meshtastic/meshtastic-node-kmp/pull/1) | 42 | reference diff only; reapplied separately. #9 `a246fa7` and #11 `75d1e13` merged |
+| `meshtastic-sdk` | [#125](https://github.com/meshtastic/meshtastic-sdk/pull/125) | 64 | pushed, full `check` green at class 65. Subsumes #132 (`wire` 7.0.0) |
 | `meshtastic-sdk` | [#126](https://github.com/meshtastic/meshtastic-sdk/pull/126) | 3 | the schema bump. **MERGED** 2026-09-17 `419a624` |
-| `Meshtastic-Android` | [#7115](https://github.com/meshtastic/Meshtastic-Android/pull/7115) | 277 | rebased 54 forward, squashed to one commit |
+| `Meshtastic-Android` | [#7115](https://github.com/meshtastic/Meshtastic-Android/pull/7115) | 282 | pushed, baseline green: 8345 tests, 0 failures. Needs #141 published |
 
 ### Landing day, 2026-09-17: #1074 merged and took master down with it
 
@@ -68,6 +69,55 @@ snapshot too and `android` pins both. `~/.m2` now also holds
 + current protos), which is what every consumer branch was verified against before the
 real snapshot existed - `javap` confirms the private `(Builder, ByteString)` constructor,
 a real `newBuilder()`, and no `copy`.
+
+### The JDK 25 bump broke the published artifact, and nothing reported it
+
+Found 2026-09-17 by consuming the snapshot from a library rather than from
+`android`. `packages/kmp` set **no** `jvmTarget` and no toolchain, so every
+JVM-side compilation took its bytecode level from whatever JDK built it.
+Renovate's JDK 25 bump (#1087) therefore changed the artifact:
+
+| snapshot | class file | Java |
+| --- | --- | --- |
+| `2.8.0.67-g0074e02` | 65 | 21 |
+| `2.8.0.81-g1476d78` | **69** | **25** |
+| `2.8.0.83-g86abfcd` | **69** | **25** |
+
+In `protobufs-jvm` *and* in the `protobufs-android` AAR's `classes.jar`.
+
+**Three separate things fail to report it.** Dependency resolution succeeds.
+`compileKotlinJvm` succeeds - Kotlin reads the metadata happily, so a migration
+verified by compiling looks completely green (measured independently: `node-core`
+against `.83` gave 124 ordinary `buildersOnly` errors and no version complaint at
+all). It surfaces only when a class is **loaded**, which means at test runtime:
+
+    java.lang.UnsupportedClassVersionError: org/meshtastic/proto/TAKPacketV2 has
+    been compiled by a more recent version of the Java Runtime (class file version
+    69.0), this version of the Java Runtime only recognizes class file versions up
+    to 65.0
+
+`TAKPacket-SDK` fails **272 of 332** jvm tests on it. `meshtastic-sdk` fails the
+same way. So every published snapshot carrying `buildersOnly` is currently
+unusable by the library repos, and `.67` - the newest good one - has no builders.
+
+**The consumer floor is 17, not 21**, read off the repos' own CI rather than
+assumed: `android` 25, `TAKPacket-SDK` 21 (three jobs, and its `CLAUDE.md`
+mandates it), `meshtastic-sdk` a matrix of **`[17, 21]`**. `android` being on 25
+is exactly why this stayed invisible - it is the only consumer that could not
+detect it, and it is the one we normally test against. `meshtastic-node-kmp`
+pins 21 deliberately via `-Xjdk-release` so its headless jar runs on what Debian
+and Raspberry Pi OS ship, which makes it the only repo with a written-down
+answer.
+
+Fix is **#1098**: pin the Kotlin JVM target to 11 with `-Xjdk-release=11` through
+a `tasks.withType<KotlinJvmCompile>` hook, which covers the `jvm()` target and the
+AGP KMP `android` target in one place. Verified by building on JDK 25 and reading
+the class headers - both artifacts emit `cafebabe 0037`, class file 55.
+
+**The general lesson is the same one #1074 taught, in a different costume:** a
+published artifact's compatibility floor must be a property of the artifact, not
+of the runner, or a bot can change it silently. A tag cut in the JDK-25 window
+would have shipped it.
 
 ### node-kmp's PR cannot be rebased, and should not be redone before the flag
 
