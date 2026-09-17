@@ -1316,7 +1316,10 @@
             name = "meshtastic-fleet";
             # No pkgs.openssh: a Nix ssh cannot parse this Mac's ~/.ssh/config and
             # every host reads as unreachable. The host's own ssh is on PATH.
-            runtimeInputs = [ pkgs.coreutils pkgs.git ];
+            runtimeInputs = [
+              pkgs.coreutils
+              pkgs.git
+            ];
             text = builtins.readFile ./scripts/fleet.sh;
           };
 
