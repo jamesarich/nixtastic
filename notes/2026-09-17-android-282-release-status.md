@@ -74,8 +74,25 @@ are the ones to quote.
   sampled events bypass `ForegroundStartPolicy` entirely. The real fix is the CDM
   `REQUEST_COMPANION_START_FOREGROUND_SERVICES_FROM_BACKGROUND` exemption already
   in the CDM adoption plan (#6477 / #6479), not a patch here.
-- `d79ee407` `DiscoveryDao_Impl$insertPresetResult` FK 787 — watch only, zero
-  events on either shipped 2.8.2 build over 14 days.
+- `d79ee407` `DiscoveryDao_Impl$insertPresetResult` FK 787 — **latent in 2.8.2, live
+  in production.** Exhaustive `topVersions` by `issueId` (09-03..09-17): 65 events /
+  64 users on 2.8.1 production, 1 on 29322131, **0 on open.1 and open.2**. No FK or
+  session-race fix has landed on main (`git log v2.8.2-closed.1..main -- '*Discovery*'`
+  returns only #7159, the wakelock change, which does not touch persistence), so the
+  path is identical in 2.8.2 — the testing cohort is simply too small to have hit the
+  race. Mechanism: the FK is `discovery_preset_result.session_id → discovery_session.id`
+  ON DELETE CASCADE (`DiscoveryPresetResultEntity.kt:29-35`); `DiscoveryScanEngine`
+  holds `sessionId` as a long-lived in-memory var while `SwitchingDiscoveryDao`
+  re-resolves the active DB through `withDb` on every call rather than pinning the DB
+  the session row was written to, so a transport or DB switch mid-scan (BLE drop,
+  forced transport restart, node re-select) lets a later insert land against a DB with
+  no parent row. `DiscoveryScanEngine.kt:515` is a bare `persistCurrentDwellResults()`
+  with no try/catch and no existence guard, unlike `DiscoveryTerminalCoordinator.kt:283`
+  which null-checks `getSession(sessionId)` for this exact race; it runs on a
+  `SupervisorJob` scope with no `CoroutineExceptionHandler`, which is why the race is
+  fatal rather than a logged scan abort. **Caveat:** Crashlytics truncates the app
+  frames above Room internals here, so `:515` is inferred from code structure plus
+  breadcrumbs, not observed in a raw stack — treat it as the leading candidate.
 - ANR buckets (`21efb6ea-8679` / `81f27de6-877f` in RUM; 28 events/7 d in
   Crashlytics) — long-standing, cross-version, heterogeneous (GMS Maps dynamite,
   ART GC MarkCompact, Compose recompose). Not a 2.8.2 regression. Worth a separate
@@ -132,9 +149,10 @@ is a standing risk to verify rather than a new regression.
 ## Housekeeping before tagging
 
 - **Main CI at HEAD (`549aaddf0`) was cancelled, never green** — superseded by
-  concurrency. Last green is `cb3524241`, two chore commits back. The release
-  workflow has *no* lint/test gate (RELEASE_PROCESS.md), so it tags whatever is at
-  HEAD. A rerun was kicked at 2026-09-17: run `35241925866`.
+  concurrency. The release workflow has *no* lint/test gate (RELEASE_PROCESS.md), so
+  it tags whatever is at HEAD. Re-run as `35241925866` on 2026-09-17: **all eight
+  verify-and-build jobs green** (android-check, three test shards, four desktop
+  builds). HEAD is verified.
 - PR **#7188** (`docs: update CHANGELOG.md`) is open, all checks pass. Automation;
   not a release blocker.
 - `VERSION_NAME_BASE` is already `2.8.2` and the `<release version="2.8.2">` entry
@@ -167,6 +185,9 @@ would ship the LookaheadDelegate crash to the whole fleet.
    gap from a real log pair before touching constants.
 2. `0bfea846` — FGS restore after a sticky restart; 2,018 users. Folds into the CDM
    adoption plan (#6477 / #6479).
-3. Add a "verified n=1 on 29322268 as of 2026-09-17" note to `f07b6801` so its
+3. `d79ee407` — the Discovery FK race. Unfixed and live in production; the fix also
+   closes a latent hole in 2.8.2. Pin the DB for a scan session, or guard the insert
+   the way `DiscoveryTerminalCoordinator` already does.
+4. Add a "verified n=1 on 29322268 as of 2026-09-17" note to `f07b6801` so its
    sticky `lastSeenVersion` stops reading as a live regression.
-4. The ANR buckets deserve a Map/Nodes-screen perf investigation on their own.
+5. The ANR buckets deserve a Map/Nodes-screen perf investigation on their own.
