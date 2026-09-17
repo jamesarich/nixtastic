@@ -208,9 +208,15 @@ valuable, not less, because both repos are pinning different Spotless versions
 - **Experiment:** add a deliberately-violating rule to a repo's `.editorconfig`
   (say `ktlint_standard_no-wildcard-imports = disabled`), add a wildcard import,
   run `spotlessCheck`. Ten minutes, settles it for the org.
-- **`MQTTastic-Client-KMP` is the cautionary tale either way:** its `.editorconfig`
-  was dropped in PR #93 precisely because copying `meshtastic-sdk`'s broke
-  previously-clean code. Something reads it.
+**The prior already tilts against `node-kmp`'s comment.** `MQTTastic-Client-KMP`
+dropped its `.editorconfig` in PR #93 precisely because copying
+`meshtastic-sdk`'s made `spotlessKotlinCheck` fail on files nobody had touched.
+That is a measurement, not an opinion: Spotless's ktlint step read the file.
+So the expected answer is "it reads it", which would mean `kzstd` and
+`TAKPacket-SDK` have no exposure here and `node-kmp`'s map is redundant
+belt-and-braces. Run the experiment anyway - it is ten minutes against a claim
+that is currently asserted in code in one repo and contradicted in prose in
+another, and whichever way it lands one of the two comments has to change.
 
 ### 9. Is `meshtastic-sdk`'s detekt actually analysing anything?
 
@@ -466,7 +472,10 @@ which fans the version to five files and never touched the changelog.
 1. **`-Xjdk-release` in all five.** Three lines each, catches a class of
    runtime failure CI structurally cannot see.
 2. **Measure item 8** - whether Spotless's ktlint reads `.editorconfig`. Ten
-   minutes, and it decides whether two repos' formatting rules are real.
+   minutes, and it decides whether two repos' formatting rules are real. The
+   expected answer is yes (MQTTastic PR #93 is evidence), which would make this
+   a documentation fix rather than a build fix - but `node-kmp` asserts the
+   opposite in code, so one of the two has to change either way.
 3. **Run `./gradlew detekt` in `meshtastic-sdk` and look for `NO-SOURCE`**
    (item 9). The same check was overstated for `MQTTastic-Client-KMP` for
    months.
