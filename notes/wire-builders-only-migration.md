@@ -76,7 +76,32 @@ a reference. Under `buildersOnly` the generated constructors are private, so the
 compiler is the completeness oracle - a missed site cannot ship silently - and
 `git diff origin/main` on the result should show construction-syntax changes only.
 
-**It cannot be regenerated before `protobufs` #1074 lands.** Checked against the
+**#1074 landed on 2026-09-17.** `buildersOnly = true` and `makeImmutableCopies =
+true` are both on `protobufs` master (`packages/kmp/build.gradle.kts`; the commit
+`5c8e8d3` is dated 2026-09-09 and was merged today). Two things still gate the
+node-kmp migration, and neither is the merge:
+
+- **No tag.** `v2.8.0` is still the newest, so a migration still cannot merge to
+  `main` - the default pin has no builders, and `newBuilder()` there is the poison
+  stub below.
+- **No published snapshot carries it yet.** The newest on Sonatype is
+  `2.8.0.67-g0074e02-SNAPSHOT`, built before the merge, and it has no
+  `buildersOnly`. So nothing off this machine can consume the new shape; the next
+  push to master should fix that.
+
+What *is* available: `~/.m2` holds `2.8.1-buildersonly-SNAPSHOT`, and it carries
+**both** the new shape and `use_aead` - verified with `javap`: a private
+`(Builder, ByteString)` constructor and a working `newBuilder()`. That is the
+combined artifact a tag will eventually be, so the migration is compiler-verifiable
+today. It needs `mavenLocal()` in node-kmp's repositories, which is part of what
+makes PR #1's pin load-bearing.
+
+**Order the work this way.** Merge the ready PRs (#9 signing, #11 portnum) *before*
+the migration, not after: the migration touches 348 sites across the same files, so
+doing it first maximises the conflicts rather than reducing them. Then migrate in
+one pass, then rebase #12.
+
+The pre-merge reasoning, kept because the tag half of it still holds: Checked against the
 built artifacts 2026-09-17: in published `protobufs-jvm-2.8.0`, `Position.newBuilder()`
 returns `java.lang.Void` and its body is
 
