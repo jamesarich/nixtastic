@@ -57,10 +57,32 @@ newest release is `v2.8.0`, ten days older. node-kmp pins the published
 `ChannelSettings` there carries name, channel_num, uplink/downlink,
 module_settings and psk.
 
-So the first move is not code, it is the pin - a new protobufs release, or
-consuming a `-SNAPSHOT` as [[protobufs-tags-lockstep-with-firmware]] describes.
-That is a cross-repo decision: `firmware` and `meshtastic-python` vendor the
-submodule, `android` and `TAKPacket-SDK` take the published artifact.
+### The snapshot path is proven, and the default pin should not move
+
+`2.8.0.55-g072c607-SNAPSHOT` is built from `072c607`, the exact protobufs commit
+firmware's develop pins, and it carries the field. Verified 2026-09-16:
+
+```
++--- org.meshtastic:protobufs:2.8.0.55-g072c607-SNAPSHOT
+protobufs-jvm-2.8.0.55-g072c607-SNAPSHOT.jar -> ChannelSettings: use_aead, getUse_aead
+```
+
+`:node-core:compileKotlinJvm` builds against it. So the work is unblocked the
+moment it is wanted:
+
+    gradle -PprotobufsVersion=2.8.0.55-g072c607-SNAPSHOT <task>
+
+**The catalog default should stay 2.8.0**, and `AGENTS.md` says why: the snapshot
+repository is added only for such a build "so the default track cannot drift onto
+an unreleased proto", and *"the pin bump is where parity is reviewed… an escape
+hatch for an app that runs ahead of a release, not a second supported line."*
+Moving the default would also bypass `meshtastic.coordinates`, which publishes a
+snapshot-proto build at `0.1.0-pb<version>-SNAPSHOT` precisely so two
+non-interchangeable tracks cannot share a coordinate.
+
+So AEAD support can be written and tested against the snapshot today; it lands on
+the default track when protobufs cuts a release carrying `use_aead`, which no tag
+does yet.
 
 Tempering it: the field is marked **Experimental** and defaults to false, so this
 is a contract still moving, not one node-kmp is behind on.
