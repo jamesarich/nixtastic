@@ -185,9 +185,17 @@ would ship the LookaheadDelegate crash to the whole fleet.
    gap from a real log pair before touching constants.
 2. `0bfea846` — FGS restore after a sticky restart; 2,018 users. Folds into the CDM
    adoption plan (#6477 / #6479).
-3. `d79ee407` — the Discovery FK race. Unfixed and live in production; the fix also
-   closes a latent hole in 2.8.2. Pin the DB for a scan session, or guard the insert
-   the way `DiscoveryTerminalCoordinator` already does.
+3. ~~`d79ee407` — the Discovery FK race.~~ **Fixed: PR #7204** (draft,
+   `fix/discovery-preset-result-fk-race`). A check-then-insert guard turned out to be
+   insufficient — both halves resolve the active database independently, and an
+   instrumented run caught one invocation where `getSession` returned session id=1
+   while an unfiltered `SELECT *` in the *same* invocation returned no rows.
+   `DiscoveryDao.insertDwellIfSessionExists` now does the parent check and both child
+   writes in one `@Transaction`, with `SwitchingDiscoveryDao` overriding it so the
+   whole transaction resolves the database once. Baseline 6404 green; detekt re-run
+   under `--rerun-tasks` rather than trusted UP-TO-DATE. Still open: after a switch
+   the scan keeps running against a session it cannot write — aborting it is a larger
+   change than the crash needed.
 4. Add a "verified n=1 on 29322268 as of 2026-09-17" note to `f07b6801` so its
    sticky `lastSeenVersion` stops reading as a live regression.
 5. The ANR buckets deserve a Map/Nodes-screen perf investigation on their own.
