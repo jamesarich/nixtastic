@@ -101,12 +101,20 @@ in front - does not reproduce.
 
 | | Apple Silicon | GTX 1080 |
 | --- | --- | --- |
-| Flasher open, idle | 35-72% | **5%** |
+| Flasher open, idle, before any flash | 35-72% | **5%** |
 | During a flash | 78-87% | **9-13%**, peak 18 |
-| GPU temperature | - | 52 -> 53 C |
-| Chrome CPU during flash | 43-89% | 28-39%, peak 128 |
+| After the flash finished, page idle | 77-87% | **10-13%** |
+| GPU memory, before -> after | 650 -> ~1300 MB | 1191 -> ~1370 MiB |
+| Chrome CPU during flash | 43-89% | 28-39%, peak 162 |
 
-Six to eight times the GPU cost for identical work. `logo-pulse` is unconditional,
+229 samples on the Linux run, none above 40%. Six to eight times the GPU cost for
+identical work.
+
+**But it does not return to baseline on Linux either** - 5% before the flash,
+10-13% after, holding about 180 MiB more. So the two defects separate cleanly:
+the *magnitude* is an Apple Silicon renderer problem, and the *failure to stop* is
+application logic that behaves identically everywhere. Elsewhere it is simply too
+cheap to notice. `logo-pulse` is unconditional,
 so it runs on both; the page, the firmware and the flash were the same.
 
 The likely reason is the renderer. Apple Silicon is tile-based and deferred, and
