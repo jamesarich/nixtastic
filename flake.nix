@@ -195,6 +195,30 @@
           shell = "siteplanner";
           repo = "meshtastic/meshtastic-site-planner";
         };
+
+        # The org's Discord bot: /faq from faq.yaml, /bug and /feature
+        # modals that open GitHub issues, /changelog diffing two releases,
+        # /repo and /tapsign. Go, discordgo + go-github, shipped as a
+        # container with a /health endpoint.
+        #
+        # It is a workspace repo for the same reason api is: it holds a
+        # contract the org depends on but no client repo declares.
+        # config.yaml maps a Discord CHANNEL to an issue-template URL in a
+        # client repo (web, Meshtastic-Android, ...) and the modal is built
+        # by parsing that template - so renaming a field in a repo's
+        # .github/ISSUE_TEMPLATE silently changes what this bot asks for.
+        # Added 2026-09-17.
+        #
+        # Upstream TRACKS its own .envrc (APP_ENV + dotenv), so sync
+        # writes an .envrc-workspace sidecar here as it does for firmware.
+        # firmware's file calls `use nix` and direnvrc redirects that;
+        # this one selects no shell at all, which is why direnvrc grew a
+        # second branch that loads the sidecar ahead of it.
+        # notes/meshtastic-bot.md.
+        meshtastic-bot = {
+          shell = "go";
+          repo = "meshtastic/meshtastic-bot";
+        };
       };
 
       devShells = forAllSystems (
@@ -1145,6 +1169,47 @@
               echo "  pnpm build"
               echo "  pnpm lint"
               echo "  pnpm test"
+              echo ""
+            '';
+          };
+
+          #########################################################
+          # go - meshtastic/meshtastic-bot (the org's Discord bot)
+          #
+          # Plain Go module, no vendoring, no codegen: `go build
+          # ./cmd/meshtastic-bot`, `go test -race ./...`. CI's lint job
+          # is go vet + staticcheck + a gofmt check, so go-tools (which
+          # is what ships staticcheck) is part of the shell rather than
+          # a `go install` into GOPATH.
+          #
+          # go.mod asks for 1.25.4 and CI pins 1.25, but nixpkgs has
+          # REMOVED go_1_25 as end-of-life - the attribute throws. So
+          # this is nixpkgs' current go (1.26.x), which builds a 1.25
+          # module unchanged; Go's compatibility promise runs forward,
+          # and the go directive is a floor, not a pin.
+          #
+          # GOTOOLCHAIN=local because the default (auto) would answer a
+          # future `go 1.27` directive by silently downloading its own
+          # toolchain into GOPATH - the Nix pin still on PATH, no longer
+          # the compiler in use. Local makes that mismatch an error.
+          #
+          # Docker is not provided: the repo's Dockerfile and run.sh are
+          # a deployment path, not a build step, and the same boundary
+          # siteplanner draws around emscripten applies.
+          #########################################################
+          go = pkgs.mkShellNoCC {
+            name = "meshtastic-go";
+            packages = common ++ [
+              pkgs.go
+              pkgs.gopls
+              pkgs.go-tools # staticcheck
+            ];
+            shellHook = (banner "go" (reposFor "go")) + ''
+              export GOTOOLCHAIN=local
+              echo "  go build ./cmd/meshtastic-bot"
+              echo "  go test -race ./..."
+              echo "  go vet ./... && staticcheck ./..."
+              echo "  gofmt -l .          # CI fails on any output"
               echo ""
             '';
           };

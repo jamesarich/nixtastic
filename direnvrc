@@ -60,3 +60,37 @@ if declare -f use_nix >/dev/null 2>&1; then
     _meshtastic_upstream_use_nix "$@"
   }
 fi
+
+# ---------------------------------------------------------------------------
+# The same redirect, for a tracked .envrc that never calls `use nix`.
+#
+# meshtastic-bot tracks one that sets APP_ENV and loads a dotenv. `nix run
+# .#sync` writes it an .envrc-workspace sidecar exactly as it does for
+# firmware, but the override above is bound to use_nix and so can never run:
+# direnv would load the repo's file, select no dev shell, and `just in
+# meshtastic-bot go test ./...` would find whatever go happened to be on PATH.
+#
+# direnvrc is sourced before the .envrc, so sourcing the sidecar HERE puts the
+# shell in place first and lets the repo's own file run on top of it - it adds
+# variables, it does not select a toolchain. A missing dotenv target is logged
+# and does not abort the load (direnv 2.37.1), so a repo whose .env.<env> has
+# not been created still gets its shell.
+#
+# $PWD, and not the .envrc's directory: direnv sources this file BEFORE
+# changing into that directory, and exports neither DIRENV_DIR nor DIRENV_FILE
+# yet (measured 2026-09-17), so there is nothing else to key on. That covers
+# `cd <repo>` and both justfile recipes, which cd first and then run
+# `direnv exec .`. A bare `direnv exec <repo> <cmd>` from somewhere else loads
+# the repo's .envrc without the sidecar - no shell, no error. Use `just in
+# <repo> <cmd>`.
+#
+# Gated on the file naming no shell of its own, so firmware keeps taking the
+# use_nix path above and nothing is loaded twice.
+# ---------------------------------------------------------------------------
+if [ -f "$PWD/.envrc-workspace" ] && [ -f "$PWD/.envrc" ] &&
+   ! grep -qE '^[[:space:]]*use[ _](nix|flake)' "$PWD/.envrc"; then
+  watch_file "$PWD/.envrc-workspace"
+  log_status "nixtastic: .envrc-workspace loaded ahead of a tracked .envrc"
+  # shellcheck source=/dev/null
+  . "$PWD/.envrc-workspace"
+fi

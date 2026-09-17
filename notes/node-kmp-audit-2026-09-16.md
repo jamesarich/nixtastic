@@ -325,7 +325,7 @@ XEdDSA signing). This pass closed 1 and 4 and settled 3:
 
 | | | |
 | --- | --- | --- |
-| 1 | CI | `ci/add-workflows`, PR #4. **Actions is disabled at the repository level** (`actions/permissions` → `enabled: false`) - the workflow cannot run until that is turned on, which is one toggle in Settings → Actions and not a code change. |
+| 1 | CI | `ci/add-workflows`, PR #4. **Actions stays disabled until the repo is public**, and that is policy rather than an oversight: a private repo spends the *organisation's* shared minutes, and this build would spend a lot of them for a project nobody consumes yet. So the workflow lands ready for that day and is verified locally with `act` - see the memory `no-ci-on-private-org-repos` for what a local run does and does not prove. |
 | 3 | PR #1 | Measured, not rebased - see [`wire-builders-only-migration.md`](./wire-builders-only-migration.md). Reset-and-reapply, once `protobufs` tags `buildersOnly`; rebasing now buys half the sites and goes DIRTY again before the tag. |
 | 4 | AEAD | `feat/aead-channels`, PR #5, full gate green. Everything but the `use_aead` proto field, which is ~4 lines and lands with the pin bump. |
 

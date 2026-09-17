@@ -54,6 +54,7 @@ been skipped in practice, which is why `.#brief` exists.
 | `Adafruit_nRF52_Bootloader_OTAFIX` | nRF52 OTAFIX bootloader (org fork of oltaco's) | C / Make | `.#otafix` | `master` | Conventional (since the fork) | `AGENTS.md` (PR #8) |
 | `web-flasher` | web-based device flasher (flasher.meshtastic.org) | Nuxt 3 / Vue / TypeScript / pnpm | `.#webflasher` | `main` | Conventional | `.github/copilot-instructions.md` |
 | `meshtastic-site-planner` | browser-side coverage prediction (site.meshtastic.org) | Vite / Vue 3 / TS / pnpm + SPLAT! wasm | `.#siteplanner` | `main` | Conventional | none yet |
+| `meshtastic-bot` | the org's Discord bot (issues from modals, FAQ, changelog) | Go / Docker | `.#go` | `main` | Conventional, merged via PR | → [`notes/meshtastic-bot.md`](./notes/meshtastic-bot.md) |
 
 The table is orientation; `nix run .#brief -- <repo>` is truth - it reads the
 live branch, drift, and doc inventory (with sizes) every time.

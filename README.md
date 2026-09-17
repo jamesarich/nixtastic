@@ -280,6 +280,7 @@ cd design && cd tokens && npm ci && npm run build
 | `.#api` | `api` (meshtastic.org backend - Node/pnpm/Prisma) |
 | `.#docs` | `meshtastic` (meshtastic.org - Docusaurus/pnpm/Playwright) |
 | `.#webflasher` | `web-flasher` (flasher.meshtastic.org - Nuxt/Vue/pnpm) |
+| `.#go` | `meshtastic-bot` (the org's Discord bot - Go, staticcheck) |
 | `.#apple` | `apple` (macOS only) |
 | `.#nodes` | serial/BLE/flashing, no build toolchain |
 | `.#default` | everything light, for roaming |

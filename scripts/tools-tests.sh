@@ -38,10 +38,10 @@ git init -q -b main "$root"
 (cd "$root" && : > flake.nix && git add flake.nix && git commit -qm workspace)
 
 # The repo table is baked into the tools (NIXTASTIC_REPOS_TSV), so the
-# fixture directories must carry the REAL names. firmware tracks .envrc
-# upstream and android tracks .mcp.json - mirror both, they are exactly
-# the cases the tools special-case.
-repos="Adafruit_nRF52_Bootloader_OTAFIX MQTTastic-Client-KMP TAKPacket-SDK android api apple design device-ui firmware gradle-flatpak-sources kzstd labeltastic meshtastic meshtastic-mcp meshtastic-node-kmp meshtastic-python meshtastic-sdk meshtastic-site-planner protobufs web-flasher"
+# fixture directories must carry the REAL names. firmware and
+# meshtastic-bot track .envrc upstream and android tracks .mcp.json -
+# mirror both, they are exactly the cases the tools special-case.
+repos="Adafruit_nRF52_Bootloader_OTAFIX MQTTastic-Client-KMP TAKPacket-SDK android api apple design device-ui firmware gradle-flatpak-sources kzstd labeltastic meshtastic meshtastic-bot meshtastic-mcp meshtastic-node-kmp meshtastic-python meshtastic-sdk meshtastic-site-planner protobufs web-flasher"
 for r in $repos; do
   git init -q --bare -b main "$origins/$r.git"
   git init -q -b main "$root/$r"
@@ -51,6 +51,13 @@ for r in $repos; do
     git add tracked.txt
     if [ "$r" = firmware ]; then
       echo "use nix" > .envrc
+      git add .envrc
+    fi
+    # meshtastic-bot tracks an .envrc too, but one that never calls
+    # `use nix` - so it takes the sidecar path without direnvrc's
+    # use_nix override being able to load the result.
+    if [ "$r" = meshtastic-bot ]; then
+      printf 'export APP_ENV=dev\ndotenv ".env.$APP_ENV"\n' > .envrc
       git add .envrc
     fi
     if [ "$r" = android ]; then
@@ -86,7 +93,7 @@ run_in() { d="$1"; shift; prev="$PWD"; cd "$d"; run "$@"; cd "$prev"; }
 # the lines.
 run_lax() { res="$("$@" 2>&1)" || true; }
 
-echo "--- T1: first run - all current, envrc written per repo, sidecar for firmware"
+echo "--- T1: first run - all current, envrc written per repo, sidecar where .envrc is tracked"
 run "$sync"
 # Anchored: the footer's own help text also says "current".
 # Derived from $repos, not hardcoded: adding a repo to the table in flake.nix
@@ -97,6 +104,7 @@ expect 'envrc written'
 expect 'envrc-workspace written \(upstream tracks \.envrc\)'
 [ -f "$root/kzstd/.envrc" ] || { echo "T1: kzstd/.envrc missing"; exit 1; }
 [ -f "$root/firmware/.envrc-workspace" ] || { echo "T1: firmware sidecar missing"; exit 1; }
+[ -f "$root/meshtastic-bot/.envrc-workspace" ] || { echo "T1: meshtastic-bot sidecar missing"; exit 1; }
 [ ! -e "$root/android/.envrc-workspace" ] || { echo "T1: android wrongly got a sidecar"; exit 1; }
 grep -q 'use flake "\$MESHTASTIC_WORKSPACE#kotlin"' "$root/kzstd/.envrc" || { echo "T1: kzstd envrc wrong shell"; exit 1; }
 grep -qxF '.mcp.json' "$root/kzstd/.git/info/exclude" || { echo "T1: ensure_excludes did not reach kzstd"; exit 1; }
