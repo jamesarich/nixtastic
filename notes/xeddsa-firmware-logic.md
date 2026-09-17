@@ -144,28 +144,79 @@ its common API, and both providers node-kmp uses implement it - 8 classes in
 birational map (field arithmetic mod 2^255-19, one inversion) plus a standard
 Ed25519 verify.
 
-**Signing cannot go through cryptography-kotlin. Settled 2026-09-17.**
-`EdDSA.PrivateKey` exposes exactly one operation, `signatureGenerator()`, and its
-`Format` set is `RAW`, `DER`, `PEM`, `JWK`. `RAW` for Ed25519 is the 32-byte
-*seed* per RFC 8032, which the implementation hashes with SHA-512 to derive the
-scalar and the nonce prefix. XEdDSA supplies the scalar directly - a clamped
-X25519 private key, negated when the public point's sign bit is set - so there is
-no seed that produces it. The library offers no expanded-key or raw-scalar entry
-point.
+**Signing cannot go through cryptography-kotlin, but that does not mean hand-rolling
+curve arithmetic. Corrected 2026-09-17 after an adversarial review.**
 
-So signing needs either another dependency or the Ed25519 signing equation
-implemented here: scalar multiply for `R = rB`, `sc_muladd` for
-`s = (r + k·a) mod q`, and the hedged nonce. That is a real decision about
-hand-rolled curve arithmetic and belongs to James, not to an implementation pass.
+No route exists through any library already on the classpath, verified in the
+artifacts rather than assumed from RFC 8032:
 
-**Suggested order.** Receive-side verification and the three policies first: that
-is the half that makes `security.packet_signature_policy` a real setting rather
-than an `ECHOED` one, it is the half that protects this node, and it does not need
-the scalar question answered. Signing follows, and only signing makes this node a
-good citizen for others' `BALANCED` mode.
+- `EdDSA.PrivateKey` offers only `signatureGenerator()`; its formats are
+  `RAW`/`DER`/`PEM`/`JWK`, and the JDK provider's RAW decoder wraps the bytes in an
+  RFC 8410 `CurvePrivateKey` and hands them to JCA - the seed, not the scalar.
+- **BouncyCastle 1.83 is already on `node-core`'s `jvmAndroidMain` classpath** and
+  does not help either: `Ed25519.scalarMultBaseEncoded` and `implSign` are private,
+  and `scalarMultBaseYZ` is gated behind a package-private `X25519.Friend`. Only
+  `X25519Field` is public, which is useful for the birational map on the JVM and
+  nothing more.
+- `cryptography-bigint` is a serialisation container with no arithmetic.
 
-A caveat worth carrying: node-kmp's NodeDb has no hot/warm tiering and no
-opportunistic key cache, so "authoritative key" has no analogue yet. The rule to
-preserve is the intent - verify only against a key this node has a reason to
-trust, never one learned from the packet being verified, except through the
-first-contact path that checks `crc32(key) == from`.
+**What makes signing small is a raw-scalar primitive, and one exists for every
+target this library builds for.** `io.github.andreypfau:curve25519-kotlin:0.0.8`
+(pure Kotlin, MIT, a curve25519-dalek port) publishes jvm, iosArm64,
+iosSimulatorArm64, iosX64, linuxX64, linuxArm64, macosArm64 among others -
+confirmed from its `.module` on Maven Central. It exposes `Scalar`,
+`EdwardsPoint.mulBasepoint`, `CompressedEdwardsY`, `FieldElement.invert` and
+`MontgomeryPoint.toEdwards(sign)` - the birational map included. On those
+primitives the XEdDSA wrapper is about forty lines:
+
+    a = reduce(clamp(x25519Priv));  A = aB
+    if (encode(A)[31] and 0x80) { a = -a; A = -A }
+    prefix = SHA512(a)[32..64]
+    r = reduce(SHA512(prefix ‖ M ‖ Z));  R = encode(rB)
+    k = reduce(SHA512(R ‖ encode(A) ‖ M));  s = k·a + r
+    signature = R ‖ s
+
+The alternatives are vendoring that library's field/scalar/edwards subset under
+MIT, or `com.ionspin.kotlin:multiplatform-crypto-libsodium-bindings` - the only
+constant-time option, at the cost of JNA and per-platform natives beside the two
+crypto stacks already here. Hand-porting ref10 is ~1500-2500 lines of Kotlin and is
+the option to avoid.
+
+### Four things that will bite a naive replication
+
+1. **Firmware is not Signal-spec XEdDSA, and libsignal is a third variant.**
+   Firmware derives `prefix = SHA512(a)[32..64]` and hashes `prefix ‖ M ‖ Z`; the
+   Signal spec hashes `0xFE ‖ 0xFF*31 ‖ a ‖ M ‖ Z`; libsignal does not negate the
+   scalar at all and carries the sign bit in `s[63]`. Two consequences: node-kmp
+   need not match firmware's nonce derivation, because firmware *verifies* with
+   plain Ed25519, so any valid signature under `(a, A)` passes - and **libsignal or
+   curve25519-java test vectors are unusable here**, failing whenever a key's sign
+   bit is 1.
+2. **The negation must reach both `a` and the `A` that goes into `k`.** Derive `A`
+   from the public key by the birational map (always sign 0) while signing with an
+   un-negated `a`, and about half of all keys produce permanently invalid
+   signatures - deterministic per key, and firmware hard-drops a failed
+   verification under every policy. Design the tests around this case.
+3. **Reduce the scalar first.** A clamped key has bit 254 set, so `a > L`; reduce
+   mod L up front. Check `(-1)·a + a == 0`.
+4. **There are no fixed vectors in firmware** - its `test_XEdDSA` generates a
+   keypair per run and asserts only a round trip. Layer the code as a raw Ed25519
+   signing equation taking `(a, A, nonce)`, testable bit-exactly against RFC 8032,
+   plus the XEdDSA wrapper above it, testable by round trip cross-verified with
+   cryptography-kotlin's audited verifier.
+
+**Verify every signature before sending it.** One extra verification per broadcast
+costs nothing at LoRa rates and converts the whole class of always-invalid-key bugs
+from silent disappearance at every peer into a loud local failure.
+
+### Smaller divergences to expect
+
+- Firmware's verify is lenient - no `s < L` check, no canonical-y check on decode -
+  so node-kmp will drop some malformed signatures firmware accepts. Safe direction.
+- `canonicalSignableSize` measures with nanopb; Wire's encoded size can differ by a
+  byte or two, so the `BALANCED` downgrade threshold may not match exactly at the
+  edge.
+- The signature lives *inside* the encrypted `Data`: sign before channel encryption,
+  verify after decryption, and a relay must pass the bytes through untouched.
+- First contact needs `nodeNum == crc32(publicKey)`, which `MeshIdentity` and
+  `MeshNode` already enforce, so that path needs no new invariant.
