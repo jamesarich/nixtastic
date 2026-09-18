@@ -53,5 +53,34 @@ its memory store were both clean and pushed.
 
 ## What was picked up
 
-See the PR list at the end of the job report; this note is updated when they
-land.
+**node-kmp session.** Tiers 0-3 of `notes/node-kmp-gap-plan-2026-09-17.md` were
+already complete (PR #21 closed tier 1). The last prompt, "Explain the on air
+format question", exposed a false premise in two decision notes - that service
+data would buy iOS background receive of the mesh advertisement. It would not:
+the advertisement is extended, iOS surfaces only legacy ones, so an iPad hears
+none of them whatever the AD type (measured 2026-09-15). meshtastic-node-kmp#22
+corrects `AGENTS.md` and `docs/positioning.md`; the open call is the identifier
+replacing the SIG test value `0xFFFF`, which lives in the firmware's
+`BLEMeshHandler.h` as much as in node-kmp.
+
+**Kotlin-repos session.** Every PR it was tracking had already been merged from
+this desktop (flatpak#58, MQTT#156, kzstd#87, TAK#142/#143, sdk#126/#137) and
+all four releases were cut today. What was left after "Get it sorted out" was
+its own finding, `patchEmpty`, plus two small leftovers:
+
+- `patchEmpty = false` in all six changelog-plugin repos: kzstd#89, MQTT#159,
+  gradle-flatpak-sources#61, meshtastic-sdk#141, TAKPacket-SDK#147,
+  meshtastic-node-kmp#23. **The Mac session's premise was wrong** - the plugin's
+  default does not cut an empty section, it *skips* the task green and leaves no
+  heading (measured against 2.5.0 with a bumped version; the plugin source
+  agrees). The change still earns its place: the failure moves from the release
+  workflow's heading gate, one tag later, to the bump itself with the plugin's
+  own message. #23 also adds the heading check to node-kmp's release ritual,
+  because `getChangelog` prints the previous release when the declared version
+  has no section.
+- MQTT#155's one unresolved CodeRabbit thread was answered and resolved: #142
+  landed protobufs 2.8.0 with `optional rx_rssi`, which is exactly what it asked.
+- Checked and already done or moot: TAK and flatpak both carry
+  `gradle-daemon-jvm.properties` on main; the sdk catalog comment it wanted
+  corrected no longer exists. TAK's #132/#133 CHANGELOG backfill is policy and
+  was left alone.
