@@ -81,14 +81,37 @@ SDK).
   in [`notes/wire-builders-only-migration.md`](./notes/wire-builders-only-migration.md).
 - **`TAKPacket-SDK` is a `protobufs` consumer too, and it sits under `android`.**
   Its Kotlin module takes `org.meshtastic:protobufs` as a `commonMain
-  implementation` and *re-exports* the generated types (its bcv config ignores
-  `org.meshtastic.proto`), so protobufs ships transitively in its POM. `android`
-  consumes the published `org.meshtastic:takpacket-sdk-jvm`, which means a
-  protobufs codegen change has to be rebuilt and republished *through* TAK
-  before `android` can be trusted - the failure is at runtime, not at compile
-  time. `MQTTastic-Client-KMP` also depends on protobufs but only in its
-  unpublished `sample`, and only to `ADAPTER.decode` plus a `PortNum` enum, so
-  codegen shape changes do not reach it. `kzstd` has no protobufs dependency.
+  implementation`, so protobufs lands in its POM at **`runtime` scope** and ships
+  transitively. It does **not** re-export the generated types - verified
+  2026-09-18, `org.meshtastic.proto` appears zero times in both committed ABI
+  dumps (`kotlin/api/takpacket-sdk.api`, `takpacket-sdk.klib.api`), and
+  `kotlin/build.gradle.kts` says so itself: they are "an implementation detail,
+  not part of this SDK's public API surface". The bcv `ignoredPackages` line is
+  belt-and-braces, not evidence of exposure. It cannot be hidden either: the
+  dependency was `compileOnly` (which stays out of the POM) while this was
+  JVM-only, and `build.gradle.kts:146` records why that had to change - Native,
+  JS and Wasm cannot link a `compileOnly` dep. `android` consumes the published
+  `org.meshtastic:takpacket-sdk-jvm`, which means a protobufs codegen change has
+  to be rebuilt and republished *through* TAK before `android` can be trusted -
+  the failure is at runtime, not at compile time, which is exactly what `runtime`
+  scope predicts.
+  **A snapshot pin therefore blocks a TAK release outright.** `main` pins
+  `2.8.0.85-ge319346-SNAPSHOT` for Wire's `buildersOnly`, which exists only on
+  protobufs `master` (88 commits past `v2.8.0`, absent from every tag). Maven
+  Central does not host snapshots, so tagging would publish a POM no consumer can
+  resolve - and dropping back to `2.8.0` breaks the Builder-based code from #141.
+  TAK cannot ship until protobufs cuts a tag containing `buildersOnly`.
+  `MQTTastic-Client-KMP` also depends on protobufs but only in its unpublished
+  `sample`, and only to `ADAPTER.decode` plus a `PortNum` enum, so codegen shape
+  changes do not reach it - its published POM carries **zero** protobufs
+  references, so the pin cannot block its release. `kzstd` has no protobufs
+  dependency at all.
+- **`meshtastic-sdk` carries protobufs at `compile` scope**, not `runtime` -
+  its published `sdk-core-jvm` POM lists `protobufs-jvm` as `compile`, so
+  consumers compile against it. That is the genuine API-exposure case TAK is
+  often mistaken for. It pins the same
+  `2.8.0.85-ge319346-SNAPSHOT`, so it is blocked from release for the same
+  reason, on top of any version question of its own.
 - `meshtastic-sdk` is consumed by **neither `android` nor `apple`** (checked
   2026-09-05: no `org.meshtastic.sdk` import in either; both talk to radios
   through their own phone-API transports) - but it **does** have a downstream
