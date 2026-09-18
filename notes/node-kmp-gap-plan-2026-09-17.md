@@ -119,9 +119,12 @@ prints `skipped:` and passes. A green macOS-native run proves nothing unless
 
 **12. The on-air advertisement format**, the real blocker on going public:
 manufacturer data under company ID `0xFFFF` is the only format Android, BlueZ and
-Windows can all transmit; service data buys iOS *background* receive and costs
-transmit on two platforms. Needs agreeing with firmware, and changing it later
-breaks every deployed node.
+Windows can all transmit; service data would cost transmit on two platforms and
+buy nothing - iOS hears no extended advertisement whatever the AD type (corrected
+2026-09-18; the earlier "buys iOS background receive" was false). The open call
+is the identifier replacing the test value `0xFFFF`, which has to change in the
+firmware's `BLEMeshHandler.h` and here together. Changing it later breaks every
+deployed node.
 
 **13. CI stays off while the repo is private** - PR #4 is written and waiting.
 **14. Publishing**: declare a remote, and take the naming calls - the `-kmp`
