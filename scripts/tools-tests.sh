@@ -589,6 +589,14 @@ mkdir -p "$root/apple/.agents/skills/marketing"
 printf -- '---\nname: marketing\ndescription: Capture marketing shots\n---\nbody\n' > "$root/apple/.agents/skills/marketing/SKILL.md"
 ln -s ../../.agents/skills/marketing "$root/apple/.claude/skills/marketing"
 mkskill "$root/meshtastic-mcp/src/meshtastic_mcp/skills/meshtastic-device-ops" meshtastic-device-ops "Drive devices"
+# `.github/skills` is the other place a repo keeps them (meshtastic-sdk, MQTTastic,
+# design). Claude Code never loads that dir, so the forwarder is the only reach.
+mkskill "$root/meshtastic-sdk/.github/skills/api-compat-guardian" api-compat-guardian "Guard the published API"
+# Same name in both dirs must render ONCE, from `.claude`.
+mkskill "$root/android/.github/skills/baseline" baseline "Stale GitHub copy"
+# No `description:` - unselectable, so no forwarder and a WARN instead.
+mkdir -p "$root/design/.github/skills/update-design-audits"
+printf '# Skill: no frontmatter\n' > "$root/design/.github/skills/update-design-audits/SKILL.md"
 run "$sync"
 expect 'plugin +rendered'
 rd="$root/.cache/agent-marketplace"
@@ -602,6 +610,14 @@ for f in android-code-review android-baseline apple-code-review apple-marketing;
   [ -f "$p/skills/$f/SKILL.md" ] || { echo "T24: forwarder $f missing"; ls "$p/skills"; exit 1; }
 done
 [ ! -e "$p/skills/apple-speckit-plan" ] || { echo "T24: speckit forwarded"; exit 1; }
+# A `.github/skills` skill is forwarded, and its target points at .github, not .claude.
+[ -f "$p/skills/meshtastic-sdk-api-compat-guardian/SKILL.md" ] || { echo "T24: .github/skills not forwarded"; ls "$p/skills"; exit 1; }
+grep -qF "$root/meshtastic-sdk/.github/skills/api-compat-guardian" "$p/skills/meshtastic-sdk-api-compat-guardian/SKILL.md" || { echo "T24: .github forwarder target wrong"; exit 1; }
+# `.claude` wins a name present in both, and the pair is emitted once.
+grep -qF "$root/android/.claude/skills/baseline" "$p/skills/android-baseline/SKILL.md" || { echo "T24: .github copy shadowed .claude"; exit 1; }
+# The description-less skill is skipped and reported, not rendered broken.
+[ ! -e "$p/skills/design-update-design-audits" ] || { echo "T24: description-less skill forwarded"; exit 1; }
+expect 'WARN .*update-design-audits/SKILL.md has no description'
 [ -f "$p/skills/meshtastic-cross-repo/SKILL.md" ] || { echo "T24: cross-repo skill missing from render"; exit 1; }
 grep -q '^name: meshtastic-cross-repo$' "$p/skills/meshtastic-cross-repo/SKILL.md" || { echo "T24: cross-repo name"; exit 1; }
 [ -f "$p/skills/meshtastic-cross-repo/references/umbrella-template.md" ] || { echo "T24: umbrella template missing"; exit 1; }

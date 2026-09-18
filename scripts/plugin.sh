@@ -12,16 +12,52 @@ plugin_name() { printf 'nixtastic\n'; }
 NIXTASTIC_FORWARD_SKIP='speckit-'
 NIXTASTIC_BUNDLED_SKILLS='meshtastic-device-ops meshtastic-e2e meshtastic-org-knowledge'
 
-# "<dir>\t<skill>\t<description>" for every repo skill that gets a forwarder.
+# Where a repo may keep skills. Claude Code itself loads only `.claude/skills`;
+# meshtastic-sdk, MQTTastic-Client-KMP and design author theirs under
+# `.github/skills` (GitHub's location), where NO session sees them - not even
+# one started inside the repo, measured 2026-09-17. Forwarding both makes the
+# `.github` ones reachable everywhere without moving anything in an org repo.
+# `.claude` is listed first so it wins a name that exists in both.
+NIXTASTIC_SKILL_DIRS='.claude/skills .github/skills'
+
+# "<dir>\t<skill>\t<description>\t<subdir>" for every repo skill that gets a
+# forwarder. The subdir travels with the pair because three callers need the
+# real path, and reconstructing it in each is how one of them goes stale.
+# A skill with no `description:` is skipped: the description is the retrieval
+# key, so a forwarder without one is never selected. `plugin_render` warns.
 plugin_forward_pairs() {
   while IFS=$'\t' read -r dir _ _; do
-    [ -d "$1/$dir/.claude/skills" ] || continue
-    for s in "$1/$dir/.claude/skills"/*/; do
-      s=${s%/}; name=${s##*/}
-      [ -f "$s/SKILL.md" ] || continue
-      case "$name" in "$NIXTASTIC_FORWARD_SKIP"*) continue ;; esac
-      desc=$(sed -n 's/^description:[[:space:]]*//p' "$s/SKILL.md" | head -1 | sed 's/^"\(.*\)"$/\1/; s/\\"/"/g')
-      printf '%s\t%s\t%s\n' "$dir" "$name" "$desc"
+    seen=''
+    for sub in $NIXTASTIC_SKILL_DIRS; do
+      [ -d "$1/$dir/$sub" ] || continue
+      for s in "$1/$dir/$sub"/*/; do
+        s=${s%/}; name=${s##*/}
+        [ -f "$s/SKILL.md" ] || continue
+        case "$name" in "$NIXTASTIC_FORWARD_SKIP"*) continue ;; esac
+        case " $seen " in *" $name "*) continue ;; esac
+        desc=$(sed -n 's/^description:[[:space:]]*//p' "$s/SKILL.md" | head -1 | sed 's/^"\(.*\)"$/\1/; s/\\"/"/g')
+        [ -n "$desc" ] || continue
+        seen="$seen $name"
+        printf '%s\t%s\t%s\t%s\n' "$dir" "$name" "$desc" "$sub"
+      done
+    done
+  done < "$NIXTASTIC_REPOS_TSV"
+}
+
+# "<dir>/<sub>/<skill>" for every skill a forwarder was NOT written for because
+# its SKILL.md carries no `description:`. Rendering one would be worse than
+# skipping it - it would occupy the name and never be selected.
+plugin_undescribed_skills() {
+  while IFS=$'\t' read -r dir _ _; do
+    for sub in $NIXTASTIC_SKILL_DIRS; do
+      [ -d "$1/$dir/$sub" ] || continue
+      for s in "$1/$dir/$sub"/*/; do
+        s=${s%/}; name=${s##*/}
+        [ -f "$s/SKILL.md" ] || continue
+        case "$name" in "$NIXTASTIC_FORWARD_SKIP"*) continue ;; esac
+        sed -n 's/^description:[[:space:]]*//p' "$s/SKILL.md" | head -1 | grep -q . && continue
+        printf '%s/%s/%s\n' "$dir" "$sub" "$name"
+      done
     done
   done < "$NIXTASTIC_REPOS_TSV"
 }
@@ -40,18 +76,18 @@ plugin_input_hash() {
         printf '%s\n' "${f#"$1"}"; cat "$f"
       done
     fi
-    plugin_forward_pairs "$1" | while IFS=$'\t' read -r dir skill _; do
-      printf '%s/%s\n' "$dir" "$skill"; cat "$1/$dir/.claude/skills/$skill/SKILL.md"
+    plugin_forward_pairs "$1" | while IFS=$'\t' read -r dir skill _ sub; do
+      printf '%s/%s/%s\n' "$dir" "$sub" "$skill"; cat "$1/$dir/$sub/$skill/SKILL.md"
     done
   } | sha256sum | cut -c1-64
 }
 
-# $1 = out dir, $2 = root, $3 = dir, $4 = skill, $5 = description.
+# $1 = out dir, $2 = root, $3 = dir, $4 = skill, $5 = description, $6 = subdir.
 # SC2016: the backticks are markdown for the generated file, not expansions.
 # shellcheck disable=SC2016
 plugin_write_forwarder() {
   mkdir -p "$1"
-  target="$2/$3/.claude/skills/$4"
+  target="$2/$3/$6/$4"
   {
     echo '---'
     printf 'name: %s-%s\n' "$3" "$4"
@@ -88,9 +124,9 @@ plugin_render() {
     [ -d "$src" ] && cp -R "$src" "$tmp/$name/skills/$s"
   done
   n=0
-  while IFS=$'\t' read -r dir skill desc; do
+  while IFS=$'\t' read -r dir skill desc sub; do
     [ -n "$dir" ] || continue
-    plugin_write_forwarder "$tmp/$name/skills/$dir-$skill" "$root" "$dir" "$skill" "$desc"
+    plugin_write_forwarder "$tmp/$name/skills/$dir-$skill" "$root" "$dir" "$skill" "$desc" "$sub"
     n=$((n + 1))
   done <<< "$(plugin_forward_pairs "$root")"
   # Claude Code reads lspServers off the MARKETPLACE entry, not the plugin's own
@@ -209,6 +245,9 @@ plugin_pass() {
   set -- $out
   version="$4"
   printf '  plugin    rendered %s forwarder(s) into %s  (%s, version %s)\n' "$2" "$(plugin_render_dir "$root")" "$3" "$version"
+  plugin_undescribed_skills "$root" | while read -r s; do
+    printf '  WARN      %s/SKILL.md has no description: - no forwarder written, so nothing can select it\n' "$s"
+  done
   plugin_retire_root_skills "$root"
   restart=false
   reg=$(plugin_register "$root" "$version")

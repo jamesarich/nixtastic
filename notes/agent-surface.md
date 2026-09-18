@@ -19,7 +19,13 @@ by hand, and is invisible to `doctor`. Three consequences:
 
 **The per-repo skills are unreachable from where sessions start.**
 `android/.claude/skills` (5) and `apple/.claude/skills` (10) load only when the
-session's cwd is inside that repo. On the desktop that happened in 4 of 84
+session's cwd is inside that repo. (**This count was low, corrected 2026-09-17:**
+it grepped one directory name. `meshtastic-sdk` (6), `MQTTastic-Client-KMP` (1)
+and `design` (1) keep theirs under `.github/skills`, which Claude Code never
+loads at all - measured with `claude -p` from inside `meshtastic-sdk`, which saw
+none of its own six. Those are worse than root-only: they were invisible
+everywhere, while `meshtastic-sdk/AGENTS.md` routed work to them by name. The
+forwarder generator now scans both directories.) On the desktop that happened in 4 of 84
 workspace sessions; the rest started at the root, where those skills do not
 exist. Nested-skill discovery does not help - it stops at the git-repo boundary
 (spike 2 below), and the org repos are separate repos.

@@ -229,6 +229,15 @@ finds - run it before diagnosing by hand.
   matrix and coordinates; it lags Maven Central and calls every 0.x a
   prerelease, so never take a version from it). `bin/claude-ws <repo>` (`--add-dir`,
   loads that repo's `CLAUDE.md` too) remains for skills that must run in place.
+  **A repo may keep its skills in `.github/skills/` instead** (`meshtastic-sdk`,
+  `MQTTastic-Client-KMP`, `design`) - Claude Code loads only `.claude/skills/`,
+  so those are invisible even from inside the repo, which is how
+  `meshtastic-sdk/AGENTS.md` came to route work to six skills nothing could
+  select. `.#sync` forwards both directories (`.claude` wins a name in both);
+  a `SKILL.md` with no `description:` is skipped with a WARN, because the
+  description is the retrieval key. `.github/agents/` is **not** aggregated -
+  it is `speckit.*` scaffolding everywhere except `meshtastic-sdk`'s one real
+  `spec-guard.agent.md`.
 - **The direnv hook fires only in interactive shells** - scripts and agent
   subshells get no repo environment, so Gradle silently runs unpinned. From
   non-interactive contexts use `direnv exec <repo-or-worktree> <cmd>`.
