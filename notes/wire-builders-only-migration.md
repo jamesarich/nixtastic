@@ -23,6 +23,35 @@ Measured against the repos as they stood on 2026-09-09, Wire 6.4.7,
 generated and read - which is how the two blockers in *What it actually costs*
 were found.
 
+## Status: landed 2026-09-18
+
+All five PRs are merged. The published coordinates are
+`org.meshtastic:protobufs 2.8.0.85-ge319346-SNAPSHOT` (class file 55) and
+`org.meshtastic:takpacket-sdk 0.9.2-SNAPSHOT`, and both `meshtastic-sdk` and
+`android` main carry them.
+
+Two things went wrong on the day and neither was the refactor:
+
+1. **#1074 merged on a stale green check** (38 commits behind base), so its CI
+   never saw #952's generator. Master was red and no snapshot could publish.
+   Fixed by #1097.
+2. **The JDK 25 bump silently raised the published bytecode floor to Java 25.**
+   Invisible to dependency resolution *and* to compilation; detectable only when
+   a class loads. Fixed by #1098. A tag cut in that window would have shipped it.
+
+What is still **not** proven, and should not be claimed: the end-to-end goal this
+migration exists for - *node-kmp published from its own pin, consumed by an
+`android` build on a different pin, phone-API handshake passing*. `android` and
+`meshtastic-sdk` now sit on the same pin, so the cross-pin case is untested.
+`meshtastic-node-kmp`'s own migration was done separately and is not covered
+here.
+
+Consumers **not** touched, verified rather than assumed: `MQTTastic-Client-KMP`
+reaches protobufs only from its unpublished `sample`, through
+`ServiceEnvelope.ADAPTER.decode` plus two `PortNum` enum comparisons - no
+construction, so `buildersOnly` cannot reach it. `kzstd` has no protobufs
+dependency at all.
+
 ## The pull requests
 
 All draft, opened 2026-09-10. Every consumer PR is **red in CI by design**: its
@@ -36,11 +65,11 @@ are placeholders.
 | `protobufs` | [#1076](https://github.com/meshtastic/protobufs/pull/1076) | 1 | Wire 7.0.0 + `oneofMode`. **Superseded** - folded into #1097 |
 | `protobufs` | [#1097](https://github.com/meshtastic/protobufs/pull/1097) | 2 | the registry fix + Wire 7.0.0. **MERGED** 2026-09-17 `1476d78` |
 | `protobufs` | [#1098](https://github.com/meshtastic/protobufs/pull/1098) | 1 | pin the bytecode level. **MERGED** 2026-09-17 `e319346` (by Ben) |
-| `TAKPacket-SDK` | [#141](https://github.com/meshtastic/TAKPacket-SDK/pull/141) | 3 | **ready, CLEAN, 10/10 CI.** 332/332 on the real snapshot. Merge next |
+| `TAKPacket-SDK` | [#141](https://github.com/meshtastic/TAKPacket-SDK/pull/141) | 3 | **MERGED** `683ad0a`; published `takpacket-sdk 0.9.2-SNAPSHOT` |
 | `meshtastic-node-kmp` | [#1](https://github.com/meshtastic/meshtastic-node-kmp/pull/1) | 42 | reference diff only; reapplied separately. #9 `a246fa7` and #11 `75d1e13` merged |
-| `meshtastic-sdk` | [#125](https://github.com/meshtastic/meshtastic-sdk/pull/125) | 64 | **ready, CLEAN, 12/12 CI.** Subsumes #132 (`wire` 7.0.0) |
+| `meshtastic-sdk` | [#125](https://github.com/meshtastic/meshtastic-sdk/pull/125) | 64 | **MERGED** `ab2878f`. Subsumed #132 (`wire` 7.0.0) |
 | `meshtastic-sdk` | [#126](https://github.com/meshtastic/meshtastic-sdk/pull/126) | 3 | the schema bump. **MERGED** 2026-09-17 `419a624` |
-| `Meshtastic-Android` | [#7115](https://github.com/meshtastic/Meshtastic-Android/pull/7115) | 282 | baseline green: 8345 tests, 0 failures. Draft until #141 publishes `0.9.2-SNAPSHOT` |
+| `Meshtastic-Android` | [#7115](https://github.com/meshtastic/Meshtastic-Android/pull/7115) | 282 | **MERGED** `bf4cf1c`; baseline 8345 tests, 0 failures |
 
 ### Landing day, 2026-09-17: #1074 merged and took master down with it
 
