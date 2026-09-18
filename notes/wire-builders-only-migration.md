@@ -1,5 +1,14 @@
 # Wire `buildersOnly`: making the generated protos binary-stable
 
+**Landed for `meshtastic-node-kmp` on 2026-09-17** as `b5e0110`, reapplied on top
+of current `main` rather than rebased - #1 closed as superseded. The catalog pin
+moved to `2.8.0.85-ge319346-SNAPSHOT` in the same change, because the released
+track cannot build the repo at all: `v2.8.0` predates `buildersOnly` and its
+`newBuilder()` is a stub that throws. **Restore the pin to a release, and make the
+snapshot repository in `settings.gradle.kts` conditional on `-PprotobufsVersion`
+again, the day protobufs cuts a tag.** The rest of this note is the reasoning that
+got there, and the per-repo state for the other consumers.
+
 A migration for `protobufs`, `TAKPacket-SDK`, `meshtastic-node-kmp`,
 `meshtastic-sdk` and `android`. Executed as one coordinated change on
 2026-09-09, not as phases.
