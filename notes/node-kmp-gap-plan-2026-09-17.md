@@ -6,6 +6,10 @@ live hardware. Supersedes the *What I would do next* list in
 [`node-kmp-audit-2026-09-16.md`](./node-kmp-audit-2026-09-16.md), whose six items
 are now closed or carried below.
 
+**Worked the same day.** Merged: 1 (#16), 2 (#17), 4 (#19), 5 (#18), 7 (#20), plus
+the forgery fix (#14). Item 3 - parity coverage for the messages the harness does
+not reflect over - is the remaining tier-1 piece. Tier 4 and tier 5 stand.
+
 Ordering principle: **one structural fix outranks four point fixes**, because the
 point fixes keep coming back. Most of tier 0 and tier 2 are symptoms of the same
 missing test.
