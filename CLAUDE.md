@@ -95,12 +95,21 @@ SDK).
   to be rebuilt and republished *through* TAK before `android` can be trusted -
   the failure is at runtime, not at compile time, which is exactly what `runtime`
   scope predicts.
-  **A snapshot pin therefore blocks a TAK release outright.** `main` pins
+  **A snapshot pin does not block a TAK release.** `main` pins
   `2.8.0.85-ge319346-SNAPSHOT` for Wire's `buildersOnly`, which exists only on
-  protobufs `master` (88 commits past `v2.8.0`, absent from every tag). Maven
-  Central does not host snapshots, so tagging would publish a POM no consumer can
-  resolve - and dropping back to `2.8.0` breaks the Builder-based code from #141.
-  TAK cannot ship until protobufs cuts a tag containing `buildersOnly`.
+  protobufs `master` (88 commits past `v2.8.0`, absent from every tag). That
+  resolves: it is served from
+  `https://central.sonatype.com/repository/maven-snapshots/`, and `android`
+  already declares exactly that repo with `snapshotsOnly()`
+  (`settings.gradle.kts:59-61`) because it pins a protobufs snapshot itself. Do
+  not reason from "Maven Central does not host snapshots" - that is true of
+  `repo1.maven.org`, which serves releases, and says nothing about what a
+  consumer can resolve. The residual risk is durability, not resolution:
+  snapshots are mutable and pruned, `.85` is already several builds behind the
+  newest, and an immutable Central release pointing at a pruned snapshot would
+  dangle. **Decided 2026-09-18 (James): ship anyway** - the consumers that matter
+  are ours and can be re-pinned, and a third party without the snapshot repo
+  declared can add it.
   `MQTTastic-Client-KMP` also depends on protobufs but only in its unpublished
   `sample`, and only to `ADAPTER.decode` plus a `PortNum` enum, so codegen shape
   changes do not reach it - its published POM carries **zero** protobufs
@@ -110,8 +119,8 @@ SDK).
   its published `sdk-core-jvm` POM lists `protobufs-jvm` as `compile`, so
   consumers compile against it. That is the genuine API-exposure case TAK is
   often mistaken for. It pins the same
-  `2.8.0.85-ge319346-SNAPSHOT`, so it is blocked from release for the same
-  reason, on top of any version question of its own.
+  `2.8.0.85-ge319346-SNAPSHOT`, which resolves the same way and is likewise not
+  a release blocker.
 - `meshtastic-sdk` is consumed by **neither `android` nor `apple`** (checked
   2026-09-05: no `org.meshtastic.sdk` import in either; both talk to radios
   through their own phone-API transports) - but it **does** have a downstream
