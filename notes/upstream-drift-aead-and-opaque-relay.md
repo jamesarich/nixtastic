@@ -72,6 +72,14 @@ moment it is wanted:
 
     gradle -PprotobufsVersion=2.8.0.55-g072c607-SNAPSHOT <task>
 
+**Superseded 2026-09-17: the catalog default is now a snapshot.** James called it
+once `buildersOnly` merged - the released track cannot build the repo at all,
+since `v2.8.0`'s `newBuilder()` is a stub that throws, so holding the default at a
+release bought nothing and blocked everything. The pin is
+`2.8.0.85-ge319346-SNAPSHOT` and moves to the tag the day one is cut. The
+reasoning that follows is kept because it is why the rule existed, and it is the
+rule to restore at that tag.
+
 **The catalog default should stay 2.8.0**, and `AGENTS.md` says why: the snapshot
 repository is added only for such a build "so the default track cannot drift onto
 an unreleased proto", and *"the pin bump is where parity is reviewed… an escape
